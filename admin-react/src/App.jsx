@@ -1,7 +1,12 @@
-export default function App() {
+import React from 'react';
+import AdminDashboard from './Admindashboard';
+
+function App() {
   return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-      <h1 className="text-3xl font-bold text-gray-800">OmniVote Admin Panel</h1>
+    <div>
+      <AdminDashboard />
     </div>
-  )
+  );
 }
+
+export default App;
