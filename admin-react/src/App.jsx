@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import AdminLogin from './AdminLogin';
-import AdminDashboard from './AdminDashboard';
+import AdminDashboard from './Admindashboard';
 import Candidates from './Candidates';
 import StudentRegistry from './StudentRegistry';
 import ElectionSetup from './ElectionSetup';
@@ -8,17 +8,39 @@ import Results from './Results';
 import Settings from './Settings';
 
 export default function App() {
-  // Always starts unauthenticated (forces user to Login form first)
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [currentUser, setCurrentUser] = useState(() => {
+    try {
+      const storedUser = localStorage.getItem('omnivote_user');
+      return storedUser ? JSON.parse(storedUser) : null;
+    } catch (error) {
+      console.error('Failed to read saved user from localStorage', error);
+      return null;
+    }
+  });
   const [currentView, setCurrentView] = useState('dashboard');
 
-  const handleLogin = () => {
-    setIsAuthenticated(true);
+  useEffect(() => {
+    if (currentUser) {
+      localStorage.setItem('omnivote_user', JSON.stringify(currentUser));
+      return;
+    }
+
+    localStorage.removeItem('omnivote_user');
+  }, [currentUser]);
+
+  const handleLogin = (userData) => {
+    const user = userData?.user ?? userData;
+
+    if (!user) {
+      return;
+    }
+
+    setCurrentUser(user);
     setCurrentView('dashboard');
   };
 
   const handleLogout = () => {
-    setIsAuthenticated(false);
+    setCurrentUser(null);
     setCurrentView('dashboard');
   };
 
@@ -26,12 +48,10 @@ export default function App() {
     setCurrentView(view);
   };
 
-  // 1. Force display Login Form first when not authenticated
-  if (!isAuthenticated) {
+  if (!currentUser) {
     return <AdminLogin onLogin={handleLogin} />;
   }
 
-  // 2. View Router once logged in
   switch (currentView) {
     case 'candidates':
       return (
@@ -77,6 +97,7 @@ export default function App() {
     default:
       return (
         <AdminDashboard 
+          currentUser={currentUser}
           onLogout={handleLogout} 
           activeView={currentView} 
           onNavigate={handleNavigate} 

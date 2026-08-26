@@ -6,11 +6,37 @@ export default function AdminLogin({ onLogin }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (onLogin) {
-      onLogin({ email });
+    setLoading(true);
+    setError('');
+
+    try {
+      const response = await fetch('http://127.0.0.1:8000/api/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Invalid login details');
+      }
+
+      if (onLogin) {
+        onLogin(data.user || data);
+      }
+    } catch (err) {
+      setError(err.message || 'Login failed. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -31,6 +57,12 @@ export default function AdminLogin({ onLogin }) {
         </div>
 
         <form className="login-form" onSubmit={handleSubmit}>
+          {error && (
+            <div className="login-error" style={{ color: '#dc2626', marginBottom: '12px', fontSize: '0.9rem' }}>
+              {error}
+            </div>
+          )}
+
           <div className="form-group">
             <label className="form-label">Email Address</label>
             <div className="input-wrapper">
@@ -71,8 +103,8 @@ export default function AdminLogin({ onLogin }) {
             </div>
           </div>
 
-          <button type="submit" className="submit-btn">
-            Sign In to Dashboard
+          <button type="submit" className="submit-btn" disabled={loading}>
+            {loading ? 'Signing In...' : 'Sign In to Dashboard'}
           </button>
         </form>
 
