@@ -17,7 +17,7 @@ import {
   Vote
 } from 'lucide-react';
 
-export default function AdminDashboard({ onLogout, activeView = 'dashboard', onNavigate }) {
+export default function AdminDashboard({ onLogout, activeView = 'dashboard', onNavigate, currentUser = null }) {
   const [statsData, setStatsData] = useState({
     total_voters: 0,
     votes_cast: 0,
@@ -34,6 +34,22 @@ export default function AdminDashboard({ onLogout, activeView = 'dashboard', onN
     avatar: 'https://i.pravatar.cc/100?img=32',
   });
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (currentUser) {
+      const normalizedRole = currentUser.role === 'admin'
+        ? 'System Administrator'
+        : currentUser.role === 'teacher'
+          ? 'Teacher'
+          : currentUser.role || 'System Administrator';
+
+      setUserProfile((previous) => ({
+        ...previous,
+        name: currentUser.name || previous.name,
+        role: normalizedRole,
+      }));
+    }
+  }, [currentUser]);
 
   useEffect(() => {
     const fetchDashboardData = async () => {
