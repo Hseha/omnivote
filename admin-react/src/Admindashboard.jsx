@@ -13,11 +13,11 @@ import {
   Clock, 
   Award, 
   Plus,
-  LogOut
+  LogOut,
+  Vote
 } from 'lucide-react';
 
-export default function AdminDashboard() {
-  // 1. Dynamic State Definitions
+export default function AdminDashboard({ onLogout, activeView = 'dashboard', onNavigate }) {
   const [statsData, setStatsData] = useState({
     total_voters: 0,
     votes_cast: 0,
@@ -26,15 +26,15 @@ export default function AdminDashboard() {
   });
   const [announcements, setAnnouncements] = useState([]);
   const [recentActions, setRecentActions] = useState([]);
-  const [electionPhase, setElectionPhase] = useState('Loading...');
+  const [electionPhase, setElectionPhase] = useState('Voting Open');
   const [userProfile, setUserProfile] = useState({
+    time : '14:32:05 EST',
     name: 'Election Admin',
     role: 'System Administrator',
     avatar: 'https://i.pravatar.cc/100?img=32',
   });
   const [loading, setLoading] = useState(true);
 
-  // 2. Data Fetching via Axios (Prepared for Laravel Sanctum)
   useEffect(() => {
     const fetchDashboardData = async () => {
       try {
@@ -45,7 +45,6 @@ export default function AdminDashboard() {
         });
 
         const data = response.data;
-
         if (data.stats) setStatsData(data.stats);
         if (data.announcements) setAnnouncements(data.announcements);
         if (data.recent_actions) setRecentActions(data.recent_actions);
@@ -61,21 +60,6 @@ export default function AdminDashboard() {
     fetchDashboardData();
   }, []);
 
-  // 3. Logout Handler
-  const handleLogout = async () => {
-    try {
-      await axios.post('http://localhost:8000/api/logout', {}, {
-        withCredentials: true,
-        headers: { 'Accept': 'application/json' },
-      });
-      window.location.href = '/login';
-    } catch (error) {
-      console.error('Logout error:', error);
-      window.location.href = '/login';
-    }
-  };
-
-  // Structured metrics derived from backend state
   const stats = [
     { 
       title: 'TOTAL REGISTERED VOTERS', 
@@ -104,27 +88,63 @@ export default function AdminDashboard() {
       {/* Sidebar Navigation */}
       <aside className="sidebar">
         <div className="logo-area">
-          <div className="logo-icon">☒</div>
+          <div className="logo-icon">
+            <Vote size={20} />
+          </div>
           <div>
-            <h1 className="brand-name">ElectBoard</h1>
+            <h1 className="brand-name">OmniVote</h1>
             <p className="brand-sub">ELECTION CONSOLE</p>
           </div>
         </div>
 
         <nav className="nav-menu">
-          <a href="#dashboard" className="nav-item active">
+          <button 
+            type="button" 
+            className={`nav-item ${activeView === 'dashboard' ? 'active' : ''}`}
+            onClick={() => onNavigate && onNavigate('dashboard')}
+          >
             <LayoutDashboard size={18} /> Dashboard
-          </a>
-          <a href="#candidates" className="nav-item"><Users size={18} /> Candidates</a>
-          <a href="#voters" className="nav-item"><UserCheck size={18} /> Voter Registry</a>
-          <a href="#setup" className="nav-item"><Sliders size={18} /> Election Setup</a>
-          <a href="#results" className="nav-item"><BarChart2 size={18} /> Results</a>
-          <a href="#settings" className="nav-item"><Settings size={18} /> Settings</a>
+          </button>
+          <button 
+            type="button" 
+            className={`nav-item ${activeView === 'candidates' ? 'active' : ''}`}
+            onClick={() => onNavigate && onNavigate('candidates')}
+          >
+            <Users size={18} /> Candidates
+          </button>
+          <button 
+            type="button" 
+            className={`nav-item ${activeView === 'voters' ? 'active' : ''}`}
+            onClick={() => onNavigate && onNavigate('voters')}
+          >
+            <UserCheck size={18} /> Student Registry
+          </button>
+          <button 
+            type="button" 
+            className={`nav-item ${activeView === 'setup' ? 'active' : ''}`}
+            onClick={() => onNavigate && onNavigate('setup')}
+          >
+            <Sliders size={18} /> Election Setup
+          </button>
+          <button 
+            type="button" 
+            className={`nav-item ${activeView === 'results' ? 'active' : ''}`}
+            onClick={() => onNavigate && onNavigate('results')}
+          >
+            <BarChart2 size={18} /> Results
+          </button>
+          <button 
+            type="button" 
+            className={`nav-item ${activeView === 'settings' ? 'active' : ''}`}
+            onClick={() => onNavigate && onNavigate('settings')}
+          >
+            <Settings size={18} /> Settings
+          </button>
         </nav>
 
-        {/* Sidebar Footer with Logout & System Status */}
+        {/* Sidebar Footer */}
         <div className="sidebar-footer-container">
-          <button onClick={handleLogout} className="logout-button">
+          <button onClick={onLogout} className="logout-button">
             <LogOut size={18} /> Logout
           </button>
           <div className="sidebar-footer">
@@ -135,17 +155,21 @@ export default function AdminDashboard() {
 
       {/* Main Content Area */}
       <main className="main-content">
-        {/* Top Header */}
         <header className="top-header">
           <div className="breadcrumb">
-            <span className="muted">System /</span> <strong>Dashboard Overview</strong>
+            <span className="muted">Admin /</span> 
+            <strong className='Dash'>Dashboard Overview</strong>
+
           </div>
           <div className="header-actions">
             <span className="badge-open">
               <span className="dot"></span> {electionPhase}
             </span>
             <div className="user-profile">
+              <Clock size={16} />
+              <span className="user-time">{userProfile.time}</span>
               <div className="user-info">
+                
                 <span className="user-name">{userProfile.name}</span>
                 <span className="user-role">{userProfile.role}</span>
               </div>
@@ -171,9 +195,8 @@ export default function AdminDashboard() {
           ))}
         </section>
 
-        {/* Middle Grid Section */}
+        {/* Middle Section */}
         <section className="middle-grid">
-          {/* Chart Placeholder */}
           <div className="card chart-card">
             <div className="card-header">
               <div>
@@ -200,7 +223,6 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* Announcements Board */}
           <div className="card announcements-card">
             <div className="card-header">
               <h3>Admin Announcements</h3>
@@ -228,7 +250,7 @@ export default function AdminDashboard() {
           </div>
         </section>
 
-        {/* Bottom Section: Action Logs */}
+        {/* Action Logs */}
         <section className="card table-card">
           <h3>Recent System Actions</h3>
           <table className="actions-table">
