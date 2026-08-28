@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
+import '../providers/auth_provider.dart';
 
-class SplashScreen extends StatefulWidget {
+class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
 
   @override
-  State<SplashScreen> createState() => _SplashScreenState();
+  ConsumerState<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> {
+class _SplashScreenState extends ConsumerState<SplashScreen> {
   @override
   void initState() {
     super.initState();
@@ -17,13 +19,29 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _navigateToNext() async {
-    // Simulate a short delay for the "Restaurant Door" experience
-    await Future.delayed(const Duration(seconds: 2));
+    // Start auth check while splash is showing
+    final authNotifier = ref.read(authProvider.notifier);
     
-    // In a real app, we would check auth status here.
-    // For now, we go to login.
+    // Minimum splash duration for the "Restaurant Door" experience
+    final startTime = DateTime.now();
+    
+    await authNotifier.checkAuth();
+    
+    final elapsed = DateTime.now().difference(startTime);
+    if (elapsed < const Duration(seconds: 2)) {
+      await Future.delayed(const Duration(seconds: 2) - elapsed);
+    }
+    
     if (mounted) {
-      context.go('/login');
+      final isAuthenticated = ref.read(authProvider).isAuthenticated;
+      debugPrint('Auth check complete. isAuthenticated: $isAuthenticated');
+      if (isAuthenticated) {
+        debugPrint('Navigating to Dashboard');
+        context.go('/dashboard');
+      } else {
+        debugPrint('Navigating to Login');
+        context.go('/login');
+      }
     }
   }
 

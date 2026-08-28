@@ -1,52 +1,86 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_text_styles.dart';
+import '../../../data/models/registration_model.dart';
 
 class TurnoutProgress extends StatelessWidget {
-  const TurnoutProgress({super.key});
+  final Turnout turnout;
+
+  const TurnoutProgress({
+    super.key,
+    required this.turnout,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: const BorderSide(color: AppColors.borderGray),
-      ),
       child: Padding(
         padding: const EdgeInsets.all(20.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Omni High Voter Turnout', style: AppTextStyles.cardTitle),
+            const Text(
+              'Election Turnout',
+              style: AppTextStyles.cardTitle,
+            ),
             const SizedBox(height: 24),
-            _buildProgressBar('Registered vs Total Students', 0.85, '850/1000'),
-            const SizedBox(height: 20),
-            _buildProgressBar('Actual Ballots Cast To Date', 0.42, '357/850'),
+            _buildProgressBar(
+              title: 'Registered vs Total Students',
+              current: turnout.registeredStudents,
+              total: turnout.totalStudents,
+              color: AppColors.primaryBlue,
+            ),
+            const SizedBox(height: 24),
+            _buildProgressBar(
+              title: 'Actual Ballots Cast To Date',
+              current: turnout.actualBallotsCast,
+              total: turnout.registeredStudents,
+              color: AppColors.successGreen,
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildProgressBar(String title, double value, String label) {
+  Widget _buildProgressBar({
+    required String title,
+    required int current,
+    required int total,
+    required Color color,
+  }) {
+    final double percentage = total > 0 ? (current / total) * 100 : 0;
+    final double progress = total > 0 ? (current / total) : 0;
+
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(title, style: AppTextStyles.secondary.copyWith(fontSize: 12)),
-            Text(label, style: AppTextStyles.body.copyWith(fontWeight: FontWeight.bold, fontSize: 12)),
+            Expanded(
+              child: Text(
+                title,
+                style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w600),
+              ),
+            ),
+            Text(
+              '$current/$total (${percentage.toStringAsFixed(1)}%)',
+              style: AppTextStyles.secondary.copyWith(
+                fontWeight: FontWeight.bold,
+                color: AppColors.textPrimary,
+              ),
+            ),
           ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 12),
         ClipRRect(
-          borderRadius: BorderRadius.circular(4),
+          borderRadius: BorderRadius.circular(10),
           child: LinearProgressIndicator(
-            value: value,
+            value: progress,
+            backgroundColor: AppColors.borderGray,
+            valueColor: AlwaysStoppedAnimation<Color>(color),
             minHeight: 8,
-            backgroundColor: AppColors.backgroundGray,
-            valueColor: const AlwaysStoppedAnimation<Color>(AppColors.successGreen),
           ),
         ),
       ],

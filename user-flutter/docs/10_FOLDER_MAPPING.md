@@ -15,9 +15,14 @@ lib/
 │       └── status_badge.dart         # "Voting Open" indicator
 │
 ├── features/
-│   ├── auth/                         # Login Feature
+│   ├── auth/                         # Authentication & Entry
 │   │   └── screens/
+│   │       ├── splash_screen.dart    # Initial "Door" screen
 │   │       └── login_screen.dart     # Login UI & Form Validation
+│
+├── core/
+│   ├── theme/
+│   │   └── app_theme.dart            # Centralized Theme definition
 │   │
 │   └── dashboard/                    # Dashboard Feature
 │       ├── screens/
@@ -32,6 +37,5 @@ lib/
 │       ├── candidate_model.dart      # Candidate data structure
 │       └── position_model.dart       # Position/Tier definition
 │
-├── app.dart                          # Root Widget (MaterialApp)
-└── main.dart                         # Entry point (runApp)
+└── app.dart                          # Root Widget & Entry point (runApp)
 ```

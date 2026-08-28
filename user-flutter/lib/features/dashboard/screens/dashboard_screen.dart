@@ -1,123 +1,76 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import '../../../core/constants/app_colors.dart';
+import '../../../core/widgets/loading_indicator.dart';
+import '../../../core/widgets/top_bar.dart';
+import '../../auth/providers/auth_provider.dart';
+import '../providers/dashboard_provider.dart';
+import '../widgets/registration_banner.dart';
+import '../widgets/registration_details_card.dart';
+import '../widgets/turnout_progress.dart';
+import '../widgets/eligibility_faq_card.dart';
 
-// Standalone runner function to launch this screen directly
-void main() {
-  runApp(
-    const MaterialApp(
-      debugShowCheckedModeBanner: false,
-      home: DashboardScreen(),
-    ),
-  );
-}
-
-// Fallback color styles in case core files don't load
-class LocalColors {
-  static const Color surfaceWhite = Colors.white;
-  static const Color borderGray = Color(0xFFE0E0E0);
-  static const Color successGreen = Color(0xFF2E7D32);
-  static const Color primaryBlue = Color(0xFF1E88E5);
-}
-
-class DashboardScreen extends StatelessWidget {
+class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final authState = ref.watch(authProvider);
+    final registrationAsync = ref.watch(registrationDataProvider);
+    final student = authState.student;
+
+    if (student == null) {
+      return const Scaffold(body: Center(child: Text('Not authenticated')));
+    }
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Student Portal', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
-        backgroundColor: LocalColors.surfaceWhite,
-        elevation: 0,
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1.0),
-          child: Container(color: LocalColors.borderGray, height: 1.0),
+      backgroundColor: AppColors.backgroundGray,
+      appBar: const TopBar(title: 'Dashboard'),
+      body: registrationAsync.when(
+        data: (registration) => ListView(
+          padding: const EdgeInsets.all(16.0),
+          children: [
+            RegistrationBanner(
+              registrationDate: registration.registrationDate,
+            ),
+            const SizedBox(height: 24),
+            RegistrationDetailsCard(
+              student: student,
+              registrationDate: registration.registrationDate,
+              eligibilityStatus: registration.eligibilityStatus,
+            ),
+            const SizedBox(height: 16),
+            TurnoutProgress(
+              turnout: registration.turnout,
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: () => context.go('/candidates'),
+              icon: const Icon(Icons.people),
+              label: const Text('View All Candidates'),
+            ),
+            const SizedBox(height: 32),
+            const EligibilityFAQCard(),
+            const SizedBox(height: 40),
+          ],
         ),
-      ),
-
-      body: ListView(
-        padding: const EdgeInsets.all(16.0),
-        children: [
-          // Registration Complete Banner
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: LocalColors.successGreen.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: LocalColors.successGreen.withOpacity(0.3)),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.check_circle, color: LocalColors.successGreen),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'You registered on Aug 20, 2026. Your account is active and eligible to cast a ballot in all ongoing student body elections.',
-                    style: TextStyle(color: LocalColors.successGreen, fontSize: 13),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          // Temporary placeholder for custom Registration Details Card
-          const Card(
-            child: Padding(
-              padding: EdgeInsets.all(16.0),
-              child: Text('Registration Details Card Placeholder'),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Temporary placeholder for custom Turnout Progress Card
-          const Card(
-            child: Padding(
-              padding: EdgeInsets.all(16.0),
-              child: Text('Turnout Progress Placeholder'),
-            ),
-          ),
-          const SizedBox(height: 32),
-
-          ElevatedButton.icon(
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Viewing candidates feature triggered!')),
-              );
-            },
-            icon: const Icon(Icons.people),
-            label: const Text('View All Candidates'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: LocalColors.primaryBlue,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            ),
-          ),
-
-          const SizedBox(height: 32),
-          const Text('Eligibility FAQ', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-
-          const ExpansionTile(
-            title: Text('What are the requirements to vote?', style: TextStyle(fontSize: 14)),
+        loading: () => const LoadingIndicator(),
+        error: (error, stack) => Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Padding(
-                padding: EdgeInsets.all(16),
-                child: Text('You must be a currently enrolled student with a valid Student ID.'),
-              )
+              const Icon(Icons.error_outline, size: 48, color: AppColors.errorRed),
+              const SizedBox(height: 16),
+              Text('Error loading dashboard: $error'),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () => ref.refresh(registrationDataProvider),
+                child: const Text('Retry'),
+              ),
             ],
           ),
-
-          const ExpansionTile(
-            title: Text('How to verify a vote was counted?', style: TextStyle(fontSize: 14)),
-            children: [
-              Padding(
-                padding: EdgeInsets.all(16),
-                child: Text('After voting, you will receive a receipt token to verify your ballot.'),
-              )
-            ],
-          ),
-        ],
+        ),
       ),
     );
   }

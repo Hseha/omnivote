@@ -16,9 +16,15 @@ Every position has: `id`, `label` (e.g. "Presidential Candidate", "Prov Press Of
 
 ---
 
-## 1. Login Screen
+## 0. Splash Screen [DONE]
+- Purpose: Initial entry point, branding, and auth check.
+- Flow: Show logo/branding → Check session → Route to Dashboard or Login.
+- **Implemented**: `splash_screen.dart` handles the initial delay and `authProvider.checkAuth()` to decide routing.
+
+## 1. Login Screen [DONE]
 - Fields: school email / student ID, password. Submit → `POST /auth/login`.
 - On success, store token via `secure_storage_service` and route to Dashboard.
+- **Implemented**: `login_screen.dart` connected to `authProvider` which calls `AuthRepository.login`.
 
 ## 2. Dashboard (maps to reference "Voter Registration" screen)
 - **Registration Complete banner**: green check, "You registered on {date}. Your account is active and eligible to cast a ballot in all ongoing student body elections."
