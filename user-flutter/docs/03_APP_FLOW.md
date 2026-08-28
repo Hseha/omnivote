@@ -8,14 +8,15 @@ The reference UI uses a permanent left sidebar (desktop web). On Flutter/mobile 
 - **`Help & FAQ`** and **`My Profile`** move into an overflow / drawer or the top-right avatar menu (they're low-frequency)
 - **Top bar** persists on every screen: breadcrumb-style page title, `Voting Open` status badge + live clock, avatar (name + grade/year)
 
-## Screen-to-screen flow
+## Screen-to-screen flow [Status: Initial Connection Implemented]
 
 ```mermaid
 flowchart TD
     A[Splash / Auth check] -->|not logged in| B[Login Screen]
     A -->|logged in| C[Dashboard]
-    B --> C
+    B -->|SUBMIT| C [DONE: Connected via GoRouter]
 
+    A -- DONE: Initial location in AppRouter --> B
     C -->|bottom nav| D[Candidates List]
     C -->|bottom nav| E[Vote Now]
     C -->|bottom nav| F[My Ballot]

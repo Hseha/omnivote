@@ -19,8 +19,7 @@ omnivote_student_app/
 │   └── 08_BUILD_RELEASE.md
 │
 ├── lib/
-│   ├── main.dart                        # 1. entrypoint
-│   ├── app.dart                         # 2. MaterialApp + router + theme
+│   ├── app.dart                         # 1. entrypoint + router + theme
 │   │
 │   ├── core/
 │   │   ├── constants/
@@ -69,7 +68,9 @@ omnivote_student_app/
 │   │
 │   └── features/
 │       ├── auth/
-│       │   ├── screens/login_screen.dart
+│       │   ├── screens/
+│       │   │   ├── login_screen.dart
+│       │   │   └── splash_screen.dart
 │       │   └── providers/auth_provider.dart
 │       ├── dashboard/
 │       │   ├── screens/dashboard_screen.dart
@@ -152,10 +153,15 @@ Laravel API
 
 ## Boot sequence (first files touched, in order)
 
-1. `main.dart` — initializes bindings, storage, runs `App`
-2. `app.dart` — builds `MaterialApp`, wires `app_theme.dart` and `app_router.dart`
-3. `app_router.dart` — decides the first route based on `auth_provider.dart` (logged in → Dashboard, else → Login)
-4. First screen (`login_screen.dart` or `dashboard_screen.dart`) — pulls its data through its provider → repository → service chain above
+1. `app.dart` — initializes bindings, storage, runs `App`
+2. `app_router.dart` — decides the first route based on `auth_provider.dart` (logged in → Dashboard, else → Login)
+3. First screen (`splash_screen.dart`) — pulls its data through its provider → repository → service chain above
+
+**IMPLEMENTATION STATUS**:
+- [x] API Client & Secure Storage (Base infrastructure for Laravel integration).
+- [x] Auth Service & Repository (REST API connection to Laravel Auth).
+- [x] Splash Screen (Initial "Door" entry point with Auth check).
+- [x] Login Screen connected to Dashboard Screen (Navigation flow + Auth Logic).
 
 ## Per-screen file group (how to find everything for one screen)
 

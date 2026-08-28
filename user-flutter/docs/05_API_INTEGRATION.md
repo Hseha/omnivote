@@ -2,13 +2,18 @@
 
 This Flutter app is a **pure API client**. It never computes eligibility, tallies, or approval status locally — it always reflects what the Laravel API returns. Coordinate the exact contract with the Laravel repo; this doc defines what this app *expects* to exist so both sides can build against the same shape.
 
-## Auth
+## Auth [Status: INFRASTRUCTURE IMPLEMENTED]
 
-- `POST /api/auth/login` → `{ token, student }`
-- `POST /api/auth/logout`
-- `GET /api/auth/me` → current `student` (used on app relaunch to validate the stored token)
+- `POST /api/auth/login` → `{ token, student }` [Implemented in AuthService/AuthRepository]
+- `POST /api/auth/logout` [Implemented]
+- `GET /api/auth/me` → current `student` [Implemented]
 
-Auth uses **Laravel Sanctum** bearer tokens. Store the token via `secure_storage_service.dart` (never `SharedPreferences` for the token). Every request through `api_client.dart` attaches `Authorization: Bearer <token>` via a Dio interceptor; a 401 response should force logout + route to Login.
+Auth uses **Laravel Sanctum** bearer tokens. Store the token via `secure_storage_service.dart` [Implemented]. Every request through `api_client.dart` [Implemented] attaches `Authorization: Bearer <token>` via a Dio interceptor; a 401 response should force logout + route to Login.
+
+### Local Test Credentials
+For local development, use the following student account (Bypasses DB check):
+- **Student ID**: `24-00001`
+- **Password**: `tester1`
 
 ## Election / registration status
 
