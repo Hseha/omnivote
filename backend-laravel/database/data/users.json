@@ -1,0 +1,14 @@
+[
+  {
+    "name": "System Administrator",
+    "email": "admin@omnivote.test",
+    "password": "admin123",
+    "role": "admin"
+  },
+  {
+    "name": "Teacher User",
+    "email": "teacher@omnivote.test",
+    "password": "teacher123",
+    "role": "teacher"
+  }
+]
