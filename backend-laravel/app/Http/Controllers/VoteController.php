@@ -2,10 +2,11 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
+use App\Models\User;
 use App\Models\VoteLedger;
-use App\Models\Candidate;
+use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
 
 class VoteController extends Controller
 {
@@ -23,17 +24,24 @@ class VoteController extends Controller
         $receipt = bin2hex(random_bytes(16));
         $receipt_hmac = hash_hmac('sha256', $receipt, config('app.key'));
 
-        $result = DB::transaction(function () use ($user, $selections, $receipt_hmac) {
-            // lock user row to prevent double-vote
-            $u = \App\Models\User::whereKey($user->id)->lockForUpdate()->first();
-            if ($u->has_voted) {
+        $result = DB::transaction(function () use ($user, $selections, $receipt, $receipt_hmac) {
+            // Lock the user row to prevent a double cast; also guards against a
+            // user row disappearing between authentication and this transaction.
+            $voter = User::whereKey($user->id)->lockForUpdate()->first();
+
+            if (! $voter) {
+                return response()->json(['message' => 'Voter not found'], 404);
+            }
+
+            if ($voter->has_voted) {
                 return response()->json(['message' => 'Already voted'], 409);
             }
 
             foreach ($selections as $position_key => $candidate_ref) {
-                // basic validation: candidate exists and is approved for position
-                // here we check Candidate model if candidate_ref maps to id or token; keep simple
-                \App\Models\VoteLedger::create([
+                // Basic validation: candidate exists and is approved for position.
+                // candidate_ref is intentionally stored as an opaque token (no FK),
+                // keeping the ledger decoupled from the users/candidates tables.
+                VoteLedger::create([
                     'position_key' => $position_key,
                     'candidate_ref' => $candidate_ref,
                     'receipt_hmac' => $receipt_hmac,
@@ -41,14 +49,14 @@ class VoteController extends Controller
                 ]);
             }
 
-            $u->has_voted = true;
-            $u->voted_at = now();
-            $u->save();
+            $voter->has_voted = true;
+            $voter->voted_at = now();
+            $voter->save();
 
             return ['receipt' => $receipt];
         });
 
-        if ($result instanceof \Illuminate\Http\JsonResponse) {
+        if ($result instanceof JsonResponse) {
             return $result;
         }
 

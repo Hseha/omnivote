@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Http\Requests\CandidateApplicationRequest;
 use App\Models\Candidate;
-use Illuminate\Support\Str;
 
 class CandidateController extends Controller
 {
@@ -14,9 +13,9 @@ class CandidateController extends Controller
         return response()->json(['message' => 'Not implemented'], 501);
     }
 
-    public function store(Request $request)
+    public function store(CandidateApplicationRequest $request)
     {
-        $validated = $request->validate((new CandidateApplicationRequest())->rules());
+        $validated = $request->validated();
 
         $sanitized = strip_tags($validated['platform_statement'], '<p><br><strong><em><ul><ol><li>');
 
