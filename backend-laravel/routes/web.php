@@ -1,10 +1,7 @@
 <?php
 
-use App\Http\Controllers\AuthController;
 use Illuminate\Support\Facades\Route;
+use Laravel\Sanctum\Http\Controllers\CsrfCookieController;
 
-Route::get('/', function () {
-    return view('welcome');
-});
-
-Route::post('/login', [AuthController::class, 'login']);
+// CSRF cookie endpoint used by first-party SPA to initiate stateful session
+Route::get('/sanctum/csrf-cookie', [CsrfCookieController::class, 'show']);

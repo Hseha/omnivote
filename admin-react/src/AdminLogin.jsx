@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { Vote, Lock, Mail, Eye, EyeOff, ShieldCheck } from 'lucide-react';
+import { useAuth } from './lib/AuthContext';
 import './AdminLogin.css';
 
-export default function AdminLogin({ onLogin }) {
+export default function AdminLogin() {
+  const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -15,26 +17,12 @@ export default function AdminLogin({ onLogin }) {
     setError('');
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
-        body: JSON.stringify({ email, password }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Invalid login details');
-      }
-
-      if (onLogin) {
-        onLogin(data.user || data);
-      }
+      // login() obtains the Sanctum CSRF cookie, posts to /api/admin/login
+      // with credentials, then stores the profile. The HttpOnly session cookie
+      // set by the server is the real authorization boundary.
+      await login({ email, password });
     } catch (err) {
-      setError(err.message || 'Login failed. Please try again.');
+      setError(err.response?.data?.message || err.message || 'Invalid login details');
     } finally {
       setLoading(false);
     }

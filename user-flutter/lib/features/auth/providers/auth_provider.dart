@@ -5,11 +5,11 @@ import '../../../data/repositories/auth_repository.dart';
 
 final StateNotifierProvider<AuthNotifier, AuthState> authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
   final notifier = AuthNotifier(ref.read(authRepositoryProvider));
-  
+
   // Listen for unauthorized events from the API client
   ref.listen(authEventProvider, (previous, next) {
     if (next == AuthEvent.unauthorized) {
-      notifier.logout();
+      notifier.handleUnauthorized();
       // Reset the event
       ref.read(authEventProvider.notifier).state = null;
     }
@@ -51,27 +51,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = state.copyWith(student: student, isLoading: false);
   }
 
-  Future<bool> login(String studentId, String password) async {
+  Future<bool> login({required String email, required String password}) async {
     state = state.copyWith(isLoading: true, errorMessage: null);
 
-    // LOCAL BYPASS FOR TESTING WITHOUT BACKEND
-    if (studentId == '24-00001' && password == 'tester1') {
-      await Future.delayed(const Duration(seconds: 1)); // Simulate network
-      final mockStudent = Student(
-        id: '999',
-        name: 'Test Student',
-        studentId: '24-00001',
-        email: 'student@omnivote.test',
-        gradeLevel: 'Grade 12',
-        course: 'BSCS',
-        homeroom: 'Section A',
-      );
-      state = state.copyWith(student: mockStudent, isLoading: false);
-      return true;
-    }
-
     try {
-      final student = await _authRepository.login(studentId, password);
+      final student = await _authRepository.login(email: email, password: password);
       state = state.copyWith(student: student, isLoading: false);
       return true;
     } catch (e) {
@@ -96,5 +80,12 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = state.copyWith(isLoading: true);
     await _authRepository.logout();
     state = AuthState();
+  }
+
+  /// Logs out programmatically (e.g. server 401 without clearing during an
+  /// active login attempt). Used by the global unauthorized listener.
+  Future<void> handleUnauthorized() async {
+    if (state.student == null) return;
+    await logout();
   }
 }

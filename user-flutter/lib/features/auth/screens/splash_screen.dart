@@ -15,67 +15,36 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    _navigateToNext();
+    Future.microtask(_bootstrap);
   }
 
-  Future<void> _navigateToNext() async {
-    // Start auth check while splash is showing
-    final authNotifier = ref.read(authProvider.notifier);
-    
-    // Minimum splash duration for the "Restaurant Door" experience
-    final startTime = DateTime.now();
-    
-    await authNotifier.checkAuth();
-    
-    final elapsed = DateTime.now().difference(startTime);
-    if (elapsed < const Duration(seconds: 2)) {
-      await Future.delayed(const Duration(seconds: 2) - elapsed);
-    }
-    
-    if (mounted) {
-      final isAuthenticated = ref.read(authProvider).isAuthenticated;
-      debugPrint('Auth check complete. isAuthenticated: $isAuthenticated');
-      if (isAuthenticated) {
-        debugPrint('Navigating to Dashboard');
-        context.go('/dashboard');
-      } else {
-        debugPrint('Navigating to Login');
-        context.go('/login');
-      }
-    }
+  Future<void> _bootstrap() async {
+    await ref.read(authProvider.notifier).checkAuth();
+    if (!mounted) return;
+    final isAuthenticated = ref.read(authProvider).isAuthenticated;
+    context.go(isAuthenticated ? '/dashboard' : '/login');
   }
 
   @override
   Widget build(BuildContext context) {
     return const Scaffold(
-      backgroundColor: AppColors.primaryBlue,
+      backgroundColor: AppColors.surfaceWhite,
       body: Center(
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.how_to_vote,
-              size: 80,
-              color: Colors.white,
+            Icon(Icons.how_to_vote, size: 64, color: AppColors.primaryBlue),
+            SizedBox(height: 16),
+            Text(
+              'OmniVote',
+              style: TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+                color: AppColors.textPrimary,
+              ),
             ),
             SizedBox(height: 24),
-            Text(
-              'OMNIVOTE',
-              style: TextStyle(
-                fontSize: 32,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-                letterSpacing: 4,
-              ),
-            ),
-            SizedBox(height: 8),
-            Text(
-              'Student Voting Portal',
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.white70,
-              ),
-            ),
+            CircularProgressIndicator(color: AppColors.primaryBlue),
           ],
         ),
       ),

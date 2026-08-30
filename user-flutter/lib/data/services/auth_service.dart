@@ -12,9 +12,9 @@ class AuthService {
 
   AuthService(this._dio);
 
-  Future<Response> login(String studentId, String password) async {
+  Future<Response> login({required String email, required String password}) async {
     return await _dio.post(ApiConstants.login, data: {
-      'student_id': studentId,
+      'email': email,
       'password': password,
     });
   }

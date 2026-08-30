@@ -14,14 +14,14 @@ class LoginScreen extends ConsumerStatefulWidget {
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _idController = TextEditingController();
+  final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
 
   Future<void> _submit() async {
     if (_formKey.currentState!.validate()) {
       final success = await ref.read(authProvider.notifier).login(
-            _idController.text,
-            _passwordController.text,
+            email: _emailController.text.trim(),
+            password: _passwordController.text,
           );
 
       if (success && mounted) {
@@ -40,7 +40,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   void dispose() {
-    _idController.dispose();
+    _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
@@ -84,14 +84,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ),
                       const SizedBox(height: 32),
                       TextFormField(
-                        controller: _idController,
+                        controller: _emailController,
                         decoration: const InputDecoration(
-                          labelText: 'Student ID',
-                          hintText: 'e.g. 20210001',
-                          prefixIcon: Icon(Icons.person_outline),
+                          labelText: 'Email',
+                          hintText: 'e.g. student@omnivote.edu',
+                          prefixIcon: Icon(Icons.mail_outline),
                         ),
+                        keyboardType: TextInputType.emailAddress,
                         validator: (value) =>
-                            value!.isEmpty ? 'Please enter your ID' : null,
+                            value == null || value.trim().isEmpty
+                                ? 'Please enter your email'
+                                : null,
                       ),
                       const SizedBox(height: 20),
                       TextFormField(

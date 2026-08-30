@@ -7,7 +7,6 @@ import '../../../core/widgets/candidate_card.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/loading_indicator.dart';
 import '../../../core/widgets/top_bar.dart';
-import '../../../data/models/candidate_model.dart';
 import '../../../data/models/position_model.dart';
 import '../providers/candidates_provider.dart';
 

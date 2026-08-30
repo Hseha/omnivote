@@ -1,7 +1,6 @@
 import 'package:go_router/go_router.dart';
 import '../../features/auth/screens/login_screen.dart';
 import '../../features/auth/screens/register_screen.dart';
-import '../../features/auth/screens/splash_screen.dart';
 import '../../features/dashboard/screens/dashboard_screen.dart';
 import '../../features/candidates/screens/candidates_list_screen.dart';
 import '../../features/candidates/screens/candidate_profile_screen.dart';
