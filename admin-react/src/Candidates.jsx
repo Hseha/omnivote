@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from './lib/api';
+import { useAuth } from './lib/AuthContext';
 import { 
   LayoutDashboard, 
   Users, 
@@ -11,11 +12,13 @@ import {
   Check, 
   X, 
   Search,
-  Clock
+  Clock,
+  LogOut
 } from 'lucide-react';
 import './Candidates.css';
 
 export default function Candidates({ onLogout, activeView = 'candidates', onNavigate }) {
+  const { logout } = useAuth();
   const [candidates, setCandidates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -24,26 +27,31 @@ export default function Candidates({ onLogout, activeView = 'candidates', onNavi
 
   useEffect(() => {
     fetchCandidates();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const handleLogout = () => {
+    if (typeof onLogout === 'function') return onLogout();
+    logout();
+  };
 
   const fetchCandidates = async () => {
     try {
       setLoading(true);
-      const res = await axios.get('http://localhost:8000/api/admin/candidates', {
-        withCredentials: true,
-      });
-      setCandidates(res.data || []);
+      const res = await api.get('/admin/candidates');
+      const data = res.data?.data ?? res.data ?? [];
+      setCandidates(data);
     } catch (err) {
-      console.warn('API unavailable, falling back to mock candidates.');
+      console.warn('API unavailable, falling back to mock candidates.', err.message);
       setCandidates([
-        { id: 1, name: 'Marcus Sterling', position: 'President', party: 'Legacy & Progress Alliance', submissionDate: 'Jul 28, 2024', status: 'Pending', avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100' },
-        { id: 2, name: 'Siddharth Mehta', position: 'Vice President', party: 'Legacy & Progress Alliance', submissionDate: 'Jul 29, 2024', status: 'Pending', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100' },
-        { id: 3, name: 'Amara Adebayo', position: 'Secretary', party: 'Independent / Grassroots', submissionDate: 'Jul 31, 2024', status: 'Pending', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100' },
-        { id: 4, name: 'Marcus Sterling', position: 'President', party: 'Legacy & Progress Alliance', submissionDate: 'Jul 28, 2024', status: 'Approved', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100' },
-        { id: 5, name: 'Siddharth Mehta', position: 'Vice President', party: 'Legacy & Progress Alliance', submissionDate: 'Jul 29, 2024', status: 'Pending', avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100' },
-        { id: 6, name: 'Amara Adebayo', position: 'Secretary', party: 'Independent / Grassroots', submissionDate: 'Jul 31, 2024', status: 'Pending', avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=100' },
-        { id: 7, name: 'Marcus Sterling', position: 'President', party: 'Legacy & Progress Alliance', submissionDate: 'Jul 28, 2024', status: 'Pending', avatar: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=100' },
-        { id: 8, name: 'Siddharth Mehta', position: 'Vice President', party: 'Legacy & Progress Alliance', submissionDate: 'Jul 29, 2024', status: 'Rejected', avatar: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=100' }
+        { id: 1, name: 'Marcus Sterling', position: 'President', party: 'Legacy & Progress Alliance', submissionDate: 'Jul 28, 2024', status: 'pending', avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100' },
+        { id: 2, name: 'Siddharth Mehta', position: 'Vice President', party: 'Legacy & Progress Alliance', submissionDate: 'Jul 29, 2024', status: 'pending', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100' },
+        { id: 3, name: 'Amara Adebayo', position: 'Secretary', party: 'Independent / Grassroots', submissionDate: 'Jul 31, 2024', status: 'pending', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100' },
+        { id: 4, name: 'Marcus Sterling', position: 'President', party: 'Legacy & Progress Alliance', submissionDate: 'Jul 28, 2024', status: 'approved', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100' },
+        { id: 5, name: 'Siddharth Mehta', position: 'Vice President', party: 'Legacy & Progress Alliance', submissionDate: 'Jul 29, 2024', status: 'pending', avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100' },
+        { id: 6, name: 'Amara Adebayo', position: 'Secretary', party: 'Independent / Grassroots', submissionDate: 'Jul 31, 2024', status: 'pending', avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=100' },
+        { id: 7, name: 'Marcus Sterling', position: 'President', party: 'Legacy & Progress Alliance', submissionDate: 'Jul 28, 2024', status: 'pending', avatar: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=100' },
+        { id: 8, name: 'Siddharth Mehta', position: 'Vice President', party: 'Legacy & Progress Alliance', submissionDate: 'Jul 29, 2024', status: 'rejected', avatar: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=100' }
       ]);
     } finally {
       setLoading(false);
@@ -51,11 +59,14 @@ export default function Candidates({ onLogout, activeView = 'candidates', onNavi
   };
 
   const handleStatusChange = async (id, status) => {
+    const normalized = (status || '').toLowerCase();
     try {
-      await axios.patch(`http://localhost:8000/api/admin/candidates/${id}`, { status }, { withCredentials: true });
-      setCandidates(prev => prev.map(c => c.id === id ? { ...c, status } : c));
+      await api.patch(`/admin/candidates/${id}`, { status: normalized });
+      setCandidates((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, status: normalized } : c))
+      );
     } catch (err) {
-      setCandidates(prev => prev.map(c => c.id === id ? { ...c, status } : c));
+      console.warn('Failed to update candidate status:', err.message);
     }
   };
 
@@ -125,6 +136,9 @@ export default function Candidates({ onLogout, activeView = 'candidates', onNavi
         </nav>
 
         <div className="sidebar-footer-container">
+          <button onClick={handleLogout} className="logout-button">
+            <LogOut size={18} /> Logout
+          </button>
           <div className="sidebar-footer">
             <span className="status-dot-green"></span> System Live (v1.4)
           </div>
@@ -185,20 +199,20 @@ export default function Candidates({ onLogout, activeView = 'candidates', onNavi
 
           <div className="status-filter-buttons">
             <button 
-              className={`filter-btn filter-pending ${statusFilter === 'Pending' ? 'active' : ''}`}
-              onClick={() => setStatusFilter(statusFilter === 'Pending' ? 'All' : 'Pending')}
+              className={`filter-btn filter-pending ${statusFilter === 'pending' ? 'active' : ''}`}
+              onClick={() => setStatusFilter(statusFilter === 'pending' ? 'All' : 'pending')}
             >
               Pending
             </button>
             <button 
-              className={`filter-btn filter-approved ${statusFilter === 'Approved' ? 'active' : ''}`}
-              onClick={() => setStatusFilter(statusFilter === 'Approved' ? 'All' : 'Approved')}
+              className={`filter-btn filter-approved ${statusFilter === 'approved' ? 'active' : ''}`}
+              onClick={() => setStatusFilter(statusFilter === 'approved' ? 'All' : 'approved')}
             >
               Approved
             </button>
             <button 
-              className={`filter-btn filter-rejected ${statusFilter === 'Rejected' ? 'active' : ''}`}
-              onClick={() => setStatusFilter(statusFilter === 'Rejected' ? 'All' : 'Rejected')}
+              className={`filter-btn filter-rejected ${statusFilter === 'rejected' ? 'active' : ''}`}
+              onClick={() => setStatusFilter(statusFilter === 'rejected' ? 'All' : 'rejected')}
             >
               Rejected
             </button>
@@ -250,13 +264,13 @@ export default function Candidates({ onLogout, activeView = 'candidates', onNavi
                     <td className="actions-cell">
                       <button 
                         className="btn-approve" 
-                        onClick={() => handleStatusChange(candidate.id, 'Approved')}
+                        onClick={() => handleStatusChange(candidate.id, 'approved')}
                       >
                         <Check size={14} /> Approve
                       </button>
                       <button 
                         className="btn-reject" 
-                        onClick={() => handleStatusChange(candidate.id, 'Rejected')}
+                        onClick={() => handleStatusChange(candidate.id, 'rejected')}
                       >
                         <X size={14} /> Reject
                       </button>

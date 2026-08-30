@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import './AdminDashboard.css';
-import axios from 'axios';
+import api from './lib/api';
+import { useAuth } from './lib/AuthContext';
 import { 
   LayoutDashboard, 
   Users, 
@@ -18,6 +19,7 @@ import {
 } from 'lucide-react';
 
 export default function AdminDashboard({ onLogout, activeView = 'dashboard', onNavigate, currentUser = null }) {
+  const { logout } = useAuth();
   const [statsData, setStatsData] = useState({
     total_voters: 0,
     votes_cast: 0,
@@ -55,10 +57,7 @@ export default function AdminDashboard({ onLogout, activeView = 'dashboard', onN
     const fetchDashboardData = async () => {
       try {
         setLoading(true);
-        const response = await axios.get('http://localhost:8000/api/admin/dashboard-overview', {
-          withCredentials: true,
-          headers: { 'Accept': 'application/json' },
-        });
+        const response = await api.get('/admin/dashboard-overview');
 
         const data = response.data;
         if (data.stats) setStatsData(data.stats);
@@ -75,6 +74,11 @@ export default function AdminDashboard({ onLogout, activeView = 'dashboard', onN
 
     fetchDashboardData();
   }, []);
+
+  const handleLogout = () => {
+    if (typeof onLogout === 'function') return onLogout();
+    logout();
+  };
 
   const stats = [
     { 
@@ -160,7 +164,7 @@ export default function AdminDashboard({ onLogout, activeView = 'dashboard', onN
 
         {/* Sidebar Footer */}
         <div className="sidebar-footer-container">
-          <button onClick={onLogout} className="logout-button">
+          <button onClick={handleLogout} className="logout-button">
             <LogOut size={18} /> Logout
           </button>
           <div className="sidebar-footer">
