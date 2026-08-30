@@ -17,14 +17,19 @@ class Position {
 
   factory Position.fromJson(Map<String, dynamic> json) {
     return Position(
-      id: json['id'],
-      label: json['label'],
-      tier: json['tier'] == 'provincial' 
-          ? PositionTier.provincial 
-          : PositionTier.school,
-      seatCount: json['seatCount'] ?? 1,
-      description: json['description'],
+      id: (json['id'] ?? json['slug'] ?? '').toString(),
+      label: (json['label'] ?? json['name'] ?? '').toString(),
+      tier: _parseTier(json['tier'] ?? json['position_tier']),
+      seatCount: (json['seat_count'] ?? json['seatCount'] ?? 1) as int,
+      description: (json['description'] ?? '').toString(),
     );
+  }
+
+  static PositionTier _parseTier(Object? raw) {
+    if (raw is String) {
+      if (raw.toLowerCase() == 'provincial') return PositionTier.provincial;
+    }
+    return PositionTier.school;
   }
 
   Map<String, dynamic> toJson() {
@@ -32,7 +37,7 @@ class Position {
       'id': id,
       'label': label,
       'tier': tier.name,
-      'seatCount': seatCount,
+      'seat_count': seatCount,
       'description': description,
     };
   }

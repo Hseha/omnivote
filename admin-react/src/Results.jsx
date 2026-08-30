@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, 
   Users, 
@@ -14,18 +14,75 @@ import {
   ArrowLeft,
   Search,
   Download,
-  ChevronDown
+  ChevronDown,
+  LogOut
 } from 'lucide-react';
+import api from './lib/api';
+import { useAuth } from './lib/AuthContext';
 import './Results.css';
 
-export default function Results({ activeView = 'results', onNavigate }) {
+export default function Results({ activeView = 'results', onNavigate, onLogout }) {
+  const { logout } = useAuth();
   // Navigation state within Results view: 'live' | 'all-candidates' | 'elected' | 'unsuccessful'
   const [subView, setSubView] = useState('live');
+  const [phase, setPhase] = useState('voting_open');
+  const [resultsData, setResultsData] = useState(null);
+  const [loadingResults, setLoadingResults] = useState(false);
   
   // Search and Filter states for detailed table views
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPosition, setSelectedPosition] = useState('All');
   const [selectedParty, setSelectedParty] = useState('All');
+
+  const handleLogout = () => {
+    if (typeof onLogout === 'function') return onLogout();
+    logout();
+  };
+
+  function displayPhase(p) {
+    switch (p) {
+      case 'registration':
+        return 'Registration';
+      case 'voting_open':
+        return 'Voting Open';
+      case 'voting_closed':
+        return 'Voting Closed';
+      default:
+        return p || 'Voting Open';
+    }
+  }
+
+  useEffect(() => {
+    const loadStatus = async () => {
+      try {
+        const res = await api.get('/election/status');
+        const data = res.data?.data ?? res.data ?? {};
+        if (data.phase) setPhase(data.phase);
+      } catch {
+        // status endpoint unavailable; keep default
+      }
+    };
+    loadStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (phase !== 'voting_closed' && phase !== 'voting_open') return;
+    const loadResults = async () => {
+      try {
+        setLoadingResults(true);
+        const res = await api.get('/admin/results');
+        const data = res.data?.results ?? res.data ?? null;
+        setResultsData(data);
+      } catch {
+        setResultsData(null);
+      } finally {
+        setLoadingResults(false);
+      }
+    };
+    loadResults();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
 
   // Summary Card Data
   const liveSummaryData = {
@@ -158,6 +215,9 @@ export default function Results({ activeView = 'results', onNavigate }) {
         </nav>
 
         <div className="sidebar-footer-container">
+          <button onClick={handleLogout} className="logout-button">
+            <LogOut size={18} /> Logout
+          </button>
           <div className="sidebar-footer">
             <span className="status-dot-green"></span> System Live (v1.4)
           </div>
@@ -180,7 +240,7 @@ export default function Results({ activeView = 'results', onNavigate }) {
           </div>
           <div className="header-right">
             <span className="voting-status-badge">
-              <span className="status-dot-green"></span> Voting Open
+              <span className="status-dot-green"></span> {displayPhase(phase)}
             </span>
             <div className="system-time">
               <Clock size={16} /> 14:32:05 EST
@@ -201,7 +261,15 @@ export default function Results({ activeView = 'results', onNavigate }) {
 
         <div className="results-body">
           {/* VIEW 1: LIVE ELECTION RESULTS OVERVIEW */}
-          {subView === 'live' && (
+          {subView === 'live' && phase !== 'voting_closed' && (
+            <div className="no-results-banner">
+              <p>
+                Election results are locked until voting closes. Current phase:{' '}
+                <strong>{displayPhase(phase)}</strong>.
+              </p>
+            </div>
+          )}
+          {subView === 'live' && phase === 'voting_closed' && (
             <>
               {/* Metric Cards Row */}
               <div className="metrics-grid">
@@ -252,11 +320,26 @@ export default function Results({ activeView = 'results', onNavigate }) {
 
               {/* Position Category Cards Grid */}
               <div className="results-grid">
-                {renderResultSection('Presidential Election Results', liveSummaryData.presidential)}
-                {renderResultSection('Vice Presidential Election Results', liveSummaryData.vicePresidential)}
-                {renderResultSection('Secretary Election Results', liveSummaryData.secretary)}
-                {renderResultSection('Treasurer Election Results', liveSummaryData.treasurer)}
+                {renderResultSection(
+                  'Presidential Election Results',
+                  resultsData?.presidential ?? liveSummaryData.presidential,
+                )}
+                {renderResultSection(
+                  'Vice Presidential Election Results',
+                  resultsData?.vicePresidential ?? liveSummaryData.vicePresidential,
+                )}
+                {renderResultSection(
+                  'Secretary Election Results',
+                  resultsData?.secretary ?? liveSummaryData.secretary,
+                )}
+                {renderResultSection(
+                  'Treasurer Election Results',
+                  resultsData?.treasurer ?? liveSummaryData.treasurer,
+                )}
               </div>
+              {!resultsData && !loadingResults && (
+                <p className="no-results-banner">No published results yet. Showing placeholder data.</p>
+              )}
             </>
           )}
 

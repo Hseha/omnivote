@@ -1,40 +1,36 @@
 <?php
 
-use App\Models\User;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
+use App\Http\Controllers\AdminAuthController;
+use App\Http\Controllers\StudentAuthController;
+use App\Http\Controllers\RegistrationController;
+use App\Http\Controllers\CandidateController;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\VoteController;
 
-Route::post('/login', function (Request $request) {
-    $request->validate([
-        'email' => ['required', 'email'],
-        'password' => ['required'],
-    ]);
-
-    $user = User::where('email', $request->email)->first();
-
-    if (! $user || ! Hash::check($request->password, $user->password)) {
-        return response()->json([
-            'success' => false,
-            'message' => 'Invalid login details',
-        ], 401);
-    }
-
-    if (! in_array($user->role, ['admin', 'teacher'], true)) {
-        return response()->json([
-            'success' => false,
-            'message' => 'Access restricted to administrators and teachers only.',
-        ], 403);
-    }
-
-    return response()->json([
-        'success' => true,
-        'message' => 'Login successful',
-        'user' => [
-            'id' => $user->id,
-            'name' => $user->name,
-            'email' => $user->email,
-            'role' => $user->role,
-        ],
-    ]);
+// Admin SPA (stateful) routes: attach the web session middleware and ensure middleware
+Route::prefix('admin')->middleware(['ensureFrontendRequestsAreStateful', 'web'])->group(function () {
+    Route::post('/login', [AdminAuthController::class, 'login']);
+    Route::get('/me', [AdminAuthController::class, 'me'])->middleware('auth');
+    Route::post('/logout', [AdminAuthController::class, 'logout'])->middleware('auth');
 });
+
+// Student / mobile token-based auth
+Route::prefix('auth')->group(function () {
+    Route::post('/login', [StudentAuthController::class, 'login']);
+
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::post('/logout', [StudentAuthController::class, 'logout']);
+        Route::get('/me', [StudentAuthController::class, 'me']);
+    });
+
+    Route::post('/register', [RegistrationController::class, 'register']);
+});
+
+// Candidate endpoints (scaffold)
+Route::apiResource('candidates', CandidateController::class);
+
+// Candidate application endpoint (registration phase only)
+Route::post('/candidate/apply', [CandidateController::class, 'store'])->middleware('auth:sanctum', 'checkPhase:registration');
+
+// Vote submission (voting_open phase only)
+Route::post('/vote', [VoteController::class, 'submit'])->middleware('auth:sanctum', 'checkPhase:voting_open');

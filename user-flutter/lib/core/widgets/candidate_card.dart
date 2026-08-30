@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../constants/app_colors.dart';
+import '../constants/app_text_styles.dart';
 import '../../data/models/candidate_model.dart';
 
 class CandidateCard extends StatelessWidget {
@@ -21,15 +23,6 @@ class CandidateCard extends StatelessWidget {
     this.isReadOnly = false,
   });
 
-  // Design tokens based on 07_DESIGN_SYSTEM.md
-  static const Color primaryBlue = Color(0xFF2F5EFF);
-  static const Color navyDark = Color(0xFF0F172A);
-  static const Color textPrimary = Color(0xFF0F172A);
-  static const Color textSecondary = Color(0xFF64748B);
-  static const Color borderGray = Color(0xFFE2E8F0);
-  static const Color tagBlueBg = Color(0xFFE0E7FF);
-  static const Color tagBlueText = Color(0xFF3730A3);
-
   @override
   Widget build(BuildContext context) {
     return Card(
@@ -37,9 +30,9 @@ class CandidateCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 16),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: const BorderSide(color: borderGray),
+        side: const BorderSide(color: AppColors.borderGray),
       ),
-      color: Colors.white,
+      color: AppColors.surfaceWhite,
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -50,7 +43,13 @@ class CandidateCard extends StatelessWidget {
               children: [
                 CircleAvatar(
                   radius: 30,
-                  backgroundImage: NetworkImage(candidate.photoUrl),
+                  backgroundColor: AppColors.backgroundGray,
+                  backgroundImage: candidate.photoUrl.isNotEmpty 
+                      ? NetworkImage(candidate.photoUrl) 
+                      : null,
+                  child: candidate.photoUrl.isEmpty 
+                      ? const Icon(Icons.person, size: 30, color: AppColors.textSecondary)
+                      : null,
                 ),
                 const SizedBox(width: 16),
                 Expanded(
@@ -64,34 +63,22 @@ class CandidateCard extends StatelessWidget {
                           vertical: 4
                         ),
                         decoration: BoxDecoration(
-                          color: tagBlueBg,
+                          color: AppColors.tagBlueBg,
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(
                           candidate.position.label.toUpperCase(),
-                          style: const TextStyle(
-                            color: tagBlueText,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 10,
-                            letterSpacing: 0.5,
-                          ),
+                          style: AppTextStyles.tag,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         candidate.name,
-                        style: const TextStyle(
-                          color: textPrimary,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                        ),
+                        style: AppTextStyles.cardTitle.copyWith(fontSize: 18),
                       ),
                       Text(
                         candidate.gradeLine,
-                        style: const TextStyle(
-                          color: textSecondary,
-                          fontSize: 14,
-                        ),
+                        style: AppTextStyles.secondary,
                       ),
                     ],
                   ),
@@ -100,26 +87,21 @@ class CandidateCard extends StatelessWidget {
                   Checkbox(
                     value: isSelected,
                     onChanged: onSelected,
-                    activeColor: primaryBlue,
+                    activeColor: AppColors.primaryBlue,
                   ),
               ],
             ),
             const SizedBox(height: 12),
             Text(
               '"${candidate.slogan}"',
-              style: const TextStyle(
-                color: textSecondary,
-                fontStyle: FontStyle.italic,
-                fontSize: 14,
-              ),
+              style: AppTextStyles.slogan,
             ),
             const SizedBox(height: 16),
-            const Text(
+            Text(
               'KEY PLATFORM POINTS',
-              style: TextStyle(
-                color: textSecondary,
+              style: AppTextStyles.tag.copyWith(
+                color: AppColors.textSecondary,
                 fontSize: 11,
-                fontWeight: FontWeight.w900,
                 letterSpacing: 0.5,
               ),
             ),
@@ -129,21 +111,18 @@ class CandidateCard extends StatelessWidget {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('• ', style: TextStyle(color: textSecondary)),
+                      const Text('• ', style: TextStyle(color: AppColors.textSecondary)),
                       Expanded(
                         child: Text(
                           point,
-                          style: const TextStyle(
-                            color: textPrimary,
-                            fontSize: 14,
-                          ),
+                          style: AppTextStyles.body,
                         ),
                       ),
                     ],
                   ),
                 )),
             if (!isReadOnly) ...[
-              const Divider(height: 32, color: borderGray),
+              const Divider(height: 32, color: AppColors.borderGray),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -152,7 +131,7 @@ class CandidateCard extends StatelessWidget {
                     child: const Text(
                       'View Profile',
                       style: TextStyle(
-                        color: primaryBlue,
+                        color: AppColors.primaryBlue,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -161,7 +140,7 @@ class CandidateCard extends StatelessWidget {
                     ElevatedButton(
                       onPressed: onVote,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: primaryBlue,
+                        backgroundColor: AppColors.primaryBlue,
                         foregroundColor: Colors.white,
                         elevation: 0,
                         shape: RoundedRectangleBorder(
@@ -171,6 +150,7 @@ class CandidateCard extends StatelessWidget {
                           horizontal: 24, 
                           vertical: 12
                         ),
+                        minimumSize: Size.zero, // Allow button to shrink
                       ),
                       child: const Text('Vote'),
                     ),
