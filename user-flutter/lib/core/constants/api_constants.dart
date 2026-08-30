@@ -19,6 +19,10 @@ class ApiConstants {
   static const String positions = '/positions';
   static const String candidates = '/candidates';
 
+  // Candidacy application endpoint (registration phase only)
+  static const String candidacyMe = '/candidacy/me';
+  static const String candidacySubmit = '/candidate/apply';
+
   // Ballot endpoints
   static const String ballotMe = '/ballot/me';
   static const String ballotSubmit = '/ballot/me/submit';
@@ -27,7 +31,6 @@ class ApiConstants {
   static const String results = '/results';
   static const String verifyResult = '/results/verify';
 
-  // Candidacy endpoints
-  static const String candidacyMe = '/candidacy/me';
-  static const String candidacySubmit = '/candidacy';
+  // Vote submission endpoint (voting_open phase only)
+  static const String voteSubmit = '/vote';
 }

@@ -132,8 +132,14 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                           labelText: 'Password',
                           prefixIcon: Icon(Icons.lock_outline),
                         ),
-                        validator: (value) =>
-                            value!.length < 6 ? 'Password too short' : null,
+                        validator: (value) {
+                          final v = value ?? '';
+                          if (v.length < 8) return 'Password must be at least 8 characters';
+                          if (!RegExp(r'[a-z]').hasMatch(v)) return 'Must contain a lowercase letter';
+                          if (!RegExp(r'[A-Z]').hasMatch(v)) return 'Must contain an uppercase letter';
+                          if (!RegExp(r'[0-9]').hasMatch(v)) return 'Must contain a number';
+                          return null;
+                        },
                       ),
                       const SizedBox(height: 20),
                       TextFormField(

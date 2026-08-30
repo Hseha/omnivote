@@ -4,14 +4,7 @@ import 'core/routes/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/providers/auth_provider.dart';
 
-void main() {
-  WidgetsFlutterBinding.ensureInitialized();
-  runApp(
-    const ProviderScope(
-      child: OmniVoteApp(),
-    ),
-  );
-}
+// Entrypoint is lib/main.dart; this file only defines the root widget tree.
 
 class OmniVoteApp extends ConsumerStatefulWidget {
   const OmniVoteApp({super.key});

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, 
   Users, 
@@ -11,12 +11,46 @@ import {
   UploadCloud,
   FileText,
   Info,
-  AlertTriangle
+  AlertTriangle,
+  LogOut
 } from 'lucide-react';
+import api from './lib/api';
+import { useAuth } from './lib/AuthContext';
 import './StudentRegistry.css';
 
 export default function StudentRegistry({ onLogout, activeView = 'voters', onNavigate }) {
+  const { logout } = useAuth();
+  const [phase, setPhase] = useState('Voting Open');
   const [selectedFile, setSelectedFile] = useState('registrar_2024_fall.csv');
+
+  const handleLogout = () => {
+    if (typeof onLogout === 'function') return onLogout();
+    logout();
+  };
+
+  useEffect(() => {
+    const loadPhase = async () => {
+      try {
+        const res = await api.get('/election/status');
+        const data = res.data?.data ?? res.data ?? {};
+        if (data.phase) {
+          setPhase(
+            data.phase === 'registration'
+              ? 'Registration'
+              : data.phase === 'voting_open'
+                ? 'Voting Open'
+                : data.phase === 'voting_closed'
+                  ? 'Voting Closed'
+                  : data.phase,
+          );
+        }
+      } catch {
+        // keep default
+      }
+    };
+    loadPhase();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const studentData = [
     { id: 'STU-2024-0001', name: 'Sarah Jenkins', email: 's.jenkins@academy.edu', yearLevel: 'BSIT-3', role: 'Student' },
@@ -84,6 +118,9 @@ export default function StudentRegistry({ onLogout, activeView = 'voters', onNav
         </nav>
 
         <div className="sidebar-footer-container">
+          <button onClick={handleLogout} className="logout-button">
+            <LogOut size={18} /> Logout
+          </button>
           <div className="sidebar-footer">
             <span className="status-dot-green"></span> System Live (v1.4)
           </div>
@@ -99,7 +136,7 @@ export default function StudentRegistry({ onLogout, activeView = 'voters', onNav
           </div>
           <div className="header-right">
             <span className="voting-status-badge">
-              <span className="status-dot-green"></span> Voting Open
+              <span className="status-dot-green"></span> {phase}
             </span>
             <div className="system-time">
               <Clock size={16} /> 14:32:05 EST

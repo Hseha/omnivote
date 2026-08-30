@@ -1,5 +1,8 @@
 import 'position_model.dart';
 
+/// Parses a JSON candidate. The backend emits snake_case wire keys, but the
+/// original client used camelCase; both are tolerated here so the model keeps
+/// working regardless of which shape the API returns.
 class Candidate {
   final String id;
   final String name;
@@ -12,6 +15,9 @@ class Candidate {
   final String? videoUrl;
   final String? party;
 
+  /// Lowercase approval status emitted on the wire (`pending|approved|rejected`).
+  final String? approvalStatus;
+
   Candidate({
     required this.id,
     required this.name,
@@ -23,20 +29,49 @@ class Candidate {
     required this.qualifications,
     this.videoUrl,
     this.party,
+    this.approvalStatus,
   });
 
   factory Candidate.fromJson(Map<String, dynamic> json) {
+    final rawPosition = json['position'];
+    Position position;
+    if (rawPosition is Map<String, dynamic>) {
+      position = Position.fromJson(rawPosition);
+    } else {
+      // A bare/string position identifier (e.g. position_id on candidacy).
+      position = Position.fromJson({
+        'id': rawPosition,
+        'label': (json['position_label'] ?? json['position_name'] ?? '') as Object?,
+        'description': '',
+      });
+    }
+
+    Object? valueOr(Map<String, dynamic> map, List<String> keys) {
+      for (final k in keys) {
+        if (map.containsKey(k)) return map[k];
+      }
+      return null;
+    }
+
     return Candidate(
-      id: json['id'],
-      name: json['name'],
-      photoUrl: json['photoUrl'],
-      position: Position.fromJson(json['position']),
-      gradeLine: json['gradeLine'],
-      slogan: json['slogan'],
-      platformPoints: List<String>.from(json['platformPoints'] ?? []),
-      qualifications: List<String>.from(json['qualifications'] ?? []),
-      videoUrl: json['videoUrl'],
-      party: json['party'],
+      id: (valueOr(json, const ['id']) ?? '').toString(),
+      name: (valueOr(json, const ['name', 'full_name']) ?? '').toString(),
+      photoUrl:
+          (valueOr(json, const ['photo_url', 'photoUrl', 'avatar']) ?? '').toString(),
+      position: position,
+      gradeLine:
+          (valueOr(json, const ['grade_line', 'gradeLevel', 'gradeLine']) ?? '').toString(),
+      slogan: (valueOr(json, const ['slogan']) ?? '').toString(),
+      platformPoints: List<String>.from(
+        valueOr(json, const ['platform_points', 'platformPoints']) as List? ?? const [],
+      ),
+      qualifications: List<String>.from(
+        valueOr(json, const ['qualifications']) as List? ?? const [],
+      ),
+      videoUrl: (valueOr(json, const ['video_url', 'videoUrl']) as String?),
+      party: (valueOr(json, const ['party_name', 'party']) as String?),
+      approvalStatus:
+          (valueOr(json, const ['approval_status', 'status']) as String?),
     );
   }
 
@@ -44,14 +79,15 @@ class Candidate {
     return {
       'id': id,
       'name': name,
-      'photoUrl': photoUrl,
+      'photo_url': photoUrl,
       'position': position.toJson(),
-      'gradeLine': gradeLine,
+      'grade_line': gradeLine,
       'slogan': slogan,
-      'platformPoints': platformPoints,
+      'platform_points': platformPoints,
       'qualifications': qualifications,
-      'videoUrl': videoUrl,
-      'party': party,
+      'video_url': videoUrl,
+      'party_name': party,
+      'approval_status': approvalStatus,
     };
   }
 }

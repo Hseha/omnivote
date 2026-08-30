@@ -25,10 +25,10 @@ class CandidateService {
     return await _dio.get(
       ApiConstants.candidates,
       queryParameters: {
-        if (positionId != null) 'position': positionId,
-        if (tier != null) 'tier': tier,
-        if (search != null) 'search': search,
-        if (grade != null) 'grade': grade,
+        'position': ?positionId,
+        'tier': ?tier,
+        'search': ?search,
+        'grade': ?grade,
       },
     );
   }
