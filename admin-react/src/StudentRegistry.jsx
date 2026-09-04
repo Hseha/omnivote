@@ -1,18 +1,18 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  LayoutDashboard, 
-  Users, 
-  UserCheck, 
-  Sliders, 
-  BarChart2, 
-  Settings, 
-  Vote, 
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  LayoutDashboard,
+  Users,
+  UserCheck,
+  Sliders,
+  BarChart2,
+  Settings,
+  Vote,
   Clock,
   UploadCloud,
   FileText,
   Info,
   AlertTriangle,
-  LogOut
+  LogOut,
 } from 'lucide-react';
 import api from './lib/api';
 import { useAuth } from './lib/AuthContext';
@@ -20,8 +20,13 @@ import './StudentRegistry.css';
 
 export default function StudentRegistry({ onLogout, activeView = 'voters', onNavigate }) {
   const { logout } = useAuth();
-  const [phase, setPhase] = useState('Voting Open');
-  const [selectedFile, setSelectedFile] = useState('registrar_2024_fall.csv');
+  const [phase, setPhase] = useState('Registration');
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [previewRows, setPreviewRows] = useState([]);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importResult, setImportResult] = useState(null);
+  const [error, setError] = useState('');
+  const fileInputRef = useRef(null);
 
   const handleLogout = () => {
     if (typeof onLogout === 'function') return onLogout();
@@ -52,17 +57,112 @@ export default function StudentRegistry({ onLogout, activeView = 'voters', onNav
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const studentData = [
-    { id: 'STU-2024-0001', name: 'Sarah Jenkins', email: 's.jenkins@academy.edu', yearLevel: 'BSIT-3', role: 'Student' },
-    { id: 'STU-2024-0002', name: 'David Cho', email: 'd.cho@academy.edu', yearLevel: 'BSIT-3', role: 'Student' },
-    { id: 'TCH-2024-0012', name: 'Dr. Evelyn Ross', email: 'e.ross@academy.edu', yearLevel: 'BSIT-3', role: 'Teacher' },
-    { id: 'STU-2024-0003', name: 'Liam O\'Connor', email: 'l.oconnor@academy.edu', yearLevel: 'BSIT-3', role: 'Student' },
-    { id: 'STU-2024-0004', name: 'Aisha Diallo', email: 'a.diallo@academy.edu', yearLevel: 'BSIT-3', role: 'Student' },
-  ];
+  const parseCsvLine = (line) => {
+    const cells = [];
+    let cell = '';
+    let quoted = false;
+
+    for (let index = 0; index < line.length; index += 1) {
+      const character = line[index];
+      if (character === '"') {
+        if (quoted && line[index + 1] === '"') {
+          cell += '"';
+          index += 1;
+        } else {
+          quoted = !quoted;
+        }
+      } else if (character === ',' && !quoted) {
+        cells.push(cell.trim());
+        cell = '';
+      } else {
+        cell += character;
+      }
+    }
+
+    cells.push(cell.trim());
+    return cells;
+  };
+
+  const parseCsvPreview = (text) => {
+    const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0);
+    if (lines.length < 2) return [];
+
+    const headers = parseCsvLine(lines[0]).map((header) => header
+      .replace(/^\uFEFF/, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_|_$/g, ''));
+    const findColumn = (...names) => headers.findIndex((header) => names.includes(header));
+    const columns = {
+      student_id: findColumn('student_id', 'studentid', 'id'),
+      full_name: findColumn('full_name', 'fullname', 'name'),
+      email: findColumn('email', 'email_address', 'emailaddress'),
+      grade_level: findColumn('grade_level', 'gradelevel'),
+      year_level: findColumn('year_level', 'yearlevel'),
+      block_number: findColumn('block_number', 'blocknumber'),
+    };
+
+    return lines.slice(1, 6)
+      .map(parseCsvLine)
+      .filter((row) => row.length >= 2)
+      .map((row) => {
+        const value = (column, fallback = '—') => (column >= 0 && row[column] ? row[column] : fallback);
+        return {
+          student_id: value(columns.student_id, ''),
+          full_name: value(columns.full_name, ''),
+          email: value(columns.email),
+          grade_level: value(columns.grade_level),
+          year_level: value(columns.year_level),
+          block_number: value(columns.block_number),
+          role: 'Student',
+        };
+      });
+  };
+
+  const handleFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setError('');
+    setImportResult(null);
+    setSelectedFile(file);
+
+    const reader = new FileReader();
+    reader.onload = () => setPreviewRows(parseCsvPreview(String(reader.result)));
+    reader.readAsText(file);
+  };
+
+  const handleImport = async () => {
+    if (!selectedFile) {
+      setError('Choose a CSV file first.');
+      return;
+    }
+    setIsImporting(true);
+    setError('');
+    setImportResult(null);
+    try {
+      const form = new FormData();
+      form.append('file', selectedFile);
+      const res = await api.post('/admin/registrar/import', form);
+      setImportResult(res.data);
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || 'Import failed. Check that the CSV has the required columns.');
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const handleCancel = () => {
+    setSelectedFile(null);
+    setPreviewRows([]);
+    setImportResult(null);
+    setError('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const summary = importResult?.summary;
 
   return (
     <div className="dashboard-container">
-      {/* Sidebar Navigation */}
       <aside className="sidebar">
         <div className="logo-area">
           <div className="logo-icon"><Vote size={20} /></div>
@@ -73,46 +173,22 @@ export default function StudentRegistry({ onLogout, activeView = 'voters', onNav
         </div>
 
         <nav className="nav-menu">
-          <button 
-            type="button" 
-            className={`nav-item ${activeView === 'dashboard' ? 'active' : ''}`}
-            onClick={() => onNavigate && onNavigate('dashboard')}
-          >
+          <button type="button" className={`nav-item ${activeView === 'dashboard' ? 'active' : ''}`} onClick={() => onNavigate && onNavigate('dashboard')}>
             <LayoutDashboard size={18} /> Dashboard
           </button>
-          <button 
-            type="button" 
-            className={`nav-item ${activeView === 'candidates' ? 'active' : ''}`}
-            onClick={() => onNavigate && onNavigate('candidates')}
-          >
+          <button type="button" className={`nav-item ${activeView === 'candidates' ? 'active' : ''}`} onClick={() => onNavigate && onNavigate('candidates')}>
             <Users size={18} /> Candidates
           </button>
-          <button 
-            type="button" 
-            className={`nav-item ${activeView === 'voters' ? 'active' : ''}`}
-            onClick={() => onNavigate && onNavigate('voters')}
-          >
+          <button type="button" className={`nav-item ${activeView === 'voters' ? 'active' : ''}`} onClick={() => onNavigate && onNavigate('voters')}>
             <UserCheck size={18} /> Student Registry
           </button>
-          <button 
-            type="button" 
-            className={`nav-item ${activeView === 'setup' ? 'active' : ''}`}
-            onClick={() => onNavigate && onNavigate('setup')}
-          >
+          <button type="button" className={`nav-item ${activeView === 'setup' ? 'active' : ''}`} onClick={() => onNavigate && onNavigate('setup')}>
             <Sliders size={18} /> Election Setup
           </button>
-          <button 
-            type="button" 
-            className={`nav-item ${activeView === 'results' ? 'active' : ''}`}
-            onClick={() => onNavigate && onNavigate('results')}
-          >
+          <button type="button" className={`nav-item ${activeView === 'results' ? 'active' : ''}`} onClick={() => onNavigate && onNavigate('results')}>
             <BarChart2 size={18} /> Results
           </button>
-          <button 
-            type="button" 
-            className={`nav-item ${activeView === 'settings' ? 'active' : ''}`}
-            onClick={() => onNavigate && onNavigate('settings')}
-          >
+          <button type="button" className={`nav-item ${activeView === 'settings' ? 'active' : ''}`} onClick={() => onNavigate && onNavigate('settings')}>
             <Settings size={18} /> Settings
           </button>
         </nav>
@@ -127,7 +203,6 @@ export default function StudentRegistry({ onLogout, activeView = 'voters', onNav
         </div>
       </aside>
 
-      {/* Main Registry Content */}
       <main className="main-content">
         <header className="top-header">
           <div className="breadcrumb">
@@ -139,18 +214,14 @@ export default function StudentRegistry({ onLogout, activeView = 'voters', onNav
               <span className="status-dot-green"></span> {phase}
             </span>
             <div className="system-time">
-              <Clock size={16} /> 14:32:05 EST
+              <Clock size={16} /> {new Date().toLocaleTimeString()}
             </div>
             <div className="user-profile">
               <div className="user-info">
                 <span className="user-name">Election Admin</span>
                 <span className="user-role">System Administrator</span>
               </div>
-              <img 
-                src="https://i.pravatar.cc/100?img=32" 
-                alt="Eleanor Vance" 
-                className="user-avatar" 
-              />
+              <img src="https://i.pravatar.cc/100?img=32" alt="System Administrator" className="user-avatar" />
             </div>
           </div>
         </header>
@@ -163,8 +234,10 @@ export default function StudentRegistry({ onLogout, activeView = 'voters', onNav
             </p>
           </div>
 
+          {error && <div className="warning-banner"><AlertTriangle size={18} color="#dc2626" /><span>{error}</span></div>}
+
           {/* Drag & Drop Area */}
-          <div className="dropzone-card">
+          <label className="dropzone-card" htmlFor="registrar-csv-input" style={{ cursor: 'pointer', display: 'block' }}>
             <div className="upload-icon-wrapper">
               <UploadCloud size={24} color="#3b82f6" />
             </div>
@@ -172,62 +245,116 @@ export default function StudentRegistry({ onLogout, activeView = 'voters', onNav
               <strong>Drag & drop your CSV file here or</strong> <span className="browse-link">click to browse</span>
             </p>
             <span className="dropzone-sub">.csv files only, max 10MB</span>
-
             <div className="required-columns-pill">
               <strong>Required CSV columns:</strong> Student ID, Full Name, Email Address, Grade Level, Role (Student/Teacher)
             </div>
-          </div>
+            <input
+              ref={fileInputRef}
+              id="registrar-csv-input"
+              type="file"
+              accept=".csv,text/csv"
+              style={{ display: 'none' }}
+              onChange={handleFileChange}
+            />
+          </label>
 
           {/* Uploaded File Preview Card */}
-          <div className="file-preview-card">
-            <div className="file-header">
-              <div className="file-info-left">
-                <div className="file-icon"><FileText size={20} color="#16a34a" /></div>
-                <div>
-                  <div className="file-name">{selectedFile}</div>
-                  <div className="file-meta">1,247 records found • File verified successfully</div>
+          {selectedFile && !importResult && (
+            <div className="file-preview-card">
+              <div className="file-header">
+                <div className="file-info-left">
+                  <div className="file-icon"><FileText size={20} color="#16a34a" /></div>
+                  <div>
+                    <div className="file-name">{selectedFile.name}</div>
+                    <div className="file-meta">{previewRows.length} records found • Ready for preview</div>
+                  </div>
                 </div>
+                <span className="badge-ready">Ready to import</span>
               </div>
-              <span className="badge-ready">Ready to import</span>
-            </div>
 
-            <div className="status-alert-bar">
-              <Info size={18} color="#16a34a" />
-              <span><strong>1,247 valid records, 3 duplicates detected, 0 invalid entries</strong></span>
-            </div>
+              <div className="status-alert-bar">
+                <Info size={18} color="#16a34a" />
+                <span><strong>Previewing the first {previewRows.length} rows below</strong></span>
+              </div>
 
-            {/* Preview Table */}
-            <table className="preview-table">
-              <thead>
-                <tr>
-                  <th>Student ID</th>
-                  <th>Full Name</th>
-                  <th>Email Address</th>
-                  <th>Year Level</th>
-                  <th>Role</th>
-                </tr>
-              </thead>
-              <tbody>
-                {studentData.map((row, index) => (
-                  <tr key={index}>
-                    <td className="font-mono">{row.id}</td>
-                    <td className="font-medium">{row.name}</td>
-                    <td className="text-muted">{row.email}</td>
-                    <td className="text-muted">{row.yearLevel}</td>
-                    <td>
-                      <span className={`role-badge ${row.role.toLowerCase()}`}>
-                        {row.role}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            <div className="table-footer-info">
-              Showing first 5 of 1,247 rows
+              {previewRows.length > 0 && (
+                <table className="preview-table">
+                  <thead>
+                    <tr>
+                      <th>Student ID</th>
+                      <th>Full Name</th>
+                      <th>Email Address</th>
+                      <th>Grade Level</th>
+                      <th>Year Level</th>
+                      <th>Block Number</th>
+                      <th>Role</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {previewRows.map((row, index) => (
+                      <tr key={index}>
+                        <td className="font-mono">{row.student_id}</td>
+                        <td className="font-medium">{row.full_name}</td>
+                        <td className="text-muted">{row.email}</td>
+                        <td className="text-muted">{row.grade_level}</td>
+                        <td className="text-muted">{row.year_level}</td>
+                        <td className="text-muted">{row.block_number}</td>
+                        <td><span className={`role-badge ${row.role.toLowerCase()}`}>{row.role}</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
-          </div>
+          )}
+
+          {/* Import Result Summary */}
+          {importResult && (
+            <div className="file-preview-card">
+              <div className="file-header">
+                <div className="file-info-left">
+                  <div className="file-icon"><CheckCircleIcon size={20} color="#16a34a" /></div>
+                  <div>
+                    <div className="file-name">Import completed</div>
+                    <div className="file-meta">{importResult.message}</div>
+                  </div>
+                </div>
+                <span className="badge-ready">Success</span>
+              </div>
+              {summary && (
+                <div className="status-alert-bar">
+                  <Info size={18} color="#16a34a" />
+                  <span>
+                    <strong>{summary.total_records} records</strong> • {summary.accounts_provisioned} new accounts provisioned •{' '}
+                    {summary.updated_eligibility_rows} updated • {summary.duplicates_within_file} duplicates within file •{' '}
+                    {summary.skipped_no_email} skipped (missing email)
+                  </span>
+                </div>
+              )}
+              {importResult.temporary_credentials?.length > 0 && (
+                <table className="preview-table">
+                  <thead>
+                    <tr>
+                      <th>Student ID</th>
+                      <th>Full Name</th>
+                      <th>Email</th>
+                      <th>Temporary Password</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {importResult.temporary_credentials.slice(0, 5).map((c, i) => (
+                      <tr key={i}>
+                        <td className="font-mono">{c.student_id}</td>
+                        <td className="font-medium">{c.full_name}</td>
+                        <td className="text-muted">{c.email}</td>
+                        <td className="font-mono">{c.temp_password}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
 
           {/* Warning Banner */}
           <div className="warning-banner">
@@ -237,11 +364,24 @@ export default function StudentRegistry({ onLogout, activeView = 'voters', onNav
 
           {/* Action Buttons */}
           <div className="action-buttons-row">
-            <button className="btn-cancel">Cancel</button>
-            <button className="btn-primary">Import & Provision Accounts</button>
+            <button className="btn-cancel" onClick={handleCancel} disabled={isImporting}>
+              Cancel
+            </button>
+            <button className="btn-primary" onClick={handleImport} disabled={isImporting || !selectedFile}>
+              {isImporting ? 'Importing...' : 'Import & Provision Accounts'}
+            </button>
           </div>
         </div>
       </main>
     </div>
+  );
+}
+
+function CheckCircleIcon({ size = 18, color = 'currentColor' }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+      <polyline points="22 4 12 14.01 9 11.01" />
+    </svg>
   );
 }

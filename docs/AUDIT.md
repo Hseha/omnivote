@@ -396,3 +396,39 @@ on bootstrap and is **not** an auth boundary. The dev proxy in `vite.config.js` 
 - `php -l` — clean across routes, bootstrap, models, config, middleware, requests, migrations.
 - `npm run build` (admin-react) — production bundle builds successfully (`.js` 303 kB / `.css` 28 kB).
 - `flutter analyze` (user-flutter) — **No issues found** after lint cleanup.
+---
+
+## Final Verification Log (2026-09-05)
+
+All flows below were executed live against the local stack
+(`php artisan serve` @ 127.0.0.1:8000, MySQL `omnivote_local`, seeded via
+`DatabaseSeeder` + a real `POST /api/admin/registrar/import` round-trip).
+
+| # | Flow | Result |
+|---|------|--------|
+| 1 | Admin CSRF cookie → session login (`POST /api/admin/login`) | 200 |
+| 2 | Admin dashboard / candidates / imports / config / results reads | 200 |
+| 3 | Registrar CSV import (`STU-2024-0009` Nina Park) → `registrar_imports` + provisioned user + temp password | 201 |
+| 4 | Imported student login with temp password → bearer token → `GET /api/auth/me` | 200 |
+| 5 | Ballot draft save/load (`PUT`/`GET /api/ballot/me`) incl. second-voter regression | 200 |
+| 6 | Anonymous vote submit (`POST /api/vote`) — 3 voters, HMAC-anonymized ledger, receipt returned | 201 |
+| 7 | Double-cast rejection | 409 |
+| 8 | Phase gates (`CheckPhase`): vote/draft blocked when `voting_closed`, allowed when `voting_open` | 403 / 200 |
+| 9 | Results (`GET /api/results`) + receipt verification (`POST /api/results/verify`) counted true/false | 200 |
+| 10 | Admin election config (`PUT /api/admin/election/config`): title + 4 consecutive phase transitions echo correctly; public `/api/election/status` mirrors | 200 |
+| 11 | Admin logout | 204 |
+| 12 | `flutter analyze` (user-flutter) | No issues |
+| 13 | `npm run build` (admin-react) | Success |
+
+### Defect found & fixed during verification
+
+**Admin SPA CSRF split-brain (fixed).** The `api/admin` route group carried
+`['ensureFrontendRequestsAreStateful', 'web']` *on top of* the global
+`$middleware->statefulApi()` in `bootstrap/app.php`. Session middleware
+therefore ran twice per request; the response's session cookie was written
+from one session store while the `XSRF-TOKEN` cookie was minted from another.
+Every admin write after the first returned **419 CSRF token mismatch**, and
+each 419 minted a new token-less session (visible as NULL-user rows churning
+in the `sessions` table). Fix: rely on `statefulApi()` alone — the admin group
+is no longer wrapped (see comment block in `routes/api.php`). Re-verified with
+4 consecutive `PUT /api/admin/election/config` calls + logout, all green.

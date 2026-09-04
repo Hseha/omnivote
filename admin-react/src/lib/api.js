@@ -4,7 +4,7 @@ import axios from 'axios';
 // session cookie, ensure the XSRF token has been fetched and attached.
 let csrfPromise = null;
 
-export const API_BASE_URL = import.meta.env?.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
+export const API_BASE_URL = '';
 
 /**
  * Fetches the CSRF cookie (and therefore the XSRF-TOKEN cookie) that Laravel
@@ -28,6 +28,7 @@ export function getCsrfCookie() {
 const api = axios.create({
   baseURL: `${API_BASE_URL}/api`,
   withCredentials: true,
+  withXSRFToken: true,
   headers: {
     Accept: 'application/json',
     'X-Requested-With': 'XMLHttpRequest',
