@@ -20,12 +20,17 @@ class VoteRepository {
   /// Submits a ballot and returns the receipt token. The token is persisted
   /// in secure storage (it never reveals candidate choices).
   Future<VoteReceipt> submit({required Map<String, dynamic> selections}) async {
-    final response = await _voteService.submitVote(selections);
+    final response = await _voteService.submitBallot(selections);
     final data = Map<String, dynamic>.from(response.data as Map);
     final receipt = VoteReceipt.fromJson(data);
 
     await saveReceipt(receipt.receiptToken);
     return receipt;
+  }
+
+  /// Persists the in-progress selections for the current user (GET/PUT /ballot/me).
+  Future<void> saveDraft(Map<String, dynamic> selections) async {
+    await _voteService.saveDraft(selections);
   }
 
   Future<Map<String, dynamic>?> getMyBallot() async {

@@ -72,6 +72,7 @@ final filteredCandidatesProvider = FutureProvider<List<Candidate>>((ref) async {
     return [
       Candidate(
         id: 'c1',
+        candidateRef: 'c1',
         name: 'Alice Smith',
         photoUrl: 'https://i.pravatar.cc/150?u=alice',
         position: Position(
@@ -87,6 +88,7 @@ final filteredCandidatesProvider = FutureProvider<List<Candidate>>((ref) async {
       ),
       Candidate(
         id: 'c2',
+        candidateRef: 'c2',
         name: 'Bob Jones',
         photoUrl: 'https://i.pravatar.cc/150?u=bob',
         position: Position(

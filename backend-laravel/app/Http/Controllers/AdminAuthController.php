@@ -53,6 +53,7 @@ class AdminAuthController extends Controller
 
     public function logout(Request $request)
     {
+        /** @var \App\Models\User $user */
         $user = Auth::user();
 
         if ($user) {

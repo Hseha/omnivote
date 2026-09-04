@@ -10,10 +10,6 @@ class RegistrationController extends Controller
 {
     public function register(\App\Http\Requests\StudentRegistrationRequest $request)
     {
-        if (! env('STUDENT_REGISTRATION_OPEN', false)) {
-            return response()->json(['message' => 'Registration closed'], 403);
-        }
-
         $validated = $request->validated();
 
         $user = User::create([
