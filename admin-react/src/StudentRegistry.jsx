@@ -57,19 +57,66 @@ export default function StudentRegistry({ onLogout, activeView = 'voters', onNav
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const parseCsvLine = (line) => {
+    const cells = [];
+    let cell = '';
+    let quoted = false;
+
+    for (let index = 0; index < line.length; index += 1) {
+      const character = line[index];
+      if (character === '"') {
+        if (quoted && line[index + 1] === '"') {
+          cell += '"';
+          index += 1;
+        } else {
+          quoted = !quoted;
+        }
+      } else if (character === ',' && !quoted) {
+        cells.push(cell.trim());
+        cell = '';
+      } else {
+        cell += character;
+      }
+    }
+
+    cells.push(cell.trim());
+    return cells;
+  };
+
   const parseCsvPreview = (text) => {
     const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0);
-    const rows = lines
-      .slice(1, 6)
-      .map((line) => line.split(',').map((c) => c.trim()))
-      .filter((row) => row.length >= 2);
-    return rows.map((row) => ({
-      id: row[0],
-      name: row[1],
-      email: row[2] || '—',
-      yearLevel: row[3] || '—',
-      role: row[4] || 'Student',
-    }));
+    if (lines.length < 2) return [];
+
+    const headers = parseCsvLine(lines[0]).map((header) => header
+      .replace(/^\uFEFF/, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_|_$/g, ''));
+    const findColumn = (...names) => headers.findIndex((header) => names.includes(header));
+    const columns = {
+      student_id: findColumn('student_id', 'studentid', 'id'),
+      full_name: findColumn('full_name', 'fullname', 'name'),
+      email: findColumn('email', 'email_address', 'emailaddress'),
+      grade_level: findColumn('grade_level', 'gradelevel'),
+      year_level: findColumn('year_level', 'yearlevel'),
+      block_number: findColumn('block_number', 'blocknumber'),
+    };
+
+    return lines.slice(1, 6)
+      .map(parseCsvLine)
+      .filter((row) => row.length >= 2)
+      .map((row) => {
+        const value = (column, fallback = '—') => (column >= 0 && row[column] ? row[column] : fallback);
+        return {
+          student_id: value(columns.student_id, ''),
+          full_name: value(columns.full_name, ''),
+          email: value(columns.email),
+          grade_level: value(columns.grade_level),
+          year_level: value(columns.year_level),
+          block_number: value(columns.block_number),
+          role: 'Student',
+        };
+      });
   };
 
   const handleFileChange = (e) => {
@@ -237,17 +284,21 @@ export default function StudentRegistry({ onLogout, activeView = 'voters', onNav
                       <th>Student ID</th>
                       <th>Full Name</th>
                       <th>Email Address</th>
+                      <th>Grade Level</th>
                       <th>Year Level</th>
+                      <th>Block Number</th>
                       <th>Role</th>
                     </tr>
                   </thead>
                   <tbody>
                     {previewRows.map((row, index) => (
                       <tr key={index}>
-                        <td className="font-mono">{row.id}</td>
-                        <td className="font-medium">{row.name}</td>
+                        <td className="font-mono">{row.student_id}</td>
+                        <td className="font-medium">{row.full_name}</td>
                         <td className="text-muted">{row.email}</td>
-                        <td className="text-muted">{row.yearLevel}</td>
+                        <td className="text-muted">{row.grade_level}</td>
+                        <td className="text-muted">{row.year_level}</td>
+                        <td className="text-muted">{row.block_number}</td>
                         <td><span className={`role-badge ${row.role.toLowerCase()}`}>{row.role}</span></td>
                       </tr>
                     ))}

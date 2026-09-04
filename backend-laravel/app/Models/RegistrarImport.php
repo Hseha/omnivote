@@ -18,5 +18,7 @@ class RegistrarImport extends Model
         'email',
         'grade_level',
         'role',
+        'year_level',
+        'block_number',
     ];
 }
