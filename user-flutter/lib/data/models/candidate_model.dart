@@ -5,6 +5,7 @@ import 'position_model.dart';
 /// working regardless of which shape the API returns.
 class Candidate {
   final String id;
+  final String candidateRef;
   final String name;
   final String photoUrl;
   final Position position;
@@ -20,6 +21,7 @@ class Candidate {
 
   Candidate({
     required this.id,
+    required this.candidateRef,
     required this.name,
     required this.photoUrl,
     required this.position,
@@ -55,6 +57,10 @@ class Candidate {
 
     return Candidate(
       id: (valueOr(json, const ['id']) ?? '').toString(),
+      candidateRef: (valueOr(json, const ['candidate_ref', 'candidateRef']) ??
+              json['id'] ??
+              '')
+          .toString(),
       name: (valueOr(json, const ['name', 'full_name']) ?? '').toString(),
       photoUrl:
           (valueOr(json, const ['photo_url', 'photoUrl', 'avatar']) ?? '').toString(),

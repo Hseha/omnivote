@@ -2,6 +2,7 @@ enum PositionTier { school, provincial }
 
 class Position {
   final String id;
+  final String slug;
   final String label;
   final PositionTier tier;
   final int seatCount;
@@ -9,6 +10,7 @@ class Position {
 
   Position({
     required this.id,
+    this.slug = '',
     required this.label,
     required this.tier,
     this.seatCount = 1,
@@ -18,6 +20,7 @@ class Position {
   factory Position.fromJson(Map<String, dynamic> json) {
     return Position(
       id: (json['id'] ?? json['slug'] ?? '').toString(),
+      slug: (json['slug'] ?? json['id'] ?? '').toString(),
       label: (json['label'] ?? json['name'] ?? '').toString(),
       tier: _parseTier(json['tier'] ?? json['position_tier']),
       seatCount: (json['seat_count'] ?? json['seatCount'] ?? 1) as int,

@@ -43,27 +43,9 @@ export default function ElectionSetup({ activeView = 'setup', onNavigate, onLogo
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
 
-  const [nationalsPositions, setNationalsPositions] = useState([
-    { id: 1, title: '1 President', candidates: '6 candidates approved', active: true },
-    { id: 2, title: '1 Vice President', candidates: '5 candidates approved', active: true },
-    { id: 3, title: '1 Secretary', candidates: '4 candidates approved', active: true },
-    { id: 4, title: '1 Treasurer', candidates: '4 candidates approved', active: true },
-    { id: 5, title: '1 Auditor', candidates: '5 candidates approved', active: true },
-    { id: 6, title: '1 Press Officer', candidates: '5 candidates approved', active: true },
-    { id: 7, title: '1 Property Custodian', candidates: '5 candidates approved', active: true },
-    { id: 8, title: '12 Senators', candidates: '5 candidates approved', active: true },
-    { id: 9, title: '1 representative per year level (All Department)', candidates: '5 candidates approved', active: true },
-  ]);
+  const [nationalsPositions, setNationalsPositions] = useState([]);
 
-  const [provincialPositions, setProvincialPositions] = useState([
-    { id: 1, title: '1 Governor', candidates: '6 candidates approved', active: true },
-    { id: 2, title: '1 Vice Governor', candidates: '5 candidates approved', active: true },
-    { id: 3, title: '1 Secretary', candidates: '4 candidates approved', active: true },
-    { id: 4, title: '1 Treasurer', candidates: '4 candidates approved', active: true },
-    { id: 5, title: '1 Auditor', candidates: '5 candidates approved', active: true },
-    { id: 6, title: '1 Press Officer', candidates: '5 candidates approved', active: true },
-    { id: 7, title: '1 Property Custodian', candidates: '5 candidates approved', active: true },
-  ]);
+  const [provincialPositions, setProvincialPositions] = useState([]);
 
   const handleLogout = () => {
     if (typeof onLogout === 'function') return onLogout();
@@ -80,6 +62,12 @@ export default function ElectionSetup({ activeView = 'setup', onNavigate, onLogo
         if (data.phase) setCurrentPhase(data.phase);
         if (data.registration_opens_at) setStartDate(String(data.registration_opens_at));
         if (data.voting_closes_at) setEndDate(String(data.voting_closes_at));
+
+        const positions = Array.isArray(data.positions) ? data.positions : [];
+        if (positions.length > 0) {
+          setNationalsPositions(positions.filter((p) => p.tier === 'school'));
+          setProvincialPositions(positions.filter((p) => p.tier === 'provincial'));
+        }
       } catch {
         // Keep defaults; server config endpoint not yet available.
         setMessage('Could not load current election configuration.');
@@ -95,11 +83,17 @@ export default function ElectionSetup({ activeView = 'setup', onNavigate, onLogo
     setSaving(true);
     setMessage('');
     try {
+      const positions = [
+        ...nationalsPositions.map((p) => ({ slug: p.slug ?? String(p.id), active: Boolean(p.active) })),
+        ...provincialPositions.map((p) => ({ slug: p.slug ?? String(p.id), active: Boolean(p.active) })),
+      ];
+
       await api.put('/admin/election/config', {
         title: electionTitle,
         phase: currentPhase,
         registration_opens_at: startDate || null,
         voting_closes_at: endDate || null,
+        positions,
       });
       setMessage('Configuration saved.');
     } catch (err) {
