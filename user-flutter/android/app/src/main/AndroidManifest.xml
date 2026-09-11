@@ -1,8 +1,15 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- The app reaches the OmniVote Laravel API over the network, so the
+         INTERNET permission must be declared in the main manifest — the
+         debug/profile manifests only cover development builds, and release
+         builds would otherwise have no network access at all. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+
     <application
         android:label="omnivote"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"

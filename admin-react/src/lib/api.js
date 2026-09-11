@@ -4,7 +4,13 @@ import axios from 'axios';
 // session cookie, ensure the XSRF token has been fetched and attached.
 let csrfPromise = null;
 
-export const API_BASE_URL = '';
+/**
+ * Base URL for the Laravel API. In production the admin panel is served from
+ * the same origin as the API (so an empty string yields correct relative URLs),
+ * but when served cross-origin (e.g. a separate web server or CDN), set
+ * VITE_API_BASE_URL in a .env file to the absolute API origin.
+ */
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
 /**
  * Fetches the CSRF cookie (and therefore the XSRF-TOKEN cookie) that Laravel
@@ -23,6 +29,17 @@ export function getCsrfCookie() {
       });
   }
   return csrfPromise;
+}
+
+/**
+ * Drops the cached CSRF-cookie request so the next mutating request fetches a
+ * fresh XSRF-TOKEN cookie. Laravel rotates the CSRF token whenever the session
+ * is invalidated or regenerated (logout, expiry, session()->regenerateToken()),
+ * so keeping the cached promise across a session boundary makes the SPA replay
+ * a stale X-XSRF-TOKEN header and loop on 419 TokenMismatch responses.
+ */
+export function resetCsrfCookie() {
+  csrfPromise = null;
 }
 
 const api = axios.create({
@@ -82,6 +99,14 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     const status = error.response?.status;
+
+    // 401/419 mean the server-side session or CSRF token no longer matches
+    // what the browser holds (logout, session expiry, token rotation). Drop
+    // the cached csrf-cookie request so the next mutating request fetches a
+    // fresh XSRF-TOKEN cookie instead of replaying a stale token.
+    if (status === 401 || status === 419) {
+      resetCsrfCookie();
+    }
 
     if (status === 401 && !isAuthenticatingRequest(error.config)) {
       if (onUnauthorizedHandler) onUnauthorizedHandler();
