@@ -1,4 +1,4 @@
-import api, { getCsrfCookie } from './api';
+import api, { getCsrfCookie, resetCsrfCookie } from './api';
 
 // Temporary in-memory display cache for the authenticated admin profile.
 // This is NOT an authorization boundary — authorization lives in HttpOnly
@@ -42,6 +42,11 @@ export async function logoutRequest() {
   try {
     await api.post('/admin/logout');
   } finally {
+    // The server invalidates the session and rotates the CSRF token on
+    // logout (session()->invalidate() + regenerateToken()). Drop the cached
+    // csrf-cookie request so the next login fetches a fresh XSRF-TOKEN
+    // cookie instead of posting a stale one and failing with 419.
+    resetCsrfCookie();
     writeDisplayUser(null);
   }
 }

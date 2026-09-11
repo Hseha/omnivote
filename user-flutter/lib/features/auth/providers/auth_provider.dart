@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/providers/auth_event_provider.dart';
 import '../../../data/models/student_model.dart';
@@ -59,7 +60,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       state = state.copyWith(student: student, isLoading: false);
       return true;
     } catch (e) {
-      state = state.copyWith(isLoading: false, errorMessage: 'Invalid credentials');
+      state = state.copyWith(isLoading: false, errorMessage: _authErrorMessage(e, fallback: 'Login failed'));
       return false;
     }
   }
@@ -71,7 +72,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       state = state.copyWith(student: student, isLoading: false);
       return true;
     } catch (e) {
-      state = state.copyWith(isLoading: false, errorMessage: 'Registration failed');
+      state = state.copyWith(isLoading: false, errorMessage: _authErrorMessage(e, fallback: 'Registration failed'));
       return false;
     }
   }
@@ -80,6 +81,31 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = state.copyWith(isLoading: true);
     await _authRepository.logout();
     state = AuthState();
+  }
+
+  /// Surfaces the real failure instead of masking every error as "invalid
+  /// credentials": connection failures, server messages (401/403/422/429) and
+  /// client-side parsing bugs each produce a distinct, actionable message.
+  String _authErrorMessage(Object error, {String fallback = 'Request failed'}) {
+    if (error is DioException) {
+      final data = error.response?.data;
+      if (data is Map && data['message'] is String) {
+        return data['message'] as String;
+      }
+      switch (error.type) {
+        case DioExceptionType.connectionTimeout:
+        case DioExceptionType.sendTimeout:
+        case DioExceptionType.receiveTimeout:
+        case DioExceptionType.connectionError:
+          return 'Cannot reach the API server. Check that the backend is running.';
+        case DioExceptionType.badCertificate:
+          return 'Server certificate could not be trusted.';
+        default:
+          return '$fallback (HTTP ${error.response?.statusCode ?? 'error'})';
+      }
+    }
+    if (error is StateError) return error.message;
+    return '$fallback: $error';
   }
 
   /// Logs out programmatically (e.g. server 401 without clearing during an

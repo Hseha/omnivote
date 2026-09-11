@@ -31,8 +31,8 @@ class RegistrationDetailsCard extends StatelessWidget {
             const SizedBox(height: 20),
             _buildDetailRow('Student ID', student.studentId),
             _buildDetailRow('Full Name', student.name),
-            _buildDetailRow('Grade', student.gradeLevel),
-            _buildDetailRow('Homeroom', student.homeroom),
+            _buildDetailRow('Grade', student.gradeLevel ?? '—'),
+            _buildDetailRow('Homeroom', student.homeroom ?? '—'),
             _buildDetailRow(
               'Registration Date',
               DateFormat('MMM d, yyyy').format(registrationDate),
