@@ -17,7 +17,7 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     setAuthHandlers({
       unauthorized: () => clearSession(),
-      forbidden: () => setError(null),
+      forbidden: (data) => setError(data?.message || 'Access forbidden'),
     });
 
     // Validate any cached session against the server on app load.
