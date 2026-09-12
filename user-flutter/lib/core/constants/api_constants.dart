@@ -4,7 +4,7 @@ class ApiConstants {
   // (e.g. http://10.0.2.2:8000/api on the Android emulator).
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'https://100.84.115.25:8000/api',
+    defaultValue: 'https://debian.tail7e9e1e.ts.net/api',
   );
 
   // Auth endpoints
