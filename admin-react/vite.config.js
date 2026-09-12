@@ -7,12 +7,12 @@ export default defineConfig({
     server: {
     proxy: {
       '/api': {
-        target: 'http://100.84.115.25:8000',
+        target: 'https://debian.tail7e9e1e.ts.net',
         changeOrigin: true,
         secure: false,
       },
       '/sanctum': {
-        target: 'http://100.84.115.25:8000',
+        target: 'https://debian.tail7e9e1e.ts.net',
         changeOrigin: true,
         secure: false,
       },

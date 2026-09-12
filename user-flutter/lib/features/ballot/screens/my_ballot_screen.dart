@@ -9,6 +9,7 @@ import '../../../data/models/position_model.dart';
 import '../../../data/repositories/candidate_repository.dart';
 import '../../../data/repositories/vote_repository.dart';
 import '../../candidates/providers/candidates_provider.dart';
+import '../../dashboard/providers/election_status_provider.dart';
 import '../../voting/providers/voting_provider.dart';
 
 /// The student's persisted ballot (GET /api/ballot/me).
@@ -72,7 +73,12 @@ class _DraftBallot extends ConsumerWidget {
     final candidatesAsync =
         ref.watch(allApprovedCandidatesProvider);
     final votingState = ref.watch(votingProvider);
+    final electionStatus = ref.watch(electionStatusProvider);
     final receipt = votingState.receipt;
+    final votingOpen = electionStatus.maybeWhen(
+      data: (status) => status.isVotingOpen,
+      orElse: () => false,
+    );
 
     if (receipt != null) {
       return _SubmittedBallot(receiptToken: receipt.receiptToken);
@@ -132,6 +138,28 @@ class _DraftBallot extends ConsumerWidget {
             ],
           ),
         ),
+        if (!votingOpen)
+          electionStatus.when(
+            data: (status) => Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                status.phaseLabel == null
+                    ? 'Ballot submission is unavailable until voting opens.'
+                    : 'Ballot submission is unavailable: ${status.phaseLabel}.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: AppColors.errorRed),
+              ),
+            ),
+            loading: () => const SizedBox.shrink(),
+            error: (error, stack) => const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                'Unable to confirm the election phase. Ballot submission is disabled.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: AppColors.errorRed),
+              ),
+            ),
+          ),
         SafeArea(
           top: false,
           child: Padding(
@@ -139,7 +167,9 @@ class _DraftBallot extends ConsumerWidget {
             child: SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: votingState.isSubmitting || selections.isEmpty
+                onPressed: !votingOpen ||
+                        votingState.isSubmitting ||
+                        selections.isEmpty
                     ? null
                     : () => _submit(context, ref),
                 style: ElevatedButton.styleFrom(
@@ -167,6 +197,16 @@ class _DraftBallot extends ConsumerWidget {
   }
 
   Future<void> _submit(BuildContext context, WidgetRef ref) async {
+    final electionStatus = ref.read(electionStatusProvider).value;
+    if (electionStatus == null || !electionStatus.isVotingOpen) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Voting is closed. Your ballot was not submitted.'),
+        ),
+      );
+      return;
+    }
+
     final selections = ref.read(myBallotProvider).value?['selections'];
     if (selections is! Map) return;
 
@@ -183,7 +223,12 @@ class _DraftBallot extends ConsumerWidget {
       ref.invalidate(myBallotProvider);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Ballot submission failed. Please retry.')),
+        SnackBar(
+          content: Text(
+            ref.read(votingProvider).errorMessage ??
+                'Ballot submission failed.',
+          ),
+        ),
       );
     }
   }

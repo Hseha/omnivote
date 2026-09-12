@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:dio/dio.dart';
 import '../../../data/models/vote_receipt_model.dart';
 import '../../../data/repositories/vote_repository.dart';
 
@@ -41,9 +42,16 @@ class VotingNotifier extends StateNotifier<VotingState> {
       state = state.copyWith(isSubmitting: false, receipt: receipt);
       return true;
     } catch (e) {
+      final response = e is DioException ? e.response : null;
+      final statusCode = response?.statusCode;
+      final data = response?.data;
+      final serverMessage =
+          data is Map ? data['message']?.toString() : null;
       state = state.copyWith(
         isSubmitting: false,
-        errorMessage: 'Vote submission failed. Please try again.',
+        errorMessage: statusCode == 409
+            ? 'Your ballot was already submitted.'
+            : (serverMessage ?? e.toString()),
       );
       return false;
     }

@@ -72,8 +72,7 @@ export default function Results({ activeView = 'results', onNavigate, onLogout }
       try {
         setLoadingResults(true);
         const res = await api.get('/admin/results');
-        const data = res.data?.results ?? res.data ?? null;
-        setResultsData(data);
+        setResultsData(res.data ?? null);
       } catch {
         setResultsData(null);
       } finally {
@@ -84,43 +83,42 @@ export default function Results({ activeView = 'results', onNavigate, onLogout }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 
-  // Summary Card Data
-  const liveSummaryData = {
-    presidential: [
-      { name: 'Maria Santos', votes: 342, percentage: '39.6%', status: 'WINNER', color: 'green' },
-      { name: 'James Chen', votes: 289, percentage: '33.5%', status: 'RUNNER UP', color: 'blue' },
-      { name: 'David Kim', votes: 232, percentage: '26.9%', status: 'RUNNER UP', color: 'blue' },
-    ],
-    vicePresidential: [
-      { name: 'Siddharth Mehta', votes: 410, percentage: '47.5%', status: 'WINNER', color: 'green' },
-      { name: 'Chloe Dupont', votes: 315, percentage: '36.5%', status: 'RUNNER UP', color: 'blue' },
-      { name: 'Nolan Kross', votes: 138, percentage: '16.0%', status: 'RUNNER UP', color: 'blue' },
-    ],
-    secretary: [
-      { name: 'Amara Adebayo', votes: 480, percentage: '55.6%', status: 'WINNER', color: 'green' },
-      { name: 'Yuki Tanaka', votes: 383, percentage: '44.4%', status: 'RUNNER UP', color: 'blue' },
-    ],
-    treasurer: [
-      { name: 'Lucas Vance', votes: 520, percentage: '60.3%', status: 'WINNER', color: 'green' },
-      { name: 'Elena Rostova', votes: 343, percentage: '39.7%', status: 'RUNNER UP', color: 'blue' },
-    ]
-  };
+  const positionResults = Array.isArray(resultsData?.results)
+    ? resultsData.results
+    : [];
+  const candidateRows = positionResults.flatMap((result) => {
+    const candidates = Array.isArray(result.candidates) ? result.candidates : [];
+    const totalVotes = candidates.reduce((sum, candidate) => sum + Number(candidate.votes || 0), 0);
+    const sortedCandidates = [...candidates].sort(
+      (a, b) => Number(b.votes || 0) - Number(a.votes || 0),
+    );
+    const winningVotes = Number(sortedCandidates[0]?.votes || 0);
 
-  // Detailed Candidate List Data
-  const detailedCandidatesData = [
-    { rank: '#1', initials: 'LV', name: 'Lucas Vance', position: 'Treasurer', party: 'Progressive', votes: 520, percentage: 60.3, status: 'WINNER' },
-    { rank: '#2', initials: 'AA', name: 'Amara Adebayo', position: 'Secretary', party: 'Progressive', votes: 480, percentage: 55.6, status: 'WINNER' },
-    { rank: '#3', initials: 'SM', name: 'Siddharth Mehta', position: 'Vice President', party: 'National', votes: 410, percentage: 47.5, status: 'WINNER' },
-    { rank: '#4', initials: 'MS', name: 'Maria Santos', position: 'President', party: 'National', votes: 342, percentage: 39.6, status: 'WINNER' },
-    { rank: '#5', initials: 'ET', name: 'Elena Rostova', position: 'Treasurer', party: 'Progressive', votes: 343, percentage: 39.7, status: 'Eliminated' },
-    { rank: '#6', initials: 'YT', name: 'Yuki Tanaka', position: 'Secretary', party: 'Independent', votes: 383, percentage: 44.4, status: 'Eliminated' },
-    { rank: '#7', initials: 'CD', name: 'Chloe Dupont', position: 'Vice President', party: 'Progressive', votes: 315, percentage: 36.5, status: 'Eliminated' },
-    { rank: '#8', initials: 'JC', name: 'James Chen', position: 'President', party: 'Independent', votes: 289, percentage: 33.5, status: 'Eliminated' },
-    { rank: '#9', initials: 'DK', name: 'David Kim', position: 'President', party: 'Reform', votes: 232, percentage: 26.9, status: 'Eliminated' },
-  ];
+    return sortedCandidates.map((candidate, index) => {
+      const votes = Number(candidate.votes || 0);
+      const percentage = totalVotes ? (votes / totalVotes) * 100 : 0;
+      const name = String(candidate.name || candidate.candidate_ref || 'Unknown candidate');
+      return {
+        rank: `#${index + 1}`,
+        initials: name
+          .split(/\s+/)
+          .map((part) => part[0])
+          .join('')
+          .slice(0, 2)
+          .toUpperCase(),
+        name,
+        position: result.position_label || result.position_key,
+        party: '—',
+        votes,
+        percentage,
+        status: votes === winningVotes ? 'WINNER' : 'Eliminated',
+      };
+    });
+  });
+  const totalVotes = candidateRows.reduce((sum, candidate) => sum + candidate.votes, 0);
 
   const getFilteredCandidates = () => {
-    return detailedCandidatesData.filter(item => {
+    return candidateRows.filter(item => {
       if (subView === 'elected' && item.status !== 'WINNER') return false;
       if (subView === 'unsuccessful' && item.status !== 'Eliminated') return false;
       if (selectedPosition !== 'All' && item.position !== selectedPosition) return false;
@@ -275,13 +273,13 @@ export default function Results({ activeView = 'results', onNavigate, onLogout }
               <div className="metrics-grid">
                 <div className="metric-card">
                   <div className="metric-header">
-                    <span className="metric-title">TOTAL BALLOTS PROCESSES</span>
+                    <span className="metric-title">TOTAL VOTES RECORDED</span>
                     <div className="metric-icon-box green-icon-box">
                       <CheckCircle2 size={18} color="#16a34a" />
                     </div>
                   </div>
-                  <div className="metric-value">863</div>
-                  <div className="metric-subtitle">Last updated: 14:32:05 EST</div>
+                  <div className="metric-value">{totalVotes}</div>
+                  <div className="metric-subtitle">Total candidate votes recorded</div>
                 </div>
 
                 <div className="metric-card">
@@ -291,8 +289,8 @@ export default function Results({ activeView = 'results', onNavigate, onLogout }
                       <TrendingUp size={18} color="#d97706" />
                     </div>
                   </div>
-                  <div className="metric-value">69.2%</div>
-                  <div className="metric-subtitle">+124 received in the last hour</div>
+                  <div className="metric-value">—</div>
+                  <div className="metric-subtitle">Turnout is not included in this response</div>
                 </div>
               </div>
 
@@ -320,25 +318,24 @@ export default function Results({ activeView = 'results', onNavigate, onLogout }
 
               {/* Position Category Cards Grid */}
               <div className="results-grid">
-                {renderResultSection(
-                  'Presidential Election Results',
-                  resultsData?.presidential ?? liveSummaryData.presidential,
-                )}
-                {renderResultSection(
-                  'Vice Presidential Election Results',
-                  resultsData?.vicePresidential ?? liveSummaryData.vicePresidential,
-                )}
-                {renderResultSection(
-                  'Secretary Election Results',
-                  resultsData?.secretary ?? liveSummaryData.secretary,
-                )}
-                {renderResultSection(
-                  'Treasurer Election Results',
-                  resultsData?.treasurer ?? liveSummaryData.treasurer,
-                )}
+                {loadingResults && <p className="no-results-banner">Loading published results...</p>}
+                {!loadingResults && positionResults.map((result) => {
+                  const candidates = candidateRows.filter(
+                    (candidate) => candidate.position === (result.position_label || result.position_key),
+                  );
+                  return renderResultSection(
+                    result.position_label || result.position_key,
+                    candidates.map((candidate) => ({
+                      ...candidate,
+                      percentage: `${candidate.percentage.toFixed(1)}%`,
+                      color: candidate.status === 'WINNER' ? 'green' : 'blue',
+                      status: candidate.status === 'WINNER' ? 'WINNER' : 'RUNNER UP',
+                    })),
+                  );
+                })}
               </div>
               {!resultsData && !loadingResults && (
-                <p className="no-results-banner">No published results yet. Showing placeholder data.</p>
+                <p className="no-results-banner">No published results are available.</p>
               )}
             </>
           )}
@@ -366,8 +363,8 @@ export default function Results({ activeView = 'results', onNavigate, onLogout }
                       <Users2 size={18} color="#2563eb" />
                     </div>
                   </div>
-                  <div className="metric-value">24</div>
-                  <div className="metric-subtitle">Registered across 4 races</div>
+                  <div className="metric-value">{candidateRows.length}</div>
+                  <div className="metric-subtitle">Candidates included in published results</div>
                 </div>
 
                 <div className="metric-card">
@@ -377,8 +374,8 @@ export default function Results({ activeView = 'results', onNavigate, onLogout }
                       <CheckCircle2 size={18} color="#16a34a" />
                     </div>
                   </div>
-                  <div className="metric-value">2,847</div>
-                  <div className="metric-subtitle">Updated 1 min ago</div>
+                  <div className="metric-value">{totalVotes}</div>
+                  <div className="metric-subtitle">Total candidate votes recorded</div>
                 </div>
 
                 <div className="metric-card">
@@ -388,8 +385,8 @@ export default function Results({ activeView = 'results', onNavigate, onLogout }
                       <TrendingUp size={18} color="#d97706" />
                     </div>
                   </div>
-                  <div className="metric-value">69.2%</div>
-                  <div className="metric-subtitle">+124 received in the last hour</div>
+                  <div className="metric-value">—</div>
+                  <div className="metric-subtitle">Turnout is not included in this response</div>
                 </div>
               </div>
 
@@ -428,10 +425,6 @@ export default function Results({ activeView = 'results', onNavigate, onLogout }
                       onChange={(e) => setSelectedParty(e.target.value)}
                     >
                       <option value="All">Party: All</option>
-                      <option value="Progressive">Progressive</option>
-                      <option value="National">National</option>
-                      <option value="Independent">Independent</option>
-                      <option value="Reform">Reform</option>
                     </select>
                     <ChevronDown size={14} className="dropdown-arrow" />
                   </div>
