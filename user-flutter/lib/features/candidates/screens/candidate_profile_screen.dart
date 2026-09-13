@@ -1,4 +1,8 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import '../../../core/utils/safe_json.dart';
+import '../../../core/widgets/cached_avatar.dart';
 import '../../../data/models/candidate_model.dart';
 import '../widgets/platform_points_list.dart';
 
@@ -32,7 +36,7 @@ class CandidateProfileScreen extends StatelessWidget {
         centerTitle: true,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: textPrimary),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () => context.pop(),
         ),
         title: const Text(
           'Candidate Profile',
@@ -57,10 +61,9 @@ class CandidateProfileScreen extends StatelessWidget {
               padding: const EdgeInsets.all(24),
               child: Column(
                 children: [
-                  CircleAvatar(
+                  CachedAvatar(
+                    imageUrl: candidate.photoUrl,
                     radius: 64,
-                    backgroundImage: NetworkImage(candidate.photoUrl),
-                    backgroundColor: borderGray,
                   ),
                   const SizedBox(height: 20),
                   // Position Tag
@@ -114,7 +117,9 @@ class CandidateProfileScreen extends StatelessWidget {
                       Expanded(
                         child: ElevatedButton(
                           onPressed: () {
-                            // Handle vote action
+                            // Route to the guided Vote Now flow, preselected at
+                            // this candidate's position (audit §2 #2).
+                            context.go('/vote-now', extra: candidate.position.id);
                           },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: primaryBlue,
@@ -134,7 +139,7 @@ class CandidateProfileScreen extends StatelessWidget {
                       const SizedBox(width: 12),
                       Expanded(
                         child: OutlinedButton(
-                          onPressed: () => Navigator.pop(context),
+                          onPressed: () => context.pop(),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: primaryBlue,
                             side: const BorderSide(color: primaryBlue),
@@ -181,9 +186,11 @@ class CandidateProfileScreen extends StatelessWidget {
                             decoration: BoxDecoration(
                               color: navyDark,
                               borderRadius: BorderRadius.circular(8),
-                              image: candidate.photoUrl.isNotEmpty
+                              image: safeHttpImageUrl(candidate.photoUrl) != null
                                   ? DecorationImage(
-                                      image: NetworkImage(candidate.photoUrl),
+                                      image: CachedNetworkImageProvider(
+                                        candidate.photoUrl,
+                                      ),
                                       fit: BoxFit.cover,
                                       colorFilter: ColorFilter.mode(
                                         Colors.black.withValues(alpha: 0.4),

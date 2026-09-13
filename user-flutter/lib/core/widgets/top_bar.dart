@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../features/auth/providers/auth_provider.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_text_styles.dart';
+import 'cached_avatar.dart';
 import 'status_badge.dart';
 
 class TopBar extends ConsumerWidget implements PreferredSizeWidget {
@@ -36,15 +39,9 @@ class TopBar extends ConsumerWidget implements PreferredSizeWidget {
             onTap: () {
               // Navigate to profile
             },
-            child: CircleAvatar(
+            child: CachedAvatar(
+              imageUrl: student.avatarUrl,
               radius: 18,
-              backgroundColor: AppColors.backgroundGray,
-              backgroundImage: student.avatarUrl != null
-                  ? NetworkImage(student.avatarUrl!)
-                  : null,
-              child: student.avatarUrl == null
-                  ? const Icon(Icons.person, size: 20, color: AppColors.textSecondary)
-                  : null,
             ),
           ),
           const SizedBox(width: 16),
@@ -70,19 +67,27 @@ class _LiveClock extends StatefulWidget {
 
 class _LiveClockState extends State<_LiveClock> {
   late DateTime _now;
+  Timer? _timer;
 
   @override
   void initState() {
     super.initState();
     _now = DateTime.now();
-    // Update every second
-    Stream.periodic(const Duration(seconds: 1)).listen((_) {
+    // Tick every second; the timer is cancelled in dispose() so setState can
+    // never fire after the widget is unmounted (audit §3 #1: leaked stream).
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) {
         setState(() {
           _now = DateTime.now();
         });
       }
     });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
   }
 
   @override

@@ -1,6 +1,7 @@
 import 'package:go_router/go_router.dart';
 import '../../features/auth/screens/login_screen.dart';
 import '../../features/auth/screens/register_screen.dart';
+import '../../features/auth/screens/splash_screen.dart';
 import '../../features/dashboard/screens/dashboard_screen.dart';
 import '../../features/candidates/screens/candidates_list_screen.dart';
 import '../../features/candidates/screens/candidate_profile_screen.dart';
@@ -11,9 +12,15 @@ import '../../features/results/screens/results_screen.dart';
 import '../../features/candidacy/screens/candidacy_apply_screen.dart';
 
 class AppRouter {
+  // Splash is the bootstrap route: it checks auth once and redirects to
+  // /dashboard or /login (audit §2 #11).
   static final router = GoRouter(
-    initialLocation: '/login',
+    initialLocation: '/splash',
     routes: [
+      GoRoute(
+        path: '/splash',
+        builder: (context, state) => const SplashScreen(),
+      ),
       GoRoute(
         path: '/',
         builder: (context, state) => const LoginScreen(),
@@ -43,7 +50,14 @@ class AppRouter {
       ),
       GoRoute(
         path: '/vote-now',
-        builder: (context, state) => const VoteNowScreen(),
+        builder: (context, state) {
+          // `extra` is the optional candidate position id passed by the direct
+          // "Vote" actions (CandidateCard / candidate profile).
+          final extra = state.extra;
+          return VoteNowScreen(
+            initialPositionId: extra is String ? extra : null,
+          );
+        },
       ),
       GoRoute(
         path: '/ballot',

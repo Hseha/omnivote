@@ -1,4 +1,4 @@
-package com.example.omnivote
+package com.hseha.omnivote
 
 import io.flutter.embedding.android.FlutterActivity
 

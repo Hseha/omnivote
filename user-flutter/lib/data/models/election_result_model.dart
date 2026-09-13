@@ -1,3 +1,5 @@
+import '../../core/utils/safe_json.dart';
+
 class ElectionCandidateResult {
   final String name;
   final String? positionKey;
@@ -13,7 +15,7 @@ class ElectionCandidateResult {
     return ElectionCandidateResult(
       name: (json['name'] ?? json['candidate_name'] ?? '').toString(),
       positionKey: (json['position_key'] ?? json['position']) as String?,
-      votes: (json['votes'] ?? json['count'] ?? 0) as int,
+      votes: safeInt(json['votes'] ?? json['count']),
     );
   }
 }
