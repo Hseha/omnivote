@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/utils/error_message.dart';
 import '../../../core/widgets/loading_indicator.dart';
 import '../../../core/widgets/top_bar.dart';
 import '../../../data/models/position_model.dart';
@@ -205,7 +206,9 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
           );
         },
         loading: () => const LoadingIndicator(),
-        error: (err, stack) => Center(child: Text('Error: $err')),
+        error: (err, stack) => Center(
+          child: Text(apiErrorMessage(err, fallback: 'Could not load positions.')),
+        ),
       ),
     );
   }

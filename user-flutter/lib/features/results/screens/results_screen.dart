@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/utils/error_message.dart';
 import '../../../core/widgets/loading_indicator.dart';
 import '../../../core/widgets/top_bar.dart';
 import '../../../data/models/election_result_model.dart';
@@ -33,46 +34,65 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
     final statusAsync = ref.watch(electionStatusProvider);
     final resultsAsync = ref.watch(resultsProvider);
 
+    // Audits §3 #7 & §2 #8: a stale/offline status must not leave this screen
+    // (or the results cache) stuck — pull-to-refresh re-fetches status and
+    // lets resultsProvider recompute when the phase flips.
+    Future<void> refreshAll() async {
+      ref.read(electionStatusEpochProvider.notifier).state++;
+      ref.invalidate(resultsProvider);
+    }
+
     return Scaffold(
       backgroundColor: AppColors.backgroundGray,
       appBar: const TopBar(title: 'Election Results'),
       body: statusAsync.when(
         data: (status) {
           if (status.phase != ElectionPhase.votingClosed) {
-            return _NotYetPublished(status: status);
+            return _NotYetPublished(status: status, onRefresh: refreshAll);
           }
-          return ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              resultsAsync.when(
-                data: (results) => Column(
-                  children: [
-                    for (final result in results) _buildResultCard(result),
-                  ],
-                ),
-                loading: () => const LoadingIndicator(),
-                error: (err, stack) => Center(
-                  child: Text(
-                    'Results are not available yet or the API is unreachable.\n$err',
-                    textAlign: TextAlign.center,
+          return RefreshIndicator(
+            onRefresh: refreshAll,
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(16),
+              children: [
+                resultsAsync.when(
+                  data: (results) => Column(
+                    children: [
+                      for (final result in results) _buildResultCard(result),
+                    ],
+                  ),
+                  loading: () => const LoadingIndicator(),
+                  error: (err, stack) => Center(
+                    child: Text(
+                      apiErrorMessage(
+                        err,
+                        fallback: 'Results are not available yet or the API is unreachable.',
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              _ReceiptVerifier(
-                controller: _receiptController,
-                onVerify: () {
-                  final token = _receiptController.text.trim();
-                  if (token.isNotEmpty) setState(() => _verifyToken = token);
-                },
-              ),
-              if (_verifyToken != null)
-                _VerificationResult(token: _verifyToken!),
-            ],
+                const SizedBox(height: 16),
+                _ReceiptVerifier(
+                  controller: _receiptController,
+                  onVerify: () {
+                    final token = _receiptController.text.trim();
+                    if (token.isNotEmpty) setState(() => _verifyToken = token);
+                  },
+                ),
+                if (_verifyToken != null)
+                  _VerificationResult(token: _verifyToken!),
+              ],
+            ),
           );
         },
         loading: () => const LoadingIndicator(),
-        error: (err, stack) => Center(child: Text('Error: $err')),
+        error: (err, stack) => Center(
+          child: Text(
+            apiErrorMessage(err, fallback: 'Could not check election status.'),
+          ),
+        ),
       ),
     );
   }
@@ -148,8 +168,9 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
 
 class _NotYetPublished extends StatelessWidget {
   final ElectionStatus status;
+  final VoidCallback onRefresh;
 
-  const _NotYetPublished({required this.status});
+  const _NotYetPublished({required this.status, required this.onRefresh});
 
   @override
   Widget build(BuildContext context) {
@@ -167,6 +188,14 @@ class _NotYetPublished extends StatelessWidget {
                   : 'Results will be published after the polls close.',
               textAlign: TextAlign.center,
               style: const TextStyle(color: AppColors.textSecondary, fontSize: 16),
+            ),
+            const SizedBox(height: 16),
+            // Lets a student who opened the screen before polls closed refresh
+            // in place instead of having to kill and relaunch the app.
+            ElevatedButton.icon(
+              onPressed: onRefresh,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Refresh'),
             ),
           ],
         ),
@@ -262,8 +291,10 @@ class _VerificationResult extends ConsumerWidget {
       ),
       error: (err, stack) => Padding(
         padding: const EdgeInsets.only(top: 12),
-        child: Text('Verification failed: $err',
-            style: const TextStyle(color: AppColors.errorRed)),
+        child: Text(
+          apiErrorMessage(err, fallback: 'Verification failed.'),
+          style: const TextStyle(color: AppColors.errorRed),
+        ),
       ),
     );
   }

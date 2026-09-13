@@ -3,11 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_text_styles.dart';
+import '../../../core/utils/debouncer.dart';
+import '../../../core/utils/error_message.dart';
 import '../../../core/widgets/candidate_card.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/loading_indicator.dart';
 import '../../../core/widgets/top_bar.dart';
 import '../../../data/models/position_model.dart';
+import '../../../data/repositories/vote_repository.dart';
 import '../providers/candidates_provider.dart';
 
 class CandidatesListScreen extends ConsumerStatefulWidget {
@@ -18,13 +21,72 @@ class CandidatesListScreen extends ConsumerStatefulWidget {
 }
 
 class _CandidatesListScreenState extends ConsumerState<CandidatesListScreen> {
+  static const int _senatorLimit = 12;
+
+  /// Holds senator selections as `candidate_ref` values so they match the
+  /// draft-ballot / vote-submit contract (the old `candidate.id` values never
+  /// resolved in My Ballot or on the server).
   final List<String> _selectedSenatorIds = [];
   final TextEditingController _searchController = TextEditingController();
+  final Debouncer _searchDebounce =
+      Debouncer(delay: const Duration(milliseconds: 400));
+  bool _filterInitialized = false;
 
   @override
   void dispose() {
+    _searchDebounce.dispose();
     _searchController.dispose();
     super.dispose();
+  }
+
+  /// Returns the first position matching [test], or null (audit §2 #6:
+  /// `firstWhere` on an empty tier used to throw `StateError`).
+  Position? _pickFirst(List<Position> positions, bool Function(Position) test) {
+    for (final p in positions) {
+      if (test(p)) return p;
+    }
+    return null;
+  }
+
+  /// Debounces search input (audit §3 #3) so a request fires only after the
+  /// user pauses typing, not on every keystroke.
+  void _onSearchChanged(String value) {
+    _searchDebounce.run(() {
+      if (!mounted) return;
+      ref.read(candidatesFilterProvider.notifier).update(
+        (s) => s.copyWith(search: value),
+      );
+    });
+  }
+
+  /// Wires the previously-dead "Confirm Selection" action (audit §2 #3):
+  /// persists the senator selections to the server draft (PUT /api/ballot/me)
+  /// keyed by the position slug with `candidate_ref` values, then hands off to
+  /// My Ballot for review/submit.
+  Future<void> _confirmSenatorSelection(Position position) async {
+    if (_selectedSenatorIds.isEmpty) return;
+    try {
+      await ref.read(voteRepositoryProvider).saveDraft({
+        position.slug: List<String>.from(_selectedSenatorIds),
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Senator selections saved to your draft ballot.'),
+        ),
+      );
+      context.go('/ballot');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            apiErrorMessage(e, fallback: 'Could not save your selections.'),
+          ),
+          backgroundColor: AppColors.errorRed,
+        ),
+      );
+    }
   }
 
   @override
@@ -33,25 +95,50 @@ class _CandidatesListScreenState extends ConsumerState<CandidatesListScreen> {
     final filter = ref.watch(candidatesFilterProvider);
     final candidatesAsync = ref.watch(filteredCandidatesProvider);
 
+    // Effective position id without mutating state during build: the default
+    // is committed once positions resolve (see post-frame init below).
+    final loadedPositions = positionsAsync.value ?? const <Position>[];
+    final effPositionId = filter.positionId ??
+        _pickFirst(loadedPositions, (p) => p.tier == filter.tier)?.id;
+    final senatorPosition = effPositionId == 'senator'
+        ? _pickFirst(loadedPositions, (p) => p.id == effPositionId)
+        : null;
+
     return Scaffold(
       backgroundColor: AppColors.backgroundGray,
       appBar: const TopBar(title: 'Candidates'),
       body: positionsAsync.when(
         data: (positions) {
           final tierPositions = positions.where((p) => p.tier == filter.tier).toList();
-          
-          // Ensure a position is selected if none is
-          if (filter.positionId == null && tierPositions.isNotEmpty) {
-            Future.microtask(() {
-              ref.read(candidatesFilterProvider.notifier).update(
-                (s) => s.copyWith(positionId: tierPositions.first.id),
-              );
-            });
+
+          // Initialize the default positionId once positions resolve (post-frame,
+          // audit §2 #7) — never from inside build.
+          if (!_filterInitialized && tierPositions.isNotEmpty) {
+            _filterInitialized = true;
+            if (filter.positionId == null) {
+              final firstId = tierPositions.first.id;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) {
+                  ref.read(candidatesFilterProvider.notifier).update(
+                    (s) => s.copyWith(positionId: firstId),
+                  );
+                }
+              });
+            }
           }
 
-          final selectedPosition = positions.firstWhere(
-            (p) => p.id == filter.positionId,
-            orElse: () => tierPositions.isNotEmpty ? tierPositions.first : positions.first,
+          if (tierPositions.isEmpty) {
+            return const Center(
+              child: EmptyState(
+                message: 'No positions available',
+                subMessage: 'There are no positions in this tier yet.',
+              ),
+            );
+          }
+
+          final selectedPosition = tierPositions.firstWhere(
+            (p) => p.id == (filter.positionId ?? tierPositions.first.id),
+            orElse: () => tierPositions.first,
           );
 
           return Column(
@@ -76,9 +163,14 @@ class _CandidatesListScreenState extends ConsumerState<CandidatesListScreen> {
                         selected: {filter.tier},
                         onSelectionChanged: (newSelection) {
                           final newTier = newSelection.first;
-                          final firstPosInTier = positions.firstWhere((p) => p.tier == newTier);
+                          final firstPosInTier =
+                              _pickFirst(positions, (p) => p.tier == newTier);
                           ref.read(candidatesFilterProvider.notifier).update(
-                            (s) => s.copyWith(tier: newTier, positionId: firstPosInTier.id),
+                            (s) => s.copyWith(
+                              tier: newTier,
+                              positionId: firstPosInTier?.id,
+                              clearPositionId: firstPosInTier == null,
+                            ),
                           );
                         },
                         style: SegmentedButton.styleFrom(
@@ -148,11 +240,7 @@ class _CandidatesListScreenState extends ConsumerState<CandidatesListScreen> {
                     if (selectedPosition.id == 'president') ...[
                       TextField(
                         controller: _searchController,
-                        onChanged: (value) {
-                          ref.read(candidatesFilterProvider.notifier).update(
-                            (s) => s.copyWith(search: value),
-                          );
-                        },
+                        onChanged: _onSearchChanged,
                         decoration: InputDecoration(
                           hintText: 'Search candidates by name or slogan...',
                           prefixIcon: const Icon(Icons.search),
@@ -186,21 +274,26 @@ class _CandidatesListScreenState extends ConsumerState<CandidatesListScreen> {
                             subMessage: 'Try adjusting your filters or search query.',
                           );
                         }
-                        return Column(
-                          children: candidates.map((candidate) {
-                            final isSenator = selectedPosition.id == 'senator';
+                        final isSenator = selectedPosition.id == 'senator';
+                        return ListView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: candidates.length,
+                          itemBuilder: (context, index) {
+                            final candidate = candidates[index];
                             return CandidateCard(
                               candidate: candidate,
                               isSelectable: isSenator,
-                              isSelected: _selectedSenatorIds.contains(candidate.id),
+                              isSelected:
+                                  _selectedSenatorIds.contains(candidate.candidateRef),
                               onSelected: (selected) {
                                 setState(() {
                                   if (selected == true) {
-                                    if (_selectedSenatorIds.length < 12) {
-                                      _selectedSenatorIds.add(candidate.id);
+                                    if (_selectedSenatorIds.length < _senatorLimit) {
+                                      _selectedSenatorIds.add(candidate.candidateRef);
                                     }
                                   } else {
-                                    _selectedSenatorIds.remove(candidate.id);
+                                    _selectedSenatorIds.remove(candidate.candidateRef);
                                   }
                                 });
                               },
@@ -208,14 +301,20 @@ class _CandidatesListScreenState extends ConsumerState<CandidatesListScreen> {
                                 context.push('/candidate-profile', extra: candidate);
                               },
                               onVote: () {
-                                // Handle direct vote logic or navigation to Vote Now
+                                // Route to the guided Vote Now flow, preselected at
+                                // this candidate's position (audit §2 #1).
+                                context.go('/vote-now', extra: candidate.position.id);
                               },
                             );
-                          }).toList(),
+                          },
                         );
                       },
                       loading: () => const Center(child: LoadingIndicator()),
-                      error: (err, stack) => Center(child: Text('Error: $err')),
+                      error: (err, stack) => Center(
+                        child: Text(
+                          apiErrorMessage(err, fallback: 'Could not load candidates.'),
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 100),
                   ],
@@ -225,15 +324,19 @@ class _CandidatesListScreenState extends ConsumerState<CandidatesListScreen> {
           );
         },
         loading: () => const LoadingIndicator(),
-        error: (err, stack) => Center(child: Text('Error: $err')),
+        error: (err, stack) => Center(
+          child: Text(
+            apiErrorMessage(err, fallback: 'Could not load positions.'),
+          ),
+        ),
       ),
-      bottomSheet: ref.watch(candidatesFilterProvider).positionId == 'senator'
-          ? _buildSenatorSelectionBar()
-          : null,
+      bottomSheet: senatorPosition == null
+          ? null
+          : _buildSenatorSelectionBar(senatorPosition),
     );
   }
 
-  Widget _buildSenatorSelectionBar() {
+  Widget _buildSenatorSelectionBar(Position position) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: const BoxDecoration(
@@ -267,9 +370,7 @@ class _CandidatesListScreenState extends ConsumerState<CandidatesListScreen> {
             ),
             ElevatedButton(
               onPressed: _selectedSenatorIds.isNotEmpty
-                  ? () {
-                      // Confirm selection
-                    }
+                  ? () => _confirmSenatorSelection(position)
                   : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primaryBlue,
