@@ -1,3 +1,5 @@
+import '../../core/utils/safe_json.dart';
+
 enum PositionTier { school, provincial }
 
 class Position {
@@ -23,7 +25,7 @@ class Position {
       slug: (json['slug'] ?? json['id'] ?? '').toString(),
       label: (json['label'] ?? json['name'] ?? '').toString(),
       tier: _parseTier(json['tier'] ?? json['position_tier']),
-      seatCount: (json['seat_count'] ?? json['seatCount'] ?? 1) as int,
+      seatCount: safeInt(json['seat_count'] ?? json['seatCount'], fallback: 1),
       description: (json['description'] ?? '').toString(),
     );
   }

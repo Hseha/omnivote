@@ -25,10 +25,11 @@ class CandidatesFilter {
     String? positionId,
     String? search,
     String? grade,
+    bool clearPositionId = false,
   }) {
     return CandidatesFilter(
       tier: tier ?? this.tier,
-      positionId: positionId ?? this.positionId,
+      positionId: clearPositionId ? null : (positionId ?? this.positionId),
       search: search ?? this.search,
       grade: grade ?? this.grade,
     );

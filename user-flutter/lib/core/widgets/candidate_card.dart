@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_text_styles.dart';
 import '../../data/models/candidate_model.dart';
+import 'cached_avatar.dart';
 
 class CandidateCard extends StatelessWidget {
   final Candidate candidate;
@@ -41,15 +42,11 @@ class CandidateCard extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                CircleAvatar(
+                CachedAvatar(
+                  imageUrl: candidate.photoUrl.isNotEmpty
+                      ? candidate.photoUrl
+                      : null,
                   radius: 30,
-                  backgroundColor: AppColors.backgroundGray,
-                  backgroundImage: candidate.photoUrl.isNotEmpty 
-                      ? NetworkImage(candidate.photoUrl) 
-                      : null,
-                  child: candidate.photoUrl.isEmpty 
-                      ? const Icon(Icons.person, size: 30, color: AppColors.textSecondary)
-                      : null,
                 ),
                 const SizedBox(width: 16),
                 Expanded(

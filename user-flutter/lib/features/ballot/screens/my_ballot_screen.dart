@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/utils/error_message.dart';
 import '../../../core/widgets/loading_indicator.dart';
 import '../../../core/widgets/top_bar.dart';
 import '../../../data/models/candidate_model.dart';
@@ -56,7 +57,11 @@ class MyBallotScreen extends ConsumerWidget {
           return _DraftBallot(selections: selections);
         },
         loading: () => const LoadingIndicator(),
-        error: (err, stack) => Center(child: Text('Error loading ballot: $err')),
+        error: (err, stack) => Center(
+          child: Text(
+            apiErrorMessage(err, fallback: 'Could not load your ballot.'),
+          ),
+        ),
       ),
     );
   }
@@ -108,31 +113,52 @@ class _DraftBallot extends ConsumerWidget {
                       final byRef = {
                         for (final c in candidates) c.candidateRef: c,
                       };
-                      return Column(
-                        children: selections.entries
-                            .map((entry) => _BallotRow(
-                                  positionSlug: entry.key,
-                                  refs:
-                                      (entry.value is List)
-                                          ? (entry.value as List)
-                                              .map((e) => e.toString())
-                                              .toList()
-                                          : [entry.value.toString()],
-                                  positions: positions,
-                                  byRef: byRef,
-                                ))
-                            .toList(),
+                      // Resolve the opaque position slugs/ids once (audit §5 #9:
+                      // each row used to re-scan the whole list linearly).
+                      final byPositionKey = <String, Position>{};
+                      for (final p in positions) {
+                        byPositionKey[p.id] = p;
+                        if (p.slug.isNotEmpty) byPositionKey[p.slug] = p;
+                      }
+                      return ListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: selections.entries.length,
+                        itemBuilder: (context, index) {
+                          final entry =
+                              selections.entries.elementAt(index);
+                          return _BallotRow(
+                            positionSlug: entry.key,
+                            refs: (entry.value is List)
+                                ? (entry.value as List)
+                                    .map((e) => e.toString())
+                                    .toList()
+                                : [entry.value.toString()],
+                            byPositionKey: byPositionKey,
+                            byRef: byRef,
+                          );
+                        },
                       );
                     },
                     loading: () => const LoadingIndicator(),
                     error: (err, stack) => Center(
-                      child: Text('Error loading candidates: $err'),
+                      child: Text(
+                        apiErrorMessage(
+                          err,
+                          fallback: 'Could not load candidates for your ballot.',
+                        ),
+                      ),
                     ),
                   );
                 },
                 loading: () => const LoadingIndicator(),
-                error: (err, stack) => const Center(
-                  child: Text('Error loading positions.'),
+                error: (err, stack) => Center(
+                  child: Text(
+                    apiErrorMessage(
+                      err,
+                      fallback: 'Could not load positions for your ballot.',
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -237,25 +263,19 @@ class _DraftBallot extends ConsumerWidget {
 class _BallotRow extends StatelessWidget {
   final String positionSlug;
   final List<String> refs;
-  final List<Position> positions;
+  final Map<String, Position> byPositionKey;
   final Map<String, Candidate> byRef;
 
   const _BallotRow({
     required this.positionSlug,
     required this.refs,
-    required this.positions,
+    required this.byPositionKey,
     required this.byRef,
   });
 
   @override
   Widget build(BuildContext context) {
-    Position? position;
-    for (final p in positions) {
-      if (p.id == positionSlug || p.slug == positionSlug) {
-        position = p;
-        break;
-      }
-    }
+    final position = byPositionKey[positionSlug];
     final label = position?.label ?? positionSlug;
 
     return Card(

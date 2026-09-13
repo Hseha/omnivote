@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/utils/error_message.dart';
+import '../../../core/widgets/cached_avatar.dart';
 import '../../../core/widgets/loading_indicator.dart';
 import '../../../core/widgets/top_bar.dart';
 import '../../../data/models/candidate_model.dart';
@@ -25,7 +27,11 @@ final voteCandidatesProvider =
 /// in order, lets the student select 1 (or N for multi-seat positions, e.g.
 /// 12 Senators), persists the draft, and hands off to "My Ballot" to submit.
 class VoteNowScreen extends ConsumerStatefulWidget {
-  const VoteNowScreen({super.key});
+  /// When set (from a CandidateCard / profile "Vote" action), the guided flow
+  /// starts at this position instead of the first one.
+  final String? initialPositionId;
+
+  const VoteNowScreen({super.key, this.initialPositionId});
 
   @override
   ConsumerState<VoteNowScreen> createState() => _VoteNowScreenState();
@@ -35,6 +41,10 @@ class _VoteNowScreenState extends ConsumerState<VoteNowScreen> {
   int _positionIndex = 0;
   final Map<String, List<String>> _selections = {};
   bool _saving = false;
+
+  /// Guards the one-time post-frame preselection so it can't re-fire on every
+  /// rebuild while the requested position is still being loaded.
+  bool _preselected = false;
 
   @override
   Widget build(BuildContext context) {
@@ -59,11 +69,15 @@ class _VoteNowScreenState extends ConsumerState<VoteNowScreen> {
           return positionsAsync.when(
             data: (positions) => _buildFlow(positions),
             loading: () => const LoadingIndicator(),
-            error: (err, stack) => Center(child: Text('Error loading positions: $err')),
+            error: (err, stack) => Center(
+              child: Text(apiErrorMessage(err, fallback: 'Could not load positions.')),
+            ),
           );
         },
         loading: () => const LoadingIndicator(),
-        error: (err, stack) => Center(child: Text('Error: $err')),
+        error: (err, stack) => Center(
+          child: Text(apiErrorMessage(err, fallback: 'Could not check election status.')),
+        ),
       ),
     );
   }
@@ -74,6 +88,21 @@ class _VoteNowScreenState extends ConsumerState<VoteNowScreen> {
           ..addAll(positions.where((p) => p.tier == PositionTier.provincial));
     if (activePositions.isEmpty) {
       return const Center(child: Text('No active positions.'));
+    }
+
+    // One-time preselection for direct "Vote" actions (post-frame, never during
+    // build). Unknown ids are ignored and the flow just starts at position 0.
+    final requestedId = widget.initialPositionId;
+    if (!_preselected && requestedId != null) {
+      _preselected = true;
+      final idx = activePositions.indexWhere(
+        (p) => p.id == requestedId || p.slug == requestedId,
+      );
+      if (idx > 0) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) setState(() => _positionIndex = idx);
+        });
+      }
     }
 
     final position =
@@ -124,14 +153,21 @@ class _VoteNowScreenState extends ConsumerState<VoteNowScreen> {
         ),
         Expanded(
           child: candidatesAsync.when(
-            data: (candidates) => ListView(
+            data: (candidates) => ListView.builder(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              children: candidates
-                  .map((c) => _buildCandidateTile(c, position, currentRefs))
-                  .toList(),
+              itemCount: candidates.length,
+              itemBuilder: (context, index) =>
+                  _buildCandidateTile(candidates[index], position, currentRefs),
             ),
             loading: () => const LoadingIndicator(),
-            error: (err, stack) => Center(child: Text('Error: $err')),
+            error: (err, stack) => Center(
+              child: Text(
+                apiErrorMessage(
+                  err,
+                  fallback: 'Could not load candidates for this position.',
+                ),
+              ),
+            ),
           ),
         ),
         SafeArea(
@@ -199,14 +235,11 @@ class _VoteNowScreenState extends ConsumerState<VoteNowScreen> {
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              CircleAvatar(
+              CachedAvatar(
+                imageUrl: candidate.photoUrl.isNotEmpty
+                    ? candidate.photoUrl
+                    : null,
                 radius: 24,
-                backgroundImage: candidate.photoUrl.isNotEmpty
-                    ? NetworkImage(candidate.photoUrl)
-                    : null,
-                child: candidate.photoUrl.isEmpty
-                    ? const Icon(Icons.person, color: AppColors.textSecondary)
-                    : null,
               ),
               const SizedBox(width: 12),
               Expanded(

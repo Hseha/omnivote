@@ -1,4 +1,6 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/utils/error_message.dart';
 import '../../../data/models/candidacy_application_model.dart';
 import '../../../data/repositories/candidacy_repository.dart';
 
@@ -60,10 +62,31 @@ class CandidacyNotifier extends StateNotifier<CandidacyState> {
     } catch (e) {
       state = state.copyWith(
         isSubmitting: false,
-        errorMessage: 'Application failed. Please try again.',
+        errorMessage: _candidacyErrorMessage(e),
       );
       return false;
     }
+  }
+
+  /// Surfaces the real failure instead of masking every error: server message,
+  /// phase rejection (403), and duplicate application (409) each get a
+  /// distinct, actionable message (audit §2 #9).
+  String _candidacyErrorMessage(Object error) {
+    if (error is DioException) {
+      final statusCode = error.response?.statusCode;
+      final data = error.response?.data;
+      final serverMessage = data is Map ? data['message']?.toString() : null;
+      if (statusCode == 409) {
+        return 'You already have a candidacy application under review.';
+      }
+      if (statusCode == 403) {
+        return 'Candidacy applications are only accepted during the registration phase.';
+      }
+      if (serverMessage != null && serverMessage.isNotEmpty) {
+        return serverMessage;
+      }
+    }
+    return apiErrorMessage(error, fallback: 'Application failed. Please try again.');
   }
 
   Future<String?> applicationStatus() async {
