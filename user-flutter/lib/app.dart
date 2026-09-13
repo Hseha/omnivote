@@ -15,15 +15,10 @@ class OmniVoteApp extends ConsumerStatefulWidget {
 
 class _OmniVoteAppState extends ConsumerState<OmniVoteApp> {
   @override
-  void initState() {
-    super.initState();
-    // Check authentication status on app launch
-    Future.microtask(() => ref.read(authProvider.notifier).checkAuth());
-  }
-
-  @override
   Widget build(BuildContext context) {
-    // Listen for auth state changes to handle global navigation
+    // Listen for auth state changes to handle global navigation.
+    // Auth bootstrap happens once, in SplashScreen ('/splash', the app's
+    // initial location) — see app_router.dart (audit §2 #11).
     ref.listen<AuthState>(authProvider, (previous, next) {
       final wasAuthenticated = previous?.isAuthenticated ?? false;
       final isNowAuthenticated = next.isAuthenticated;

@@ -24,9 +24,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             password: _passwordController.text,
           );
 
-      if (success && mounted) {
-        context.go('/dashboard');
-      } else if (mounted) {
+      // Navigation after a successful login is handled by the global auth
+      // listener in app.dart (single navigation path — audit §2 #11).
+      if (!mounted) return;
+      if (!success) {
         final error = ref.read(authProvider).errorMessage ?? 'Login failed';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

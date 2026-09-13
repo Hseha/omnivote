@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/utils/error_message.dart';
 import '../../../core/widgets/loading_indicator.dart';
 import '../../../core/widgets/top_bar.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../providers/dashboard_provider.dart';
+import '../providers/election_status_provider.dart';
 import '../widgets/registration_banner.dart';
 import '../widgets/registration_details_card.dart';
 import '../widgets/turnout_progress.dart';
@@ -28,9 +30,17 @@ class DashboardScreen extends ConsumerWidget {
       backgroundColor: AppColors.backgroundGray,
       appBar: const TopBar(title: 'Dashboard'),
       body: registrationAsync.when(
-        data: (registration) => ListView(
-          padding: const EdgeInsets.all(16.0),
-          children: [
+        data: (registration) => RefreshIndicator(
+          onRefresh: () async {
+            // Pull-to-refresh: re-fetch both the registration and the phase
+            // status so the dashboard reflects an admin phase flip in place.
+            ref.invalidate(registrationDataProvider);
+            ref.read(electionStatusEpochProvider.notifier).state++;
+          },
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(16.0),
+            children: [
             RegistrationBanner(
               registrationDate: registration.registrationDate,
             ),
@@ -78,6 +88,7 @@ class DashboardScreen extends ConsumerWidget {
             const EligibilityFAQCard(),
             const SizedBox(height: 40),
           ],
+          ),
         ),
         loading: () => const LoadingIndicator(),
         error: (error, stack) => Center(
@@ -86,10 +97,18 @@ class DashboardScreen extends ConsumerWidget {
             children: [
               const Icon(Icons.error_outline, size: 48, color: AppColors.errorRed),
               const SizedBox(height: 16),
-              Text('Error loading dashboard: $error'),
+              Text(
+                apiErrorMessage(
+                  error,
+                  fallback: 'Could not load your registration status.',
+                ),
+              ),
               const SizedBox(height: 16),
               ElevatedButton(
-                onPressed: () => ref.refresh(registrationDataProvider),
+                onPressed: () {
+                  ref.invalidate(registrationDataProvider);
+                  ref.read(electionStatusEpochProvider.notifier).state++;
+                },
                 child: const Text('Retry'),
               ),
             ],

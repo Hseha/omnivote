@@ -4,7 +4,7 @@ import { defineConfig } from 'vite'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
-    server: {
+  server: {
     proxy: {
       '/api': {
         target: 'https://debian.tail7e9e1e.ts.net',
