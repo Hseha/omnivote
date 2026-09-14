@@ -1,0 +1,44 @@
+# ============================================================================
+# OmniVote — Laravel queue worker (24/7 background jobs)
+# ----------------------------------------------------------------------------
+# The app uses QUEUE_CONNECTION=database, so things like vote confirmation
+# emails / import jobs run from the queue. This unit keeps a worker alive,
+# restarts it on crash, and starts on boot.
+#
+# Install:
+#   sudo cp omnivote-worker.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now omnivote-worker
+#
+# NOTE: restarting with "php artisan queue:restart" sends workers a clean
+# signal to finish their current job and restart (deploy-safe).
+# ============================================================================
+
+[Unit]
+Description=OmniVote Laravel queue worker
+After=network.target mysql.service mariadb.service
+Wants=mysql.service mariadb.service
+
+[Service]
+User=www-data
+Group=www-data
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=30s
+
+# --max-time so each worker restarts periodically and picks up new code -------
+# (pin php8.3; adjust if you installed a different PHP 8.x version)
+ExecStart=/usr/bin/php8.3 /var/www/omnivote/backend-laravel/artisan queue:work \
+    --sleep=3 --tries=3 --max-time=3600 --max-jobs=1000
+
+# Kill children too, so jobs are not orphaned on restart
+KillSignal=SIGQUIT
+KillMode=mixed
+
+# --- log to journald ----------------------------------------------------------
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=omnivote-worker
+
+[Install]
+WantedBy=multi-user.target
