@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import './AdminDashboard.css';
 import api from './lib/api';
 import { useAuth } from './lib/AuthContext';
@@ -45,6 +45,8 @@ export default function AdminDashboard({ onLogout, activeView = 'dashboard', onN
           ? 'Teacher'
           : currentUser.role || 'System Administrator';
 
+      // The profile is synchronized with the authenticated user supplied by the server.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setUserProfile((previous) => ({
         ...previous,
         name: currentUser.name || previous.name,
@@ -118,34 +120,34 @@ export default function AdminDashboard({ onLogout, activeView = 'dashboard', onN
         </div>
 
         <nav className="nav-menu">
-          <button 
+          <button
             type="button" 
             className={`nav-item ${activeView === 'dashboard' ? 'active' : ''}`}
             onClick={() => onNavigate && onNavigate('dashboard')}
           >
             <LayoutDashboard size={18} /> Dashboard
           </button>
-          <button 
+          <button
             type="button" 
             className={`nav-item ${activeView === 'candidates' ? 'active' : ''}`}
             onClick={() => onNavigate && onNavigate('candidates')}
           >
             <Users size={18} /> Candidates
           </button>
-          <button 
+          {currentUser?.role !== 'teacher' && <button
             type="button" 
             className={`nav-item ${activeView === 'voters' ? 'active' : ''}`}
             onClick={() => onNavigate && onNavigate('voters')}
           >
             <UserCheck size={18} /> Student Registry
-          </button>
-          <button 
+          </button>}
+          {currentUser?.role !== 'teacher' && <button
             type="button" 
             className={`nav-item ${activeView === 'setup' ? 'active' : ''}`}
             onClick={() => onNavigate && onNavigate('setup')}
           >
             <Sliders size={18} /> Election Setup
-          </button>
+          </button>}
           <button 
             type="button" 
             className={`nav-item ${activeView === 'results' ? 'active' : ''}`}
@@ -153,13 +155,13 @@ export default function AdminDashboard({ onLogout, activeView = 'dashboard', onN
           >
             <BarChart2 size={18} /> Results
           </button>
-          <button 
-            type="button" 
+          {currentUser?.role === 'admin' && <button
+            type="button"
             className={`nav-item ${activeView === 'settings' ? 'active' : ''}`}
             onClick={() => onNavigate && onNavigate('settings')}
           >
             <Settings size={18} /> Settings
-          </button>
+          </button>}
         </nav>
 
         {/* Sidebar Footer */}

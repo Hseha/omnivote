@@ -30,7 +30,7 @@ class AdminAuthController extends Controller
             return response()->json(['message' => 'Invalid credentials'], 401);
         }
 
-        if (! in_array($user->role, ['admin', 'teacher'], true)) {
+        if (! in_array($user->role, ['admin', 'teacher', 'ssg_president'], true)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 

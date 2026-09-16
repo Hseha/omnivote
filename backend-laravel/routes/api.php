@@ -3,6 +3,7 @@
 use App\Http\Controllers\AdminAuthController;
 use App\Http\Controllers\AdminCandidateController;
 use App\Http\Controllers\AdminDashboardController;
+use App\Http\Controllers\AnnouncementController;
 use App\Http\Controllers\BallotController;
 use App\Http\Controllers\CandidateController;
 use App\Http\Controllers\CandidacyController;
@@ -13,6 +14,7 @@ use App\Http\Controllers\ResultsController;
 use App\Http\Controllers\StudentAuthController;
 use App\Http\Controllers\RegistrationController;
 use App\Http\Controllers\VoteController;
+use App\Http\Controllers\SsgOfficerController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -44,24 +46,45 @@ Route::prefix('admin')->group(function () {
 
     Route::middleware('auth')->group(function () {
         // Dashboard
-        Route::get('/dashboard-overview', [AdminDashboardController::class, 'overview']);
+        Route::get('/dashboard-overview', [AdminDashboardController::class, 'overview'])
+            ->middleware('permission:dashboard.view');
 
         // Candidate review (React Candidates screen)
-        Route::get('/candidates', [AdminCandidateController::class, 'index']);
-        Route::patch('/candidates/{candidate}', [AdminCandidateController::class, 'update']);
+        Route::get('/candidates', [AdminCandidateController::class, 'index'])
+            ->middleware('permission:candidates.view');
+        Route::patch('/candidates/{candidate}', [AdminCandidateController::class, 'update'])
+            ->middleware('permission:candidates.review');
 
         // Registrar CSV import (React Student Registry screen)
-        Route::post('/registrar/import', [RegistrarImportController::class, 'import']);
-        Route::get('/registrar/imports', [RegistrarImportController::class, 'index']);
+        Route::post('/registrar/import', [RegistrarImportController::class, 'import'])
+            ->middleware('permission:registrar.import');
+        Route::get('/registrar/imports', [RegistrarImportController::class, 'index'])
+            ->middleware('permission:registrar.import');
 
         // Election configuration (React Election Setup screen)
-        Route::get('/election/config', [ElectionController::class, 'config']);
-        Route::put('/election/config', [ElectionController::class, 'updateConfig']);
+        Route::get('/election/config', [ElectionController::class, 'config'])
+            ->middleware('permission:election.view_config');
+        Route::put('/election/config', [ElectionController::class, 'updateConfig'])
+            ->middleware('permission:election.update_config');
 
         // Results (React Results screen)
-        Route::get('/results', [AdminDashboardController::class, 'results']);
+        Route::get('/results', [AdminDashboardController::class, 'results'])
+            ->middleware('permission:results.view');
+
+        Route::get('/ssg/officers', [SsgOfficerController::class, 'index'])
+            ->middleware('permission:officers.view');
+        Route::get('/ssg/announcements', [AnnouncementController::class, 'index'])
+            ->middleware('permission:announcements.view');
+        Route::post('/ssg/announcements', [AnnouncementController::class, 'store'])
+            ->middleware('permission:announcements.create');
+        Route::put('/ssg/announcements/{announcement}', [AnnouncementController::class, 'update'])
+            ->middleware('permission:announcements.edit');
+        Route::delete('/ssg/announcements/{announcement}', [AnnouncementController::class, 'destroy'])
+            ->middleware('permission:announcements.edit');
     });
 });
+
+Route::get('/announcements', [AnnouncementController::class, 'publicIndex']);
 
 // ------------------------------------------------------------------------
 // Election lifecycle (public read used by BOTH clients)

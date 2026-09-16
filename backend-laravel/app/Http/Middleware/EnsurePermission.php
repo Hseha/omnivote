@@ -12,7 +12,8 @@ class EnsurePermission
     {
         $user = $request->user();
         $permissions = config("permissions.roles.{$user?->role}", []);
-        $allowed = $permissions === '*' || in_array($permission, $permissions, true);
+        $allowed = in_array($user?->role, config('permissions.panel_roles', []), true)
+            && in_array($permission, $permissions, true);
 
         if (! $user || ! $allowed) {
             return response()->json(['message' => 'You are not authorized to perform this action.'], 403);
