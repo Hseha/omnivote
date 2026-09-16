@@ -10,5 +10,11 @@
     "email": "teacher@omnivote.test",
     "password": "teacher123",
     "role": "teacher"
+  },
+  {
+    "name": "SSG President",
+    "email": "president@omnivote.test",
+    "password": "OmniVote-Ssg-2026!",
+    "role": "ssg_president"
   }
 ]

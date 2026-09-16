@@ -30,7 +30,11 @@ class AdminDashboardController extends Controller
             'recent_actions' => [],
             'user' => [
                 'name' => auth()->user()->name,
-                'role' => auth()->user()->role === 'admin' ? 'System Administrator' : 'Teacher',
+                'role' => match (auth()->user()->role) {
+                    'admin' => 'System Administrator',
+                    'ssg_president' => 'SSG President',
+                    default => 'Teacher',
+                },
             ],
         ]);
     }
