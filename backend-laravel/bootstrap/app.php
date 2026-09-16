@@ -17,6 +17,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->statefulApi()
             ->alias([
                 'checkPhase' => \App\Http\Middleware\CheckPhase::class,
+                'permission' => \App\Http\Middleware\EnsurePermission::class,
             ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
