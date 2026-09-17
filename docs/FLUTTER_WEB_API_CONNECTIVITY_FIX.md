@@ -42,10 +42,11 @@ POST /api/auth/login
 
 ### CORS configuration
 
-Laravel currently allows `http://localhost:5173`, `APP_URL`, and
-`FRONTEND_URL`. A Flutter web server on `http://localhost:8080` is a different
-origin and must be added to `FRONTEND_URL` (or to the configured allowed
-origins). `localhost:8080` and `127.0.0.1:8080` are different origins too.
+Laravel's `backend-laravel/config/cors.php` allows `http://localhost:5173`,
+`http://localhost:8080`, `http://127.0.0.1:8080`, `APP_URL`, and
+`FRONTEND_URL`. A Flutter web server on `http://localhost:8080` is already
+covered by the hardcoded origins. In production, use `FRONTEND_URL` to allow
+additional origins.
 
 ## Recommended fix: test Flutter web against the production API
 
@@ -76,7 +77,9 @@ problem, not a Flutter login problem.
 
 ### 2. Allow the Flutter web origin in Laravel
 
-On the server, edit the real production `.env` (never commit it) and set:
+When the server runs through Nginx (production), the Flutter web origin
+differs from `localhost`. Add it via `FRONTEND_URL` in the production
+`.env`:
 
 ```env
 FRONTEND_URL=http://localhost:8080
@@ -85,6 +88,10 @@ FRONTEND_URL=http://localhost:8080
 If the page is opened using `127.0.0.1:8080`, use that origin instead. If both
 origins are required, update `backend-laravel/config/cors.php` to allow both,
 then clear cached configuration.
+
+> **Note:** For local development (`php artisan serve` on `localhost:8000`),
+> the origins `http://localhost:8080` and `http://127.0.0.1:8080` are already
+> hardcoded in `cors.php`, so no extra configuration is needed.
 
 After changing `.env`:
 
@@ -128,8 +135,9 @@ flutter run -d web-server --web-port 8080 \
   --dart-define=API_BASE_URL=http://localhost:8000/api
 ```
 
-The Laravel CORS configuration must allow `http://localhost:8080`. This setup
-is not the production path and should not be used as a workaround if the
+The Laravel CORS configuration already allows `http://localhost:8080` and
+`http://127.0.0.1:8080`, so no extra CORS change is needed for local development.
+This setup is not the production path and should not be used as a workaround if the
 server is meant to be authoritative.
 
 ## Browser diagnostics
@@ -160,7 +168,7 @@ cd /var/www/omnivote/backend-laravel
 php artisan optimize:clear
 sudo nginx -t
 sudo systemctl status nginx
-sudo systemctl status php8.4-fpm
+sudo systemctl status php8.3-fpm
 ```
 
 The deployed Nginx configuration must point to the PHP-FPM socket that exists
