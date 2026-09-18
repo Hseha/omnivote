@@ -6,6 +6,7 @@ import StudentRegistry from './StudentRegistry';
 import ElectionSetup from './ElectionSetup';
 import Results from './Results';
 import Settings from './Settings';
+import UserManagement from './UserManagement';
 import SsgPresident from './SsgPresident';
 import { AuthProvider, useAuth } from './lib/AuthContext';
 import { allowedViews, defaultView } from './lib/permissions';
@@ -70,6 +71,14 @@ function AppShell() {
     case 'settings':
       return (
         <Settings
+          onLogout={undefined}
+          activeView={currentView}
+          onNavigate={navigate}
+        />
+      );
+    case 'user_management':
+      return (
+        <UserManagement
           onLogout={undefined}
           activeView={currentView}
           onNavigate={navigate}
