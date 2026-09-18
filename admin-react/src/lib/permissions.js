@@ -1,5 +1,5 @@
 const ROLE_VIEWS = {
-  admin: ['dashboard', 'candidates', 'voters', 'setup', 'results', 'settings'],
+  admin: ['dashboard', 'candidates', 'voters', 'setup', 'results', 'settings', 'user_management'],
   teacher: ['dashboard', 'candidates', 'results'],
   ssg_president: ['ssg'],
 };

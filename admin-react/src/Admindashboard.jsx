@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import DashboardWidgets from './components/DashboardWidgets';
 import './AdminDashboard.css';
 import api from './lib/api';
 import { useAuth } from './lib/AuthContext';
@@ -28,32 +29,44 @@ export default function AdminDashboard({ onLogout, activeView = 'dashboard', onN
   });
   const [announcements, setAnnouncements] = useState([]);
   const [recentActions, setRecentActions] = useState([]);
+  const [accountsSummary, setAccountsSummary] = useState({ total: 0, active: 0 });
   const [electionPhase, setElectionPhase] = useState('Voting Open');
-  const [userProfile, setUserProfile] = useState({
-    time : '14:32:05 EST',
-    name: 'Election Admin',
-    role: 'System Administrator',
-    avatar: 'https://i.pravatar.cc/100?img=32',
-  });
+  const [timeString, setTimeString] = useState('');
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (currentUser) {
-      const normalizedRole = currentUser.role === 'admin'
-        ? 'System Administrator'
-        : currentUser.role === 'teacher'
-          ? 'Teacher'
-          : currentUser.role || 'System Administrator';
+  // Derive profile from authenticated user — no local state flickering.
+  const userProfile = currentUser
+    ? {
+        time: timeString,
+        name: currentUser.name || 'Admin User',
+        role: currentUser.role === 'admin'
+          ? 'System Administrator / Election Admin'
+          : currentUser.role === 'teacher'
+            ? 'Teacher'
+            : currentUser.role === 'ssg_president'
+              ? 'SSG President'
+              : (currentUser.role || 'Administrator'),
+        avatar: currentUser.avatar_url
+          ? currentUser.avatar_url
+          : `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(currentUser.name || 'U')}&backgroundColor=2563eb`,
+      }
+    : {
+        time: timeString,
+        name: 'Loading...',
+        role: '',
+        avatar: '',
+      };
 
-      // The profile is synchronized with the authenticated user supplied by the server.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setUserProfile((previous) => ({
-        ...previous,
-        name: currentUser.name || previous.name,
-        role: normalizedRole,
-      }));
-    }
-  }, [currentUser]);
+  // Update clock every second
+  useEffect(() => {
+    const tick = () => {
+      const d = new Date();
+      setTimeString(d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' EST');
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -66,7 +79,8 @@ export default function AdminDashboard({ onLogout, activeView = 'dashboard', onN
         if (data.announcements) setAnnouncements(data.announcements);
         if (data.recent_actions) setRecentActions(data.recent_actions);
         if (data.election_phase) setElectionPhase(data.election_phase);
-        if (data.user) setUserProfile(data.user);
+        if (data.accounts) setAccountsSummary(data.accounts);
+        // Profile comes from currentUser prop (auth context) — no separate state needed.
       } catch (error) {
         console.warn('Backend API connection pending or unavailable:', error.message);
       } finally {
@@ -302,6 +316,14 @@ export default function AdminDashboard({ onLogout, activeView = 'dashboard', onN
             </tbody>
           </table>
         </section>
+
+        <DashboardWidgets
+          stats={statsData}
+          accounts={accountsSummary}
+          electionPhase={electionPhase}
+          recentActions={recentActions}
+          loading={loading}
+        />
       </main>
     </div>
   );
