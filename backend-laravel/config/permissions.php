@@ -11,6 +11,7 @@ return [
             'election.view_config',
             'election.update_config',
             'results.view',
+            'manage_accounts',
             'officers.view',
             'announcements.view',
             'announcements.create',

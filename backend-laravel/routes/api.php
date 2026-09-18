@@ -71,6 +71,16 @@ Route::prefix('admin')->group(function () {
         Route::get('/results', [AdminDashboardController::class, 'results'])
             ->middleware('permission:results.view');
 
+        // User access management (React User Management screen)
+        Route::get('/users', [\App\Http\Controllers\AdminUserController::class, 'index'])
+            ->middleware('permission:manage_accounts');
+        Route::patch('/users/{user}/role', [\App\Http\Controllers\AdminUserController::class, 'updateRole'])
+            ->middleware('permission:manage_accounts');
+        Route::patch('/users/{user}/status', [\App\Http\Controllers\AdminUserController::class, 'updateStatus'])
+            ->middleware('permission:manage_accounts');
+        Route::post('/users/{user}/password-reset', [\App\Http\Controllers\AdminUserController::class, 'resetPassword'])
+            ->middleware('permission:manage_accounts');
+
         Route::get('/ssg/officers', [SsgOfficerController::class, 'index'])
             ->middleware('permission:officers.view');
         Route::get('/ssg/announcements', [AnnouncementController::class, 'index'])
