@@ -55,4 +55,12 @@ export default function DashboardWidgets({ stats = {}, accounts = {}, electionPh
     </>
   );
 }
-function getTimeAgo(s) { if (sed -n '53,65p' /home/Michael/omnivote/admin-react/src/Admindashboard.jsx) return 'just now'; const d = new Date(s), n = new Date(), ds = Math.floor((n-d)/1000); if (ds<60) return 'just now'; if (ds<3600) return Math.floor(ds/60)+'m ago'; if (ds<86400) return Math.floor(ds/3600)+'h ago'; if (ds<604800) return Math.floor(ds/86400)+'d ago'; return d.toLocaleDateString('en-US',{month:'short',day:'numeric'}); }
+function getTimeAgo(s) {
+  if (!s) return 'just now';
+  const d = new Date(s), n = new Date(), ds = Math.floor((n - d) / 1000);
+  if (ds < 60) return 'just now';
+  if (ds < 3600) return Math.floor(ds / 60) + 'm ago';
+  if (ds < 86400) return Math.floor(ds / 3600) + 'h ago';
+  if (ds < 604800) return Math.floor(ds / 86400) + 'd ago';
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
