@@ -54,7 +54,7 @@ class SettingsController extends Controller
         ],
         'voting' => [
             'maxVotesPerVoter', 'allowVoteChange', 'registrationStart',
-            'registrationEnd', 'votingStart', 'votingEnd',
+            'registrationEnd', 'votingStart', 'votingEnd', 'termEndsAt',
             'showResultsAfterClose', 'voteConfirmationRequired',
         ],
         'branding' => [
@@ -224,11 +224,37 @@ class SettingsController extends Controller
      */
     private function validateVotingWindow(Request $request): ?string
     {
-        $registrationOpens = self::parseDateTime($request->input('registrationStart'));
-        $registrationCloses = self::parseDateTime($request->input('registrationEnd'));
-        $votingOpens = self::parseDateTime($request->input('votingStart'));
-        $votingCloses = self::parseDateTime($request->input('votingEnd'));
-        $termEndsAt = self::parseDateTime($request->input('termEndsAt'));
+        $fields = [
+            'registrationStart' => 'Registration Opens',
+            'registrationEnd' => 'Registration Closes',
+            'votingStart' => 'Voting Opens',
+            'votingEnd' => 'Voting Closes',
+            'termEndsAt' => 'Term Ends',
+        ];
+
+        // A malformed instant used to be silently persisted: parseDateTime()
+        // swallows the error, the comparison checks then saw `null` and passed,
+        // and the junk string sat in election_settings forever. TermArchive
+        // re-parses the same way, so the panel just displayed "Not set" with
+        // nothing to indicate the save had been accepted. Refuse it up front
+        // instead — a typo should be an error, not a mystery.
+        $dates = [];
+        foreach ($fields as $field => $label) {
+            $raw = $request->input($field);
+            $dates[$field] = ($raw === null || (is_string($raw) && trim($raw) === ''))
+                ? null
+                : self::parseDateTime($raw);
+
+            if ($dates[$field] === null && $raw !== null && ! (is_string($raw) && trim($raw) === '')) {
+                return "{$label} is not a valid date and time.";
+            }
+        }
+
+        $registrationOpens = $dates['registrationStart'];
+        $registrationCloses = $dates['registrationEnd'];
+        $votingOpens = $dates['votingStart'];
+        $votingCloses = $dates['votingEnd'];
+        $termEndsAt = $dates['termEndsAt'];
 
         if ($registrationOpens && $registrationCloses && $registrationCloses->lte($registrationOpens)) {
             return 'Registration Closes must be after Registration Opens.';

@@ -25,6 +25,7 @@ import { writeLocalAvatar } from './lib/auth';
 import { useAuth } from './lib/AuthContext';
 import { useTheme } from './lib/ThemeContext';
 import { refreshBranding } from './lib/branding';
+import { useElectionStatus } from './lib/ElectionStatusContext';
 import TwoFactorSetup from './TwoFactorSetup';
 import './Settings.css';
 
@@ -65,6 +66,35 @@ function persistSettings(settings) {
   } catch {
     /* storage full / private mode — settings still work in-memory */
   }
+}
+
+/* ------------------------------------------------------------------------
+   School-year quick set
+   Hand-typing the Term Ends date is the most error-prone thing on this screen:
+   an off-by-one year files last term's winners under the wrong "SY ####-####"
+   label forever, and a date left in the past silently archives every certified
+   winner on the next page load. So instead of only a free-text clock, the Term
+   Ends dialog offers the two school years an admin realistically needs.
+
+   A Philippine school year runs June-May, which is exactly the derivation
+   TermArchive::labelFor() uses on the backend: a term ending in the first half
+   of the calendar year belongs to the SY that started the year before. Both
+   sides must agree or the Past Terms grouping drifts from the SY chip shown
+   here, so the arithmetic is kept deliberately identical.
+   ------------------------------------------------------------------------ */
+
+/* The "SY ####-####" label a term ending at `iso` will be filed under.
+   Deliberately reads UTC fields, because that is what TermArchive::labelFor()
+   does on the backend (app.timezone is UTC). Reading local fields instead
+   drifts by a year for any admin whose offset pushes local May 31 23:59 past
+   midnight UTC — a -4h zone turns the "End of SY 2026-2027" chip into
+   2027-06-01T03:59Z, which Past Terms then groups as SY 2027-2028. */
+function schoolYearOf(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const start = d.getUTCMonth() + 1 <= 5 ? d.getUTCFullYear() - 1 : d.getUTCFullYear();
+  return `SY ${start}-${start + 1}`;
 }
 
 /* ------------------------------------------------------------------------
@@ -157,7 +187,7 @@ function roleLabel(role) {
     case 'admin':
       return 'System Administrator';
     case 'teacher':
-      return 'Teacher';
+      return 'SSG Adviser';
     case 'ssg_president':
       return 'SSG President';
     case 'candidate':
@@ -289,6 +319,18 @@ function VotingWindowDialog({ field, voting, onCommit, onClose }) {
   // correctly — otherwise a "9:03 PM" deadline could fire 8 hours late.
   const nextIso = draft ? new Date(`${draft}:00`).toISOString() : '';
 
+  // A term end that is already behind us fires TermArchive::runIfDue() the
+  // moment the setting is read back, which archives every certified winner and
+  // drops them off the live SSG roster. That is recoverable (Past Terms) but it
+  // is not something an admin should discover by clicking Save, so the confirm
+  // step says so out loud.
+  const isStaleTermEnd = field === 'termEndsAt' && nextIso !== '' && new Date(nextIso) <= new Date();
+
+  // Hour-scale quick shifts make no sense for a year-scale term, and shifting
+  // from "now" when nothing is set would silently pick a term that ends in
+  // hours. Only offer them once there is a real value to nudge.
+  const showQuickShift = field !== 'termEndsAt' || Boolean(draft);
+
   const goToConfirm = () => {
     const errs = validateVoting({ ...voting, [field]: nextIso });
     if (errs.length) {
@@ -350,24 +392,26 @@ function VotingWindowDialog({ field, voting, onCommit, onClose }) {
                 type="datetime-local"
                 className="setting-input settings-window-input"
                 value={draft}
-                onChange={(e) => setDraft(e.target.value)}
+                onChange={(e) => { setDraft(e.target.value); setError(''); }}
               />
               {draft && <p className="settings-window-preview">This sets it to {formatDateTime(nextIso)}.</p>}
               {!draft && <p className="settings-window-preview">Leave empty to clear this window (results and gating depend on the other configured times).</p>}
-              <div className="settings-quick-shift">
-                <span className="settings-quick-shift-label">Quick shift</span>
-                {QUICK_SHIFT_HOURS.map(({ label, hours }) => (
-                  <button
-                    key={label}
-                    type="button"
-                    className="shift-chip"
-                    onClick={() => { setDraft(shiftDraft(draft, hours)); setError(''); }}
-                    title={`Push ${cfg.label} later by ${hours} hour${hours > 1 ? 's' : ''}`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
+              {showQuickShift && (
+                <div className="settings-quick-shift">
+                  <span className="settings-quick-shift-label">Quick shift</span>
+                  {QUICK_SHIFT_HOURS.map(({ label, hours }) => (
+                    <button
+                      key={label}
+                      type="button"
+                      className="shift-chip"
+                      onClick={() => { setDraft(shiftDraft(draft, hours)); setError(''); }}
+                      title={`Push ${cfg.label} later by ${hours} hour${hours > 1 ? 's' : ''}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
               {error && <div className="settings-dialog-error"><AlertTriangle size={14} /> {error}</div>}
             </>
           ) : (
@@ -381,10 +425,22 @@ function VotingWindowDialog({ field, voting, onCommit, onClose }) {
                   Clear <strong>{cfg.label}</strong> (no time set)?
                 </p>
               )}
+              {field === 'termEndsAt' && (
+                <p className="settings-window-hint">
+                  {isStaleTermEnd
+                    ? 'This time has already passed, so the term closes as soon as the setting is saved: winners are archived to Past Terms and leave the live officer roster.'
+                    : 'On this date the term closes automatically — winners are archived to Past Terms under the school-year label and leave the live officer roster.'}
+                </p>
+              )}
               <p className="settings-window-hint">
                 This will be applied immediately to the election timeline that the
                 dashboard, status badge, and results visibility follow.
               </p>
+              {isStaleTermEnd && (
+                <div className="settings-dialog-caution">
+                  <AlertTriangle size={14} /> This term ends in the past.
+                </div>
+              )}
               {error && <div className="settings-dialog-error"><AlertTriangle size={14} /> {error}</div>}
             </>
           )}
@@ -503,6 +559,13 @@ function ToggleRow({ label, desc, checked, onChange, onLabel = 'Enabled', offLab
 export default function Settings({ onLogout, onNavigate, initialTab = 'profile' }) {
   const { user, logout, updateUserAvatar } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  // Shared phase poller. The voting window decides the derived phase, and the
+  // provider is mounted above every view (App.jsx), so navigating away from
+  // Settings never remounts it. Without an explicit refresh() after a save the
+  // header badge, dashboard phase card, and Results gating would keep showing
+  // the previous phase until the 30 s tick landed — or until a hard refresh
+  // remounted the provider. Voting is the only section that moves the phase.
+  const { refresh: refreshElectionStatus } = useElectionStatus();
   // Platform configuration tabs (security, voting, branding, backup,
   // notifications) are admin-only; teacher and SSG President accounts get the
   // read-only My Profile view plus the personal Appearance tab. A deep link to
@@ -676,6 +739,13 @@ export default function Settings({ onLogout, onNavigate, initialTab = 'profile' 
       }
       if (section === 'branding') {
         await refreshBranding();
+      }
+      if (section === 'voting') {
+        // Re-derive the phase now instead of waiting out the poll interval.
+        // Fire-and-forget on purpose: the save already succeeded, so a failed
+        // status fetch must not turn a good save into a reported error — the
+        // poller retries on its next tick and the badge self-heals.
+        refreshElectionStatus();
       }
       setSaved(`${section.charAt(0).toUpperCase() + section.slice(1)} settings saved.`);
       setTimeout(() => setSaved(''), 3000);
@@ -1144,7 +1214,10 @@ export default function Settings({ onLogout, onNavigate, initialTab = 'profile' 
 
                   <div className="setting-card">
                     <div className="setting-label">Term Ends</div>
-                    <p className="setting-desc">When this term ends, winners are archived to a Past Terms record</p>
+                    <p className="setting-desc">
+                      When this term ends, winners are archived to a Past Terms record
+                      {schoolYearOf(form.voting.termEndsAt) && ` under ${schoolYearOf(form.voting.termEndsAt)}`}
+                    </p>
                     <button type="button" className="setting-window-button" onClick={() => setWindowDialog({ field: 'termEndsAt' })}>
                       <Clock size={16} className="setting-window-icon" />
                       <span className="setting-window-value">{formatDateTime(form.voting.termEndsAt)}</span>
