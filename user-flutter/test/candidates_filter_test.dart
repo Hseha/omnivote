@@ -4,10 +4,12 @@ import 'package:omnivote/features/candidates/providers/candidates_provider.dart'
 
 void main() {
   group('CandidatesFilter', () {
-    test('defaults to the school tier with no position', () {
+    test('defaults to the national tier with no position', () {
       final filter = CandidatesFilter();
-      expect(filter.tier, PositionTier.school);
+      expect(filter.tier, PositionTier.national);
       expect(filter.positionId, isNull);
+      expect(filter.department, isNull);
+      expect(filter.party, isNull);
       expect(filter.search, '');
       expect(filter.grade, isNull);
     });
@@ -17,12 +19,16 @@ void main() {
       final next = filter.copyWith(
         tier: PositionTier.provincial,
         positionId: 'senator',
+        department: 'College of Computer Studies',
+        party: 'ASLE',
         search: 'maria',
         grade: 'Grade 11',
       );
 
       expect(next.tier, PositionTier.provincial);
       expect(next.positionId, 'senator');
+      expect(next.department, 'College of Computer Studies');
+      expect(next.party, 'ASLE');
       expect(next.search, 'maria');
       expect(next.grade, 'Grade 11');
     });
@@ -31,7 +37,14 @@ void main() {
       final filter = CandidatesFilter(positionId: 'senator');
       final next = filter.copyWith(clearPositionId: true);
       expect(next.positionId, isNull);
-      expect(next.tier, PositionTier.school);
+      expect(next.tier, PositionTier.national);
+    });
+
+    test('clearDepartment and clearParty clear their fields', () {
+      final filter = CandidatesFilter(department: 'CCS', party: 'SVEA');
+      final next = filter.copyWith(clearDepartment: true, clearParty: true);
+      expect(next.department, isNull);
+      expect(next.party, isNull);
     });
   });
 }

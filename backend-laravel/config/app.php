@@ -56,6 +56,41 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Frontend URL
+    |--------------------------------------------------------------------------
+    |
+    | Where the React admin SPA lives, so password-reset emails can link back
+    | to it (the SPA reads ?token= & ?email= from the URL and posts the new
+    | password to the API). When the panel is served from the same origin as
+    | the API (the default deployment), this falls back to APP_URL.
+    |
+    */
+
+    'frontend_url' => env('FRONTEND_URL', env('APP_URL', 'http://localhost:5173')),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Additional Trusted Hosts
+    |--------------------------------------------------------------------------
+    |
+    | Extra host names the API answers to, beyond APP_URL/FRONTEND_URL and the
+    | loopback names. Requests whose Host header matches none of them are
+    | rejected with a 400, which is what stops a caller from steering generated
+    | URLs to a domain they control (Host-header poisoning). Add a Tailscale IP
+    | or an alternate DNS name here if you reach the panel by one. Ports are
+    | ignored. Read via App\Support\TrustedHosts, and inactive in `local`.
+    |
+    | Example: TRUSTED_HOSTS="100.84.115.25,omnivote.internal"
+    |
+    */
+
+    'trusted_hosts' => array_values(array_filter(array_map(
+        'trim',
+        explode(',', (string) env('TRUSTED_HOSTS', '')),
+    ))),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |

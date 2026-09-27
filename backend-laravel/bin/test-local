@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# ============================================================================
+# OmniVote — run the backend test suite locally.
+# ----------------------------------------------------------------------------
+#   ./bin/test-local                    # whole suite
+#   ./bin/test-local --filter Position  # extra args pass through to phpunit
+#   PHP=php8.3 ./bin/test-local         # pick a binary
+#
+# WHY THIS EXISTS
+#
+# The suite builds an isolated in-memory SQLite database per test, and
+# tests/bootstrap.php refuses to start without pdo_sqlite rather than silently
+# skipping 164 of 185 tests.
+#
+# The usual workarounds are both clumsy on a box where the driver is installed
+# but not enabled in php.ini:
+#
+#   * `php artisan test` (and therefore `composer test`) re-executes phpunit as a
+#     SUBPROCESS, which does not inherit `-d extension=...` flags — so passing
+#     them to artisan has no effect and the bootstrap check still aborts.
+#   * Always passing `-d extension=pdo_sqlite.so` warns "Module already loaded"
+#     on a machine where the extension IS enabled.
+#
+# This script sidesteps both: it probes first, loads the driver for this
+# process only when it is actually missing, and invokes vendor/bin/phpunit
+# directly so the flags reach the process that matters.
+#
+# CI is unaffected — .github/workflows/deploy.yml installs pdo_sqlite via
+# shivammathur/setup-php and calls phpunit itself.
+# ============================================================================
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+PHP="${PHP:-php}"
+
+# Already enabled in php.ini? Then run plainly, with no flags and no warning.
+if "$PHP" -r 'exit(extension_loaded("pdo_sqlite") ? 0 : 1);' 2>/dev/null; then
+  exec "$PHP" vendor/bin/phpunit "$@"
+fi
+
+# Not enabled. Most distributions ship the driver as a shared object, which PHP
+# resolves through extension_dir. Only pdo_sqlite is needed — the suite uses PDO
+# exclusively, and CI loads just this one module.
+if "$PHP" -d extension=pdo_sqlite.so -r 'exit(extension_loaded("pdo_sqlite") ? 0 : 1);' 2>/dev/null; then
+  exec "$PHP" -d extension=pdo_sqlite.so vendor/bin/phpunit "$@"
+fi
+
+# Otherwise it is probably provided by an ini file (common on Windows/macOS
+# package builds), which must be named without the .so suffix.
+exec "$PHP" -d extension=pdo_sqlite vendor/bin/phpunit "$@"

@@ -1,7 +1,11 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/error_message.dart';
 import '../../../core/widgets/loading_indicator.dart';
 import '../../../core/widgets/top_bar.dart';
@@ -29,6 +33,10 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
   final _platformController = TextEditingController();
   bool _certify = false;
   String? _applicationStatus;
+
+  Uint8List? _photoBytes;
+  String? _photoName;
+  String? _photoError;
 
   @override
   void dispose() {
@@ -69,6 +77,8 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
           partyName: _partyController.text.trim().isEmpty
               ? null
               : _partyController.text.trim(),
+          photoBytes: _photoBytes,
+          photoName: _photoName,
         );
 
     if (success && mounted) {
@@ -88,13 +98,50 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
     }
   }
 
+  Future<void> _pickPhoto() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1080,
+      imageQuality: 85,
+    );
+    if (picked == null || !mounted) return;
+
+    // Mirror the backend rule (CandidateApplicationRequest): jpg/jpeg/png,
+    // up to 5 MB. Downscale + quality above already keep real photos small.
+    final ext = _extensionOf(picked.name);
+    if (ext == null) {
+      setState(() => _photoError = 'Choose a .jpg, .jpeg or .png image.');
+      return;
+    }
+    if (await picked.length() > 5 * 1024 * 1024) {
+      setState(() => _photoError = 'Photo must be 5 MB or smaller.');
+      return;
+    }
+
+    final bytes = await picked.readAsBytes();
+    if (!mounted) return;
+    setState(() {
+      _photoBytes = bytes;
+      _photoName = picked.name;
+      _photoError = null;
+    });
+  }
+
+  static String? _extensionOf(String name) {
+    final lower = name.toLowerCase();
+    if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'jpeg';
+    if (lower.endsWith('.png')) return 'png';
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final student = ref.watch(authProvider).student;
     final positionsAsync = ref.watch(positionsProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.backgroundGray,
+      backgroundColor: context.appBackground,
       appBar: const TopBar(title: 'Apply for Candidacy'),
       body: positionsAsync.when(
         data: (positions) {
@@ -145,6 +192,8 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
                         border: OutlineInputBorder(),
                       ),
                     ),
+                    const SizedBox(height: 16),
+                    _photoSection(),
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: _platformController,
@@ -214,7 +263,101 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
   }
 
   static String _tierLabel(Position p) =>
-      p.tier == PositionTier.provincial ? 'Provincial' : 'School';
+      p.tier == PositionTier.provincial ? 'Provincial' : 'National';
+
+  Widget _photoSection() {
+    final hasPhoto = _photoBytes != null;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Candidate Photo (optional)',
+          style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: context.appTextSecondary),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: SizedBox(
+                width: 88,
+                height: 88,
+                child: hasPhoto
+                    ? Image.memory(
+                        _photoBytes!,
+                        fit: BoxFit.cover,
+                      )
+                    : Container(
+                        color: context.appSurface,
+                        child: Icon(
+                          Icons.person,
+                          size: 44,
+                          color: context.appTextSecondary,
+                        ),
+                      ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  InkWell(
+                    onTap: _pickPhoto,
+                    borderRadius: BorderRadius.circular(6),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Text(
+                        hasPhoto ? 'Change photo' : 'Choose from gallery',
+                        style: const TextStyle(
+                          color: AppColors.primaryBlue,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (hasPhoto) ...[
+                    Text(
+                      _photoName ?? 'photo',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: context.appTextSecondary),
+                    ),
+                    InkWell(
+                      onTap: () => setState(() {
+                        _photoBytes = null;
+                        _photoName = null;
+                        _photoError = null;
+                      }),
+                      borderRadius: BorderRadius.circular(6),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Text(
+                          'Remove photo',
+                          style:
+                              const TextStyle(color: AppColors.errorRed),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+        if (_photoError != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            _photoError!,
+            style: const TextStyle(color: AppColors.errorRed, fontSize: 12),
+          ),
+        ],
+      ],
+    );
+  }
 
   Widget _readOnlyField(String label, String value) {
     return Padding(
@@ -223,10 +366,10 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(label,
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: AppColors.textSecondary)),
+                  color: context.appTextSecondary)),
           const SizedBox(height: 4),
           Text(value,
               style: const TextStyle(
@@ -268,10 +411,10 @@ class _StatusView extends StatelessWidget {
               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               'If approved, you will appear on the Candidates list once the election committee publishes approvals.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: AppColors.textSecondary),
+              style: TextStyle(color: context.appTextSecondary),
             ),
             const SizedBox(height: 24),
             ElevatedButton(

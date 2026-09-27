@@ -22,4 +22,8 @@ class ResultService {
       data: {'receipt_token': receiptToken},
     );
   }
+
+  Future<Response> getAnnouncements() async {
+    return await _dio.get(ApiConstants.announcements);
+  }
 }

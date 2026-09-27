@@ -1,0 +1,152 @@
+/* Staff Announcements — page-specific rules.
+ * Shell (dashboard-container, sidebar, main-content, top-header, card,
+ * page-header, primary-button, success/warning banner) comes from
+ * src/index.css so the page follows the shared light/dark theme. */
+
+.announcements-body {
+  padding: 24px;
+  max-width: 900px;
+}
+
+.announcements-form-card {
+  margin-bottom: 24px;
+}
+
+.announcements-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.announcements-form label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--header-muted);
+}
+
+.announcements-form input[type='text'],
+.announcements-form input:not([type]),
+.announcements-form textarea {
+  background: var(--input-bg);
+  color: var(--input-color);
+  border: 1px solid var(--input-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-family: inherit;
+  font-size: 0.875rem;
+  margin-bottom: 8px;
+}
+
+.announcements-form input:focus,
+.announcements-form textarea:focus {
+  outline: none;
+  border-color: var(--brand-primary);
+}
+
+.announcements-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+  font-weight: 400 !important;
+  color: var(--text-muted) !important;
+  font-size: 0.875rem !important;
+  margin-bottom: 12px;
+}
+
+.announcements-form .primary-button {
+  align-self: flex-start;
+}
+
+.announcements-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.announcement-item {
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 14px 16px;
+  background: var(--surface);
+}
+
+.announcements-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.announcements-item-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.announcements-item-delete:hover:not(:disabled) {
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.5);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.announcements-item-delete:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.announcements-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.announcements-item-title {
+  color: var(--heading);
+}
+
+.announcements-item-status {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 3px 8px;
+  border-radius: 999px;
+}
+
+.announcements-item-status.is-published {
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+}
+
+.announcements-item-status.is-draft {
+  background: rgba(100, 116, 139, 0.15);
+  color: var(--text-muted);
+}
+
+.announcements-item-byline {
+  margin: 6px 0 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.announcements-item-body {
+  margin: 8px 0 0;
+  font-size: 0.875rem;
+  color: var(--text);
+  line-height: 1.55;
+}

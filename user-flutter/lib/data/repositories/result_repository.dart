@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../models/announcement_model.dart';
 import '../models/election_result_model.dart';
 import '../services/result_service.dart';
 
@@ -34,5 +35,23 @@ class ResultRepository {
       return data['counted'] == true;
     }
     return false;
+  }
+
+  /// Published announcements, newest first (includes the auto-generated
+  /// results announcement after an admin finalizes the tally).
+  Future<List<Announcement>> getAnnouncements() async {
+    final response = await _resultService.getAnnouncements();
+    final data = response.data;
+    final List<dynamic> raw;
+    if (data is List) {
+      raw = data;
+    } else if (data is Map && data['data'] is List) {
+      raw = data['data'] as List;
+    } else {
+      raw = const [];
+    }
+    return raw
+        .map((a) => Announcement.fromJson(Map<String, dynamic>.from(a as Map)))
+        .toList();
   }
 }

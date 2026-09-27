@@ -1,0 +1,25 @@
+# ============================================================================
+# OmniVote — daily election backup timer
+# ----------------------------------------------------------------------------
+# Fires omnivote-backup.service once a day. Persistent=true means a run missed
+# while the host was off is executed on the next boot, so an election-day
+# snapshot is never silently skipped.
+#
+# Install (with the matching .service):
+#   sudo cp deploy/omnivote-backup.service /etc/systemd/system/
+#   sudo cp deploy/omnivote-backup.timer   /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now omnivote-backup.timer
+# ============================================================================
+
+[Unit]
+Description=Run the OmniVote encrypted backup daily
+
+[Timer]
+OnCalendar=daily
+# Spread the I/O a little off the exact midnight boundary.
+RandomizedDelaySec=1800
+Persistent=true
+
+[Install]
+WantedBy=timers.target

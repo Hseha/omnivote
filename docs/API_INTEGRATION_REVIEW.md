@@ -290,7 +290,7 @@ The database schema (14 migrations) is consistent with the API contracts and fro
 | `phases` | `name` (unique), `is_active` (bool) | `Phase::current()` for `CheckPhase` middleware | ✅ |
 | `vote_ledger` | `position_key`, `candidate_ref`, `receipt_hmac`, `ledger_sequence` | Anonymous tally; receipt verification | ✅ |
 | `ballot_drafts` | `user_id` (unique), `selections` (JSON), `status`, `receipt_token`, `submitted_at` | `GET/PUT /ballot/me` | ✅ |
-| `registrar_imports` | `student_id` (unique), `full_name`, `email`, `grade_level`, `year_level`, `block_number` | `StudentRegistrationRequest` validates `student_id` exists here | ✅ |
+| `registrar_imports` | `student_id` (unique), `full_name`, `email`, `year_level`, `block_number` | `StudentRegistrationRequest` validates `student_id` exists here | ✅ |
 | `personal_access_tokens` | Standard Sanctum table | Bearer token storage | ✅ |
 | `election_settings` | `key` (unique), `value` (text) | `ElectionController::settings()` for title/dates | ✅ |
 

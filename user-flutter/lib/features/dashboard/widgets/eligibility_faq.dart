@@ -6,26 +6,27 @@ class EligibilityFAQ extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final appText = AppTextStyles.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 4.0),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4.0),
           child: Text(
             'Eligibility FAQ',
-            style: AppTextStyles.cardTitle,
+            style: appText.cardTitle,
           ),
         ),
         const SizedBox(height: 12),
-        _buildExpansionTile(
+        _buildExpansionTile(context,
           'What are the requirements to vote?',
           'You must be a currently enrolled student with a valid Student ID. Your account must be in "Eligible Voter" status, which is automatically verified upon successful registration.',
         ),
-        _buildExpansionTile(
+        _buildExpansionTile(context,
           'What if I missed the registration window?',
           'Voter registration typically closes 48 hours before the election starts. If you missed it, please contact the Election Committee via the Help tab, though exceptions are rare.',
         ),
-        _buildExpansionTile(
+        _buildExpansionTile(context,
           'How to verify a vote was counted?',
           'After submitting your ballot in the "My Ballot" tab, you will receive a digital receipt token. You can input this anonymous token on the Results tab to verify your vote was recorded without revealing your selections.',
         ),
@@ -33,7 +34,8 @@ class EligibilityFAQ extends StatelessWidget {
     );
   }
 
-  Widget _buildExpansionTile(String title, String content) {
+  Widget _buildExpansionTile(BuildContext context, String title, String content) {
+    final appText = AppTextStyles.of(context);
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: ExpansionTile(
@@ -41,14 +43,14 @@ class EligibilityFAQ extends StatelessWidget {
         collapsedShape: const RoundedRectangleBorder(side: BorderSide.none),
         title: Text(
           title,
-          style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w600),
+          style: appText.body.copyWith(fontWeight: FontWeight.w600),
         ),
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
             child: Text(
               content,
-              style: AppTextStyles.secondary.copyWith(height: 1.5),
+              style: appText.secondary.copyWith(height: 1.5),
             ),
           ),
         ],

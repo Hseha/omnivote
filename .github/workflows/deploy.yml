@@ -1,0 +1,82 @@
+# ============================================================================
+# OmniVote — CI/CD.
+#
+#   test   : runs on GitHub-hosted runners. phpunit + React build + Flutter.
+#   deploy : runs only if `test` passed AND the push is to main.
+#
+# The deploy job runs on a SELF-HOSTED runner installed on the app server, so
+# nothing needs to be exposed publicly (works over Tailscale). See
+# deploy/README.md -> "Continuous deployment" for the one-time runner setup.
+# ============================================================================
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_sqlite, mbstring, xml, curl, zip, bcmath, intl, gd
+          coverage: none
+
+      - name: Install backend dependencies
+        working-directory: backend-laravel
+        run: composer install --prefer-dist --no-progress --no-interaction
+
+      - name: Backend tests
+        working-directory: backend-laravel
+        run: php -d extension=pdo_sqlite.so vendor/bin/phpunit
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: admin-react/package-lock.json
+
+      - name: Admin lint + build
+        working-directory: admin-react
+        run: |
+          npm ci
+          npm run lint
+          npm run build
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Flutter analyze + test
+        working-directory: user-flutter
+        run: |
+          flutter pub get
+          flutter analyze
+          flutter test
+
+  deploy:
+    name: Deploy
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run server deploy script
+        env:
+          APP_DIR: /var/www/omnivote
+          BRANCH: main
+        run: bash deploy/deploy.sh

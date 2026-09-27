@@ -1,24 +1,33 @@
 import { useState, useEffect } from 'react';
 import DashboardWidgets from './components/DashboardWidgets';
+import NotificationCenter from './components/NotificationCenter';
+import PhaseStatusDialog from './components/PhaseStatusDialog';
+import { fallbackAvatarOnError, defaultUserIconDataUri } from './lib/avatar';
 import './AdminDashboard.css';
 import api from './lib/api';
 import { useAuth } from './lib/AuthContext';
-import { 
-  LayoutDashboard, 
-  Users, 
-  UserCheck, 
-  Sliders, 
-  BarChart2, 
-  Settings, 
-  Database, 
-  CheckCircle, 
-  Clock, 
-  Award, 
-  Plus,
-  LogOut,
-  Vote
+import { useElectionStatus } from './lib/ElectionStatusContext';
+import { allowedViews } from './lib/permissions';
+import {
+  Database,
+  CheckCircle,
+  Clock,
+  Award,
 } from 'lucide-react';
+import Sidebar from './components/Sidebar';
+import MobileMenuButton from './components/MobileMenuButton';
 
+/*
+ * Dashboard Overview.
+ *
+ * Backend contract (`GET /admin/dashboard-overview`): `stats`
+ * (total_voters / votes_cast / turnout_rate / approved_candidates),
+ * `election_phase`, `announcements`, `recent_actions`, `user`.
+ *
+ * Everything rendered comes from that response — there are deliberately no
+ * fabricated metrics (accounts totals, flagged votes, uptime percentages,
+ * demo activity entries) because the backend does not send them.
+ */
 export default function AdminDashboard({ onLogout, activeView = 'dashboard', onNavigate, currentUser = null }) {
   const { logout } = useAuth();
   const [statsData, setStatsData] = useState({
@@ -29,10 +38,16 @@ export default function AdminDashboard({ onLogout, activeView = 'dashboard', onN
   });
   const [announcements, setAnnouncements] = useState([]);
   const [recentActions, setRecentActions] = useState([]);
-  const [accountsSummary, setAccountsSummary] = useState({ total: 0, active: 0 });
-  const [electionPhase, setElectionPhase] = useState('Voting Open');
+  // Empty (not "Registration") until a real phase arrives, so an unconfigured
+  // election shows "Not Configured" instead of a misleading stale phase.
+  const [electionPhase, setElectionPhase] = useState('');
   const [timeString, setTimeString] = useState('');
   const [loading, setLoading] = useState(true);
+  // Real connectivity signal from the overview fetch (drives System Status).
+  const [apiOk, setApiOk] = useState(true);
+  // Live phase from the shared poller (every 30 s) so the dashboard phase card
+  // flips on its own when a configured window boundary is crossed.
+  const { phase: livePhase } = useElectionStatus();
 
   // Derive profile from authenticated user — no local state flickering.
   const userProfile = currentUser
@@ -40,7 +55,7 @@ export default function AdminDashboard({ onLogout, activeView = 'dashboard', onN
         time: timeString,
         name: currentUser.name || 'Admin User',
         role: currentUser.role === 'admin'
-          ? 'System Administrator / Election Admin'
+          ? 'System Administrator'
           : currentUser.role === 'teacher'
             ? 'Teacher'
             : currentUser.role === 'ssg_president'
@@ -48,20 +63,30 @@ export default function AdminDashboard({ onLogout, activeView = 'dashboard', onN
               : (currentUser.role || 'Administrator'),
         avatar: currentUser.avatar_url
           ? currentUser.avatar_url
-          : `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(currentUser.name || 'U')}&backgroundColor=2563eb`,
+          : defaultUserIconDataUri(76),
       }
     : {
         time: timeString,
         name: 'Loading...',
         role: '',
-        avatar: '',
+        avatar: defaultUserIconDataUri(76),
       };
 
   // Update clock every second
   useEffect(() => {
     const tick = () => {
       const d = new Date();
-      setTimeString(d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' EST');
+      const tzLabel = new Intl.DateTimeFormat('en-US', {
+        timeZoneName: 'short',
+      }).formatToParts(d).find((part) => part.type === 'timeZoneName')?.value;
+      setTimeString(
+        d.toLocaleTimeString('en-US', {
+          hour12: false,
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+        }) + ' ' + (tzLabel || 'LOCAL'),
+      );
     };
     tick();
     const id = setInterval(tick, 1000);
@@ -73,16 +98,15 @@ export default function AdminDashboard({ onLogout, activeView = 'dashboard', onN
       try {
         setLoading(true);
         const response = await api.get('/admin/dashboard-overview');
-
         const data = response.data;
         if (data.stats) setStatsData(data.stats);
         if (data.announcements) setAnnouncements(data.announcements);
         if (data.recent_actions) setRecentActions(data.recent_actions);
         if (data.election_phase) setElectionPhase(data.election_phase);
-        if (data.accounts) setAccountsSummary(data.accounts);
-        // Profile comes from currentUser prop (auth context) — no separate state needed.
+        setApiOk(true);
       } catch (error) {
         console.warn('Backend API connection pending or unavailable:', error.message);
+        setApiOk(false);
       } finally {
         setLoading(false);
       }
@@ -91,134 +115,103 @@ export default function AdminDashboard({ onLogout, activeView = 'dashboard', onN
     fetchDashboardData();
   }, []);
 
+  // Live polled phase wins when known; otherwise fall back to the phase the
+  // overview response carried. Kept as a derived value so the dashboard flips
+  // on its own without an extra effect.
+  const dashboardPhase = livePhase ?? electionPhase;
+  const displayPhase = (p) => {
+    switch (p) {
+      case 'registration': return 'Registration';
+      case 'registration_closed': return 'Registration Closed';
+      case 'voting_open': return 'Voting Open';
+      case 'voting_closed': return 'Voting Closed';
+      default: return p || 'Not Configured';
+    }
+  };
+
+  const isAdmin = (currentUser?.role ?? '') === 'admin';
+  const [phasePrompt, setPhasePrompt] = useState(null);
+
+  // Tapping the phase badge: admins are prompted to go configure the window;
+  // teachers (who cannot open Settings) get an informational popup instead.
+  const handlePhaseBadgeClick = () => {
+    if (dashboardPhase) return;
+    setPhasePrompt(isAdmin ? 'admin' : 'teacher');
+  };
+
+  // Short role label for the breadcrumb ("Admin /" vs "Teacher /").
+  const breadcrumbRole =
+    currentUser?.role === 'teacher'
+      ? 'Teacher'
+      : currentUser?.role === 'ssg_president'
+        ? 'SSG President'
+        : 'Admin';
+
   const handleLogout = () => {
     if (typeof onLogout === 'function') return onLogout();
     logout();
   };
 
   const stats = [
-    { 
-      title: 'TOTAL REGISTERED VOTERS', 
-      value: (statsData.total_voters || 0).toLocaleString(), 
-      icon: <Database className="stat-icon blue" /> 
+    {
+      title: 'TOTAL REGISTERED VOTERS',
+      value: (statsData.total_voters || 0).toLocaleString(),
+      icon: <Database className="stat-icon blue" />,
     },
-    { 
-      title: 'VOTES CAST', 
-      value: (statsData.votes_cast || 0).toLocaleString(), 
-      icon: <CheckCircle className="stat-icon green" /> 
+    {
+      title: 'VOTES CAST',
+      value: (statsData.votes_cast || 0).toLocaleString(),
+      icon: <CheckCircle className="stat-icon green" />,
     },
-    { 
-      title: 'TURNOUT RATE', 
-      value: `${statsData.turnout_rate || 0}%`, 
-      icon: <Clock className="stat-icon orange" /> 
+    {
+      title: 'TURNOUT RATE',
+      value: `${statsData.turnout_rate || 0}%`,
+      icon: <Clock className="stat-icon orange" />,
     },
-    { 
-      title: 'APPROVED CANDIDATES', 
-      value: (statsData.approved_candidates || 0).toLocaleString(), 
-      icon: <Award className="stat-icon purple" /> 
+    {
+      title: 'APPROVED CANDIDATES',
+      value: (statsData.approved_candidates || 0).toLocaleString(),
+      icon: <Award className="stat-icon purple" />,
     },
   ];
 
   return (
     <div className="dashboard-container">
-      {/* Sidebar Navigation */}
-      <aside className="sidebar">
-        <div className="logo-area">
-          <div className="logo-icon">
-            <Vote size={20} />
-          </div>
-          <div>
-            <h1 className="brand-name">OmniVote</h1>
-            <p className="brand-sub">ELECTION CONSOLE</p>
-          </div>
-        </div>
+      <Sidebar activeView={activeView} onNavigate={onNavigate} onLogout={handleLogout} permittedViews={allowedViews(currentUser?.role ?? '')} />
 
-        <nav className="nav-menu">
-          <button
-            type="button" 
-            className={`nav-item ${activeView === 'dashboard' ? 'active' : ''}`}
-            onClick={() => onNavigate && onNavigate('dashboard')}
-          >
-            <LayoutDashboard size={18} /> Dashboard
-          </button>
-          <button
-            type="button" 
-            className={`nav-item ${activeView === 'candidates' ? 'active' : ''}`}
-            onClick={() => onNavigate && onNavigate('candidates')}
-          >
-            <Users size={18} /> Candidates
-          </button>
-          {currentUser?.role !== 'teacher' && <button
-            type="button" 
-            className={`nav-item ${activeView === 'voters' ? 'active' : ''}`}
-            onClick={() => onNavigate && onNavigate('voters')}
-          >
-            <UserCheck size={18} /> Student Registry
-          </button>}
-          {currentUser?.role !== 'teacher' && <button
-            type="button" 
-            className={`nav-item ${activeView === 'setup' ? 'active' : ''}`}
-            onClick={() => onNavigate && onNavigate('setup')}
-          >
-            <Sliders size={18} /> Election Setup
-          </button>}
-          <button 
-            type="button" 
-            className={`nav-item ${activeView === 'results' ? 'active' : ''}`}
-            onClick={() => onNavigate && onNavigate('results')}
-          >
-            <BarChart2 size={18} /> Results
-          </button>
-          {currentUser?.role === 'admin' && <button
-            type="button"
-            className={`nav-item ${activeView === 'settings' ? 'active' : ''}`}
-            onClick={() => onNavigate && onNavigate('settings')}
-          >
-            <Settings size={18} /> Settings
-          </button>}
-        </nav>
-
-        {/* Sidebar Footer */}
-        <div className="sidebar-footer-container">
-          <button onClick={handleLogout} className="logout-button">
-            <LogOut size={18} /> Logout
-          </button>
-          <div className="sidebar-footer">
-            <span className="status-dot-green"></span> System Live (v1.4)
-          </div>
-        </div>
-      </aside>
-
-      {/* Main Content Area */}
       <main className="main-content">
         <header className="top-header">
+          <MobileMenuButton />
           <div className="breadcrumb">
-            <span className="muted">Admin /</span> 
-            <strong className='Dash'>Dashboard Overview</strong>
-
+            <span className="muted">{breadcrumbRole} /</span>
+            <strong className="Dash">Dashboard Overview</strong>
           </div>
           <div className="header-actions">
-            <span className="badge-open">
-              <span className="dot"></span> {electionPhase}
-            </span>
+            <button type="button" className="badge-open badge-action" onClick={handlePhaseBadgeClick} title={dashboardPhase ? undefined : 'No election window is set yet'}>
+              <span className="dot"></span> {displayPhase(dashboardPhase)}
+            </button>
+            <NotificationCenter onNavigate={onNavigate} />
             <div className="user-profile">
               <Clock size={16} />
               <span className="user-time">{userProfile.time}</span>
               <div className="user-info">
-                
                 <span className="user-name">{userProfile.name}</span>
                 <span className="user-role">{userProfile.role}</span>
               </div>
-              <img 
-                src={userProfile.avatar} 
-                alt={userProfile.name} 
-                className="avatar" 
-              />
+              <img src={userProfile.avatar || undefined} alt={userProfile.name} className="avatar"
+                onError={userProfile.avatar ? fallbackAvatarOnError(userProfile.name) : undefined} />
             </div>
           </div>
         </header>
 
-        {/* Dynamic Metric Cards */}
+        {/* Personal greeting — visible to Admin, Teacher, and SSG President
+            alike after signing in to their own console. */}
+        <section className="welcome-strip" aria-label="Welcome">
+          <h2 className="welcome-title">Welcome back, {(userProfile.name || 'Admin User').split(' ')[0]}</h2>
+          <p className="welcome-sub">Here&apos;s the latest across your election console.</p>
+        </section>
+
+        {/* 1. Core metrics — the single, unified stat row. */}
         <section className="stats-grid">
           {stats.map((stat, idx) => (
             <div key={idx} className="stat-card">
@@ -226,105 +219,35 @@ export default function AdminDashboard({ onLogout, activeView = 'dashboard', onN
                 <span className="stat-title">{stat.title}</span>
                 {stat.icon}
               </div>
-              <div className="stat-value">{loading ? "..." : stat.value}</div>
+              <div className="stat-value">{loading ? '...' : apiOk ? stat.value : '—'}</div>
             </div>
           ))}
         </section>
 
-        {/* Middle Section */}
-        <section className="middle-grid">
-          <div className="card chart-card">
-            <div className="card-header">
-              <div>
-                <h3>Voting Activity Timeline</h3>
-                <p className="muted-text">Hourly accumulation of votes processed today</p>
-              </div>
-              <div className="chart-legend">
-                <span className="legend-dot"></span> Votes Cast
-              </div>
-            </div>
-            <div className="chart-placeholder">
-              <svg viewBox="0 0 500 150" className="chart-svg">
-                <polyline
-                  fill="none"
-                  stroke="#3b82f6"
-                  strokeWidth="3"
-                  points="20,110 80,95 140,105 200,70 260,78 320,45 380,55 440,30"
-                />
-              </svg>
-              <div className="chart-x-axis">
-                <span>08:00</span><span>10:00</span><span>12:00</span><span>14:00</span>
-                <span>16:00</span><span>18:00</span><span>20:00</span><span>22:00</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="card announcements-card">
-            <div className="card-header">
-              <h3>Admin Announcements</h3>
-              <a href="#new" className="new-post-link"><Plus size={14} /> New Post</a>
-            </div>
-            <div className="announcements-list">
-              {announcements.length === 0 ? (
-                <p className="no-data-text">
-                  {loading ? "Loading announcements..." : "No announcements posted."}
-                </p>
-              ) : (
-                announcements.map((item, idx) => (
-                  <div key={item.id || idx} className="announcement-item">
-                    <div className="announcement-meta">
-                      <span className={`tag ${(item.type || 'SYSTEM').toLowerCase()}`}>
-                        • {item.type}
-                      </span>
-                      <span className="time">{item.time_ago || item.time}</span>
-                    </div>
-                    <p className="announcement-text">{item.text}</p>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </section>
-
-        {/* Action Logs */}
-        <section className="card table-card">
-          <h3>Recent System Actions</h3>
-          <table className="actions-table">
-            <thead>
-              <tr>
-                <th>Timestamp</th>
-                <th>Action Description</th>
-                <th>Triggered By</th>
-              </tr>
-            </thead>
-            <tbody>
-              {recentActions.length === 0 ? (
-                <tr>
-                  <td colSpan="3" className="no-data-cell">
-                    {loading ? "Fetching activity log..." : "No recent system actions logged."}
-                  </td>
-                </tr>
-              ) : (
-                recentActions.map((row, idx) => (
-                  <tr key={row.id || idx}>
-                    <td className="timestamp">{row.timestamp || row.time}</td>
-                    <td className="action">{row.description || row.action}</td>
-                    <td className="trigger">{row.triggered_by || row.trigger}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </section>
-
+        {/* 2 + 3. Quick actions, visuals, status & activity — one component. */}
         <DashboardWidgets
           stats={statsData}
-          accounts={accountsSummary}
-          electionPhase={electionPhase}
+          electionPhase={dashboardPhase}
+          announcements={announcements}
           recentActions={recentActions}
           loading={loading}
+          apiOk={apiOk}
+          onNavigate={onNavigate}
+          permittedViews={allowedViews(currentUser?.role ?? '')}
         />
       </main>
+
+      {phasePrompt && (
+        <PhaseStatusDialog
+          title={isAdmin ? 'Registration Window Not Set' : 'Election Not Configured Yet'}
+          message={isAdmin
+            ? 'No registration or voting window has been configured yet, so everyone sees "Not Configured" and voting stays locked. Set the windows so the election can start.'
+            : 'The administrator has not set the registration window yet. Registration has not been opened — please check back later.'}
+          confirmLabel={isAdmin ? 'Configure Voting Windows' : null}
+          onConfirm={isAdmin ? () => onNavigate('settings', 'voting') : null}
+          onClose={() => setPhasePrompt(null)}
+        />
+      )}
     </div>
   );
 }

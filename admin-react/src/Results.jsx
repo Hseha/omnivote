@@ -1,13 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { 
-  LayoutDashboard, 
-  Users, 
-  UserCheck, 
-  Sliders, 
-  BarChart2, 
-  Settings, 
-  Vote, 
-  Clock, 
   CheckCircle2, 
   TrendingUp,
   Users2,
@@ -15,73 +7,146 @@ import {
   Search,
   Download,
   ChevronDown,
-  LogOut
 } from 'lucide-react';
+import Sidebar from './components/Sidebar';
+import Header from './components/Header';
+import { useElectionStatus } from './lib/ElectionStatusContext';
 import api from './lib/api';
-import { useAuth } from './lib/AuthContext';
 import './Results.css';
 
-export default function Results({ activeView = 'results', onNavigate, onLogout }) {
-  const { logout } = useAuth();
+export default function Results({ activeView = 'results', onNavigate, onLogout, currentUser = null }) {
+  // Only the admin may break a tie — a subjective call with accountability.
+  const isAdmin = (currentUser?.role ?? '') === 'admin';
   // Navigation state within Results view: 'live' | 'all-candidates' | 'elected' | 'unsuccessful'
   const [subView, setSubView] = useState('live');
-  const [phase, setPhase] = useState('voting_open');
+  // Live phase from the shared poller — flips on its own the moment the
+  // configured window boundary is crossed, unlocking results without a reload.
+  const { phase } = useElectionStatus();
   const [resultsData, setResultsData] = useState(null);
   const [loadingResults, setLoadingResults] = useState(false);
+  const [finalizing, setFinalizing] = useState(false);
+  const [resultMessage, setResultMessage] = useState(null);
+  const [resolvingId, setResolvingId] = useState(null);
+  const [archiveData, setArchiveData] = useState(null);
+  const [loadingArchive, setLoadingArchive] = useState(false);
+  const [archiving, setArchiving] = useState(false);
   
   // Search and Filter states for detailed table views
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPosition, setSelectedPosition] = useState('All');
   const [selectedParty, setSelectedParty] = useState('All');
 
-  const handleLogout = () => {
-    if (typeof onLogout === 'function') return onLogout();
-    logout();
-  };
-
   function displayPhase(p) {
     switch (p) {
       case 'registration':
         return 'Registration';
+      case 'registration_closed':
+        return 'Registration Closed';
       case 'voting_open':
         return 'Voting Open';
       case 'voting_closed':
         return 'Voting Closed';
       default:
-        return p || 'Voting Open';
+        // null = no configured window yet; never fall back to a real-looking
+        // phase, or the banner lies after the admin clears the schedule.
+        return p || 'Not Configured';
+    }
+  }
+
+  // Live badge colors: green while voting is open, muted otherwise.
+  function phaseClass(p) {
+    if (p === 'voting_open') return 'green-phase';
+    if (!p) return 'muted-phase';
+    return 'blue-phase';
+  }
+
+  function formatArchiveDate(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  }
+
+  async function loadResults() {
+    try {
+      setLoadingResults(true);
+      const res = await api.get('/admin/results');
+      setResultsData(res.data ?? null);
+    } catch {
+      setResultsData(null);
+    } finally {
+      setLoadingResults(false);
     }
   }
 
   useEffect(() => {
-    const loadStatus = async () => {
-      try {
-        const res = await api.get('/election/status');
-        const data = res.data?.data ?? res.data ?? {};
-        if (data.phase) setPhase(data.phase);
-      } catch {
-        // status endpoint unavailable; keep default
-      }
-    };
-    loadStatus();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
     if (phase !== 'voting_closed' && phase !== 'voting_open') return;
-    const loadResults = async () => {
-      try {
-        setLoadingResults(true);
-        const res = await api.get('/admin/results');
-        setResultsData(res.data ?? null);
-      } catch {
-        setResultsData(null);
-      } finally {
-        setLoadingResults(false);
-      }
-    };
-    loadResults();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Deferred so the synchronous setState in loadResults isn't executed
+    // inline in the effect body (avoids cascading renders).
+    const t = window.setTimeout(loadResults, 0);
+    return () => window.clearTimeout(t);
   }, [phase]);
+
+  async function finalizeResults() {
+    setFinalizing(true);
+    setResultMessage(null);
+    try {
+      const res = await api.post('/admin/results/finalize');
+      setResultMessage({ ok: true, text: res.data?.message || 'Results finalized.' });
+      await loadResults();
+    } catch (err) {
+      setResultMessage({ ok: false, text: err.response?.data?.message || 'Could not finalize results.' });
+    } finally {
+      setFinalizing(false);
+    }
+  }
+
+  async function resolveTie(candidateId) {
+    setResolvingId(candidateId);
+    setResultMessage(null);
+    try {
+      const res = await api.post(`/admin/candidates/${candidateId}/resolve-tie`);
+      setResultMessage({ ok: true, text: res.data?.message || 'Tie resolved.' });
+      await loadResults();
+      setSubView('live');
+    } catch (err) {
+      setResultMessage({ ok: false, text: err.response?.data?.message || 'Could not resolve the tie.' });
+    } finally {
+      setResolvingId(null);
+    }
+  }
+
+  async function loadArchived() {
+    setLoadingArchive(true);
+    try {
+      const res = await api.get('/admin/results/archive');
+      setArchiveData(res.data ?? null);
+    } catch {
+      setArchiveData(null);
+    } finally {
+      setLoadingArchive(false);
+    }
+  }
+
+  // Entering/leaving the Past Terms view is driven from the button handler
+  // (which calls loadArchived() directly), so no effect is needed to watch
+  // subView — a data fetch triggered by a render-time effect would cause a
+  // cascading re-render on every subView change.
+
+  async function archiveTermNow() {
+    if (!window.confirm('End the current term and archive all certified winners now? They will move out of the live results into the Past Terms archive.')) return;
+    setArchiving(true);
+    setResultMessage(null);
+    try {
+      const res = await api.post('/admin/results/archive-term');
+      setResultMessage({ ok: true, text: res.data?.message || 'Term archived.' });
+      await Promise.all([loadResults(), loadArchived()]);
+    } catch (err) {
+      setResultMessage({ ok: false, text: err.response?.data?.message || 'Could not archive the term.' });
+    } finally {
+      setArchiving(false);
+    }
+  }
 
   const positionResults = Array.isArray(resultsData?.results)
     ? resultsData.results
@@ -94,11 +159,24 @@ export default function Results({ activeView = 'results', onNavigate, onLogout }
     );
     const winningVotes = Number(sortedCandidates[0]?.votes || 0);
 
+    // The backend flags a candidate `elected`, `tied`, or `pending` once
+    // results are finalized. Until that happens every row is still `pending`,
+    // so fall back to the raw top-vote heuristic for the live preview.
+    let statusFor = (candidate) => {
+      const s = candidate.election_status;
+      if (s === 'elected') return 'WINNER';
+      if (s === 'tied') return 'TIE';
+      if (s && s !== 'pending') return 'Eliminated';
+      return candidate.votes === winningVotes ? 'WINNER' : 'Eliminated';
+    };
+
     return sortedCandidates.map((candidate, index) => {
       const votes = Number(candidate.votes || 0);
       const percentage = totalVotes ? (votes / totalVotes) * 100 : 0;
       const name = String(candidate.name || candidate.candidate_ref || 'Unknown candidate');
       return {
+        id: candidate.id,
+        electionStatus: candidate.election_status || 'pending',
         rank: `#${index + 1}`,
         initials: name
           .split(/\s+/)
@@ -111,7 +189,7 @@ export default function Results({ activeView = 'results', onNavigate, onLogout }
         party: '—',
         votes,
         percentage,
-        status: votes === winningVotes ? 'WINNER' : 'Eliminated',
+        status: statusFor(candidate),
       };
     });
   });
@@ -127,6 +205,12 @@ export default function Results({ activeView = 'results', onNavigate, onLogout }
       return true;
     });
   };
+  const filteredCandidates = getFilteredCandidates();
+
+  // A finalize has run once any candidate carries a non-pending status.
+  const isFinalized = candidateRows.some((c) => c.electionStatus !== 'pending');
+  const tiedCandidates = candidateRows.filter((c) => c.status === 'TIE');
+  const hasTies = tiedCandidates.length > 0;
 
   const renderResultSection = (title, candidates) => (
     <div className="result-card">
@@ -137,18 +221,27 @@ export default function Results({ activeView = 'results', onNavigate, onLogout }
             <div className="candidate-row-header">
               <div className="candidate-info">
                 <span className="candidate-name">{candidate.name}</span>
-                <span className={`badge-tag ${candidate.status === 'WINNER' ? 'badge-winner' : 'badge-runner'}`}>
-                  {candidate.status}
+                <span className={`badge-tag ${candidate.status === 'WINNER' ? 'badge-winner' : candidate.status === 'TIE' ? 'badge-tie' : 'badge-runner'}`}>
+                  {candidate.status === 'TIE' ? (isAdmin ? 'TIE — RESOLVE' : 'TIE') : candidate.status}
                 </span>
               </div>
               <span className="vote-count">{candidate.votes} votes ({candidate.percentage})</span>
             </div>
             <div className="progress-bar-bg">
               <div 
-                className={`progress-bar-fill fill-${candidate.color}`} 
+                className={`progress-bar-fill ${candidate.status === 'WINNER' ? 'fill-green' : candidate.status === 'TIE' ? 'fill-red' : 'fill-blue'}`} 
                 style={{ width: candidate.percentage }}
               />
             </div>
+            {candidate.status === 'TIE' && isAdmin && (
+              <button
+                className="btn-action btn-blue tie-resolve-btn"
+                disabled={resolvingId === candidate.id}
+                onClick={() => resolveTie(candidate.id)}
+              >
+                {resolvingId === candidate.id ? 'Resolving…' : 'Declare Winner'}
+              </button>
+            )}
           </div>
         ))}
       </div>
@@ -158,104 +251,15 @@ export default function Results({ activeView = 'results', onNavigate, onLogout }
   return (
     <div className="dashboard-container">
       {/* Sidebar Navigation */}
-      <aside className="sidebar">
-        <div className="logo-area">
-          <div className="logo-icon"><Vote size={20} /></div>
-          <div>
-            <h1 className="brand-name">ElectBoard</h1>
-            <p className="brand-sub">ELECTION CONSOLE</p>
-          </div>
-        </div>
-
-        <nav className="nav-menu">
-          <button 
-            type="button" 
-            className={`nav-item ${activeView === 'dashboard' ? 'active' : ''}`}
-            onClick={() => onNavigate && onNavigate('dashboard')}
-          >
-            <LayoutDashboard size={18} /> Dashboard
-          </button>
-          <button 
-            type="button" 
-            className={`nav-item ${activeView === 'candidates' ? 'active' : ''}`}
-            onClick={() => onNavigate && onNavigate('candidates')}
-          >
-            <Users size={18} /> Candidates
-          </button>
-          <button 
-            type="button" 
-            className={`nav-item ${activeView === 'voters' ? 'active' : ''}`}
-            onClick={() => onNavigate && onNavigate('voters')}
-          >
-            <UserCheck size={18} /> Student Registry
-          </button>
-          <button 
-            type="button" 
-            className={`nav-item ${activeView === 'setup' ? 'active' : ''}`}
-            onClick={() => onNavigate && onNavigate('setup')}
-          >
-            <Sliders size={18} /> Election Setup
-          </button>
-          <button 
-            type="button" 
-            className={`nav-item ${activeView === 'results' ? 'active' : ''}`}
-            onClick={() => onNavigate && onNavigate('results')}
-          >
-            <BarChart2 size={18} /> Results
-          </button>
-          <button 
-            type="button" 
-            className={`nav-item ${activeView === 'settings' ? 'active' : ''}`}
-            onClick={() => onNavigate && onNavigate('settings')}
-          >
-            <Settings size={18} /> Settings
-          </button>
-        </nav>
-
-        <div className="sidebar-footer-container">
-          <button onClick={handleLogout} className="logout-button">
-            <LogOut size={18} /> Logout
-          </button>
-          <div className="sidebar-footer">
-            <span className="status-dot-green"></span> System Live (v1.4)
-          </div>
-        </div>
-      </aside>
+      <Sidebar activeView={activeView} onNavigate={onNavigate} onLogout={onLogout} currentUser={currentUser} />
 
       {/* Main Content Area */}
       <main className="main-content">
-        <header className="top-header">
-          <div className="breadcrumb">
-            <span className="muted">System / </span>
-            {subView === 'live' ? (
-              <strong className="breadcrumb-title">Election Results — Live</strong>
-            ) : (
-              <>
-                <span className="muted">Election Results / </span>
-                <strong className="breadcrumb-title">All Candidates Results</strong>
-              </>
-            )}
-          </div>
-          <div className="header-right">
-            <span className="voting-status-badge">
-              <span className="status-dot-green"></span> {displayPhase(phase)}
-            </span>
-            <div className="system-time">
-              <Clock size={16} /> 14:32:05 EST
-            </div>
-            <div className="user-profile">
-              <div className="user-info">
-                <span className="user-name">Election Admin</span>
-                <span className="user-role">System Administrator</span>
-              </div>
-              <img 
-                src="https://i.pravatar.cc/100?img=32" 
-                alt="Eleanor Vance" 
-                className="user-avatar" 
-              />
-            </div>
-          </div>
-        </header>
+        <Header
+          breadcrumb={subView === 'live' ? 'Election Results — Live' : 'All Candidates Results'}
+          currentUser={currentUser}
+          onNavigate={onNavigate}
+        />
 
         <div className="results-body">
           {/* VIEW 1: LIVE ELECTION RESULTS OVERVIEW */}
@@ -269,6 +273,51 @@ export default function Results({ activeView = 'results', onNavigate, onLogout }
           )}
           {subView === 'live' && phase === 'voting_closed' && (
             <>
+              {resultMessage && (
+                <div className={`finalize-banner ${resultMessage.ok ? 'finalize-ok' : 'finalize-error'}`}>
+                  {resultMessage.text}
+                </div>
+              )}
+
+              {/* Finalize / recount action */}
+              <div className="finalize-panel">
+                <div className="finalize-panel-text">
+                  <h3 className="finalize-panel-title">
+                    {isFinalized ? 'Official Results' : 'Finalize Results'}
+                  </h3>
+                  <p className="finalize-panel-body">
+                    {isFinalized
+                      ? 'Winners have been determined from the sealed ledger. Recount anytime to recompute from the raw votes.'
+                      : 'Auto-determine every seat from the raw vote ledger. Winners are certified automatically; tied seats are held for your decision.'}
+                  </p>
+                  {isFinalized && hasTies && (
+                    <p className="finalize-panel-body finalize-tie-warning">
+                      ⚠ {tiedCandidates.length} candidate(s) in a pending tie.
+                      {isAdmin ? ' Use "Declare Winner" on a tied card to break it.' : ' An admin must break this tie before the seat is official.'}
+                    </p>
+                  )}
+                </div>
+                <div className="finalize-panel-actions">
+                  <button
+                    className="btn-action btn-blue"
+                    disabled={finalizing}
+                    onClick={finalizeResults}
+                  >
+                    {finalizing ? 'Finalizing…' : isFinalized ? 'Recount & Re-finalize' : 'Finalize Winners'}
+                  </button>
+                  {isFinalized && isAdmin && (
+                    <button
+                      className="btn-action btn-purple"
+                      disabled={archiving}
+                      onClick={archiveTermNow}
+                      title="End the current term and archive all certified winners to Past Terms"
+                    >
+                      {archiving ? 'Archiving…' : 'End Term & Archive Winners'}
+                    </button>
+                  )}
+                </div>
+              </div>
+
               {/* Metric Cards Row */}
               <div className="metrics-grid">
                 <div className="metric-card">
@@ -278,19 +327,19 @@ export default function Results({ activeView = 'results', onNavigate, onLogout }
                       <CheckCircle2 size={18} color="#16a34a" />
                     </div>
                   </div>
-                  <div className="metric-value">{totalVotes}</div>
+                  <div className="metric-value">{loadingResults ? '…' : totalVotes}</div>
                   <div className="metric-subtitle">Total candidate votes recorded</div>
                 </div>
 
                 <div className="metric-card">
                   <div className="metric-header">
-                    <span className="metric-title">ESTIMATED TURNOUT</span>
-                    <div className="metric-icon-box orange-icon-box">
+                    <span className="metric-title">WINNERS CERTIFIED</span>
+                    <div className="metric-icon-box blue-icon-box">
                       <TrendingUp size={18} color="#d97706" />
                     </div>
                   </div>
-                  <div className="metric-value">—</div>
-                  <div className="metric-subtitle">Turnout is not included in this response</div>
+                  <div className="metric-value">{loadingResults ? '…' : candidateRows.filter((c) => c.status === 'WINNER').length}</div>
+                  <div className="metric-subtitle">Officially elected seats</div>
                 </div>
               </div>
 
@@ -314,6 +363,12 @@ export default function Results({ activeView = 'results', onNavigate, onLogout }
                 >
                   View All Unsuccessful
                 </button>
+                <button 
+                  className="btn-action btn-purple"
+                  onClick={() => { setArchiving(false); setSubView('past-terms'); loadArchived(); }}
+                >
+                  Past Terms
+                </button>
               </div>
 
               {/* Position Category Cards Grid */}
@@ -328,8 +383,9 @@ export default function Results({ activeView = 'results', onNavigate, onLogout }
                     candidates.map((candidate) => ({
                       ...candidate,
                       percentage: `${candidate.percentage.toFixed(1)}%`,
-                      color: candidate.status === 'WINNER' ? 'green' : 'blue',
-                      status: candidate.status === 'WINNER' ? 'WINNER' : 'RUNNER UP',
+                      status: candidate.status === 'WINNER' ? 'WINNER'
+                        : candidate.status === 'TIE' ? 'TIE'
+                        : 'RUNNER UP',
                     })),
                   );
                 })}
@@ -340,8 +396,87 @@ export default function Results({ activeView = 'results', onNavigate, onLogout }
             </>
           )}
 
+          {/* VIEW: PAST TERMS ARCHIVE */}
+          {subView === 'past-terms' && (
+            <div className="detailed-results-container">
+              <div className="detail-view-header">
+                <button className="back-circle-btn" onClick={() => setSubView('live')}>
+                  <ArrowLeft size={16} />
+                </button>
+                <h2 className="detail-view-title">Past Terms — Winner Archive</h2>
+                <div className="phase-text-badge">
+                  Current Phase: <span className={phaseClass(phase)}>{displayPhase(phase)}</span>
+                </div>
+              </div>
+
+              {resultMessage && (
+                <div className={`finalize-banner ${resultMessage.ok ? 'finalize-ok' : 'finalize-error'}`}>
+                  {resultMessage.text}
+                </div>
+              )}
+
+              {(archiveData?.term_due && !isAdmin) ? (
+                <p className="no-results-banner">The current term has ended and its winners have been moved to the archive.</p>
+              ) : (
+                <div className="finalize-panel">
+                  <div className="finalize-panel-text">
+                    <h3 className="finalize-panel-title">End of Term Archive</h3>
+                    <p className="finalize-panel-body">
+                      Winners record as "archived" once their term ends, so you can always look up
+                      who won each school year — even after a new election starts.
+                      {archiveData?.term_ends_at
+                        ? <> Term Ends is configured for {formatArchiveDate(archiveData.term_ends_at)}.</>
+                        : ' No Term Ends date is set; winners are archived manually.'}
+                    </p>
+                  </div>
+                  {isAdmin && (
+                    <div className="finalize-panel-actions">
+                      <button className="btn-action btn-purple" disabled={archiving} onClick={archiveTermNow}>
+                        {archiving ? 'Archiving…' : 'End Term & Archive Winners'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {loadingArchive ? (
+                <p className="no-results-banner">Loading archived terms…</p>
+              ) : !Array.isArray(archiveData?.terms) || archiveData.terms.length === 0 ? (
+                <p className="no-results-banner">No archived terms yet. Winners stay here after their term ends.</p>
+              ) : (
+                archiveData.terms.map((term) => (
+                  <div className="result-card" key={term.term_label}>
+                    <h3 className="result-card-title">
+                      {term.term_label}
+                      <span className="term-archive-sub">
+                        {term.winners.length} winner{term.winners.length === 1 ? '' : 's'} · archived{' '}
+                        {formatArchiveDate(term.archived_at)}
+                      </span>
+                    </h3>
+                    <div className="candidate-list">
+                      {term.winners.map((w, idx) => (
+                        <div key={idx} className="candidate-item">
+                          <div className="candidate-row-header">
+                            <div className="candidate-info">
+                              <span className="candidate-name">{w.name}</span>
+                              <span className="badge-tag badge-winner">WINNER</span>
+                            </div>
+                            <span className="vote-count">
+                              {w.position || w.tier || 'Position'} · {w.vote_total ?? 0} votes
+                            </span>
+                          </div>
+                          {w.party && <p className="archive-party">Party: {w.party}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
           {/* VIEW 2: DETAILED CANDIDATE TABLE */}
-          {subView !== 'live' && (
+          {subView !== 'live' && subView !== 'past-terms' && (
             <div className="detailed-results-container">
               <div className="detail-view-header">
                 <button className="back-circle-btn" onClick={() => setSubView('live')}>
@@ -351,7 +486,7 @@ export default function Results({ activeView = 'results', onNavigate, onLogout }
                   {subView === 'elected' ? 'All Elected Results' : subView === 'unsuccessful' ? 'All Unsuccessful' : 'All Candidates Results'}
                 </h2>
                 <div className="phase-text-badge">
-                  Current Phase: <span className="green-phase">General Elections</span>
+                  Current Phase: <span className={phaseClass(phase)}>{displayPhase(phase)}</span>
                 </div>
               </div>
 
@@ -363,7 +498,7 @@ export default function Results({ activeView = 'results', onNavigate, onLogout }
                       <Users2 size={18} color="#2563eb" />
                     </div>
                   </div>
-                  <div className="metric-value">{candidateRows.length}</div>
+                  <div className="metric-value">{loadingResults ? '…' : candidateRows.length}</div>
                   <div className="metric-subtitle">Candidates included in published results</div>
                 </div>
 
@@ -374,7 +509,7 @@ export default function Results({ activeView = 'results', onNavigate, onLogout }
                       <CheckCircle2 size={18} color="#16a34a" />
                     </div>
                   </div>
-                  <div className="metric-value">{totalVotes}</div>
+                  <div className="metric-value">{loadingResults ? '…' : totalVotes}</div>
                   <div className="metric-subtitle">Total candidate votes recorded</div>
                 </div>
 
@@ -449,7 +584,12 @@ export default function Results({ activeView = 'results', onNavigate, onLogout }
                     </tr>
                   </thead>
                   <tbody>
-                    {getFilteredCandidates().map((row, index) => (
+                    {filteredCandidates.length === 0 ? (
+                      <tr>
+                        <td colSpan="7" className="no-data-cell">No candidates match your search or filter selections.</td>
+                      </tr>
+                    ) : (
+                      filteredCandidates.map((row, index) => (
                       <tr key={index}>
                         <td className="rank-cell">{row.rank}</td>
                         <td>
@@ -473,23 +613,21 @@ export default function Results({ activeView = 'results', onNavigate, onLogout }
                           </div>
                         </td>
                         <td>
-                          <span className={`status-pill ${row.status === 'WINNER' ? 'pill-winner' : 'pill-eliminated'}`}>
-                            {row.status}
+                          <span className={`status-pill ${row.status === 'WINNER' ? 'pill-winner' : row.status === 'TIE' ? 'pill-tie' : 'pill-eliminated'}`}>
+                            {row.status === 'TIE' ? 'TIE' : row.status}
                           </span>
                         </td>
                       </tr>
-                    ))}
+                      ))
+                    )}
                   </tbody>
                 </table>
 
                 <div className="table-footer">
-                  <span className="footer-pagination-info">Showing 9 of 30 active candidates</span>
-                  <div className="pagination-buttons">
-                    <button className="btn-page">Previous</button>
-                    <button className="btn-page active">1</button>
-                    <button className="btn-page">2</button>
-                    <button className="btn-page">Next</button>
-                  </div>
+                  <span className="footer-pagination-info">
+                    Showing {filteredCandidates.length} of {candidateRows.length} candidates
+                    {searchTerm || selectedPosition !== 'All' || selectedParty !== 'All' ? ' after filters' : ''}
+                  </span>
                 </div>
               </div>
             </div>

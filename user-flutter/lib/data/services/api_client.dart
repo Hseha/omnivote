@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/constants/api_constants.dart';
 import '../../core/providers/auth_event_provider.dart';
+import 'api_config.dart';
 import 'secure_storage_service.dart';
 
 /// A short-lived in-memory token store used on web so that Bearer tokens are
@@ -58,6 +59,10 @@ final Provider<Dio> apiClientProvider = Provider<Dio>((ref) {
 
   dio.interceptors.add(InterceptorsWrapper(
     onRequest: (options, handler) async {
+      // Apply the runtime-switchable API base URL on every request so an
+      // in-app base-URL change (dev settings) takes effect without rebuilding
+      // or losing the existing providers/session.
+      options.baseUrl = ref.read(apiBaseUrlProvider) ?? ApiConstants.baseUrl;
       final tokenStore = ref.read(tokenStoreProvider);
       final token = await tokenStore.read();
       if (token != null && token.isNotEmpty) {
@@ -66,15 +71,27 @@ final Provider<Dio> apiClientProvider = Provider<Dio>((ref) {
       return handler.next(options);
     },
     onError: (DioException e, handler) {
-      // Do not force-logout on 401s originating from the login/register
-      // request itself (invalid credentials must not clear an existing user).
+      // Do not force-logout on a 401 from the login request itself (invalid
+      // credentials must not clear an existing user session event).
       final path = e.requestOptions.path;
-      final isLoginOrRegister = path.contains('/auth/login') || path.contains('/auth/register');
+      final isLogin = path.contains('/auth/login');
+      final statusCode = e.response?.statusCode;
 
-      if (e.response?.statusCode == 401 && !isLoginOrRegister) {
+      if (statusCode == 401 && !isLogin) {
         // Signal unauthorized event to break circular dependency
         ref.read(authEventProvider.notifier).state = AuthEvent.unauthorized;
       }
+
+      // A disabled account is rejected with 403 ("Your account has been
+      // disabled.") by /me and every protected endpoint. Clearing the stored
+      // token returns the user to the login screen instead of leaving a stale
+      // session alive. Students usually first hit a revoked-token 401 (the
+      // status change deletes the token), but the 403 path still arises from
+      // /me before the next authed call, so handle it too.
+      if (statusCode == 403 && e.response?.data is Map && e.response?.data['message'] == 'Your account has been disabled.') {
+        ref.read(authEventProvider.notifier).state = AuthEvent.unauthorized;
+      }
+
       return handler.next(e);
     },
   ));

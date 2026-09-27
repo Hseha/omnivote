@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/theme/app_tokens.dart';
 
 class PlatformPointsList extends StatelessWidget {
   final List<String> points;
@@ -24,16 +25,16 @@ class PlatformPointsList extends StatelessWidget {
             children: [
               Text(
                 isNumbered ? '$idx. ' : '• ',
-                style: const TextStyle(
-                  color: Color(0xFF64748B),
+                style: TextStyle(
+                  color: context.appTextSecondary,
                   fontWeight: FontWeight.bold,
                 ),
               ),
               Expanded(
                 child: Text(
                   point,
-                  style: const TextStyle(
-                    color: Color(0xFF0F172A),
+                  style: TextStyle(
+                    color: context.appTextPrimary,
                     fontSize: 14,
                   ),
                 ),
