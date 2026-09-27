@@ -11,7 +11,7 @@ import './UserManagement.css';
 
 const ROLES = {
   admin: 'Administrator',
-  teacher: 'Teacher',
+  teacher: 'SSG Adviser',
   candidate: 'Candidate',
   student: 'Student',
   ssg_president: 'SSG President',
@@ -259,7 +259,7 @@ export default function UserManagement({ onLogout, activeView = 'user_management
               <button type="button" className="um-header-btn" onClick={doExport} title="Export the currently filtered user list as CSV">
                 <Download size={16} /> Export CSV
               </button>
-              <button type="button" className="um-header-btn um-header-btn-primary" onClick={() => { setShowCreate(true); setCreateError(''); setCreatedCredential(null); setCreateForm({ name: '', email: '', role: 'teacher', department: '' }); }} title="Create a Teacher or Administrator account">
+              <button type="button" className="um-header-btn um-header-btn-primary"         onClick={() => { setShowCreate(true); setCreateError(''); setCreatedCredential(null); setCreateForm({ name: '', email: '', role: 'teacher', department: '' }); }} title="Create an SSG Adviser or Administrator account">
                 <UserPlus size={16} /> Create Account
               </button>
               <button type="button" className="um-header-btn um-header-btn-ssg" onClick={openGrant} title="Grant SSG President access to a certified election winner">
@@ -310,7 +310,7 @@ export default function UserManagement({ onLogout, activeView = 'user_management
             <div className="um-stat-card"><div className="um-stat-value">{stats?.inactive ?? '—'}</div><div className="um-stat-label">Inactive</div></div>
             <div className="um-stat-card"><div className="um-stat-value">{stats?.locked ?? '—'}</div><div className="um-stat-label">In Backoff</div></div>
             <div className="um-stat-card"><div className="um-stat-value">{stats?.by_role?.admin ?? '—'}</div><div className="um-stat-label">Admins</div></div>
-            <div className="um-stat-card"><div className="um-stat-value">{stats?.by_role?.teacher ?? '—'}</div><div className="um-stat-label">Teachers</div></div>
+            <div className="um-stat-card"><div className="um-stat-value">{stats?.by_role?.teacher ?? '—'}</div><div className="um-stat-label">SSG Advisers</div></div>
             <div className="um-stat-card"><div className="um-stat-value">{stats?.by_role?.student ?? '—'}</div><div className="um-stat-label">Students</div></div>
             <div className="um-stat-card"><div className="um-stat-value">{stats?.by_role?.candidate ?? '—'}</div><div className="um-stat-label">Candidates</div></div>
             <div className="um-stat-card"><div className="um-stat-value">{stats ? (stats.ssg_president.assigned > 0 ? 'Yes' : 'No') : '—'}</div><div className="um-stat-label">SSG President</div></div>
@@ -408,7 +408,7 @@ export default function UserManagement({ onLogout, activeView = 'user_management
                 <label className="um-field">
                   <span>Role</span>
                   <select value={createForm.role} onChange={e => setCreateForm(f => ({ ...f, role: e.target.value }))}>
-                    <option value="teacher">Teacher</option>
+                    <option value="teacher">SSG Adviser</option>
                     <option value="admin">Administrator</option>
                   </select>
                 </label>
