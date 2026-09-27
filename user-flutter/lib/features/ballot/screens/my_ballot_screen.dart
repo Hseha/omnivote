@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/error_message.dart';
 import '../../../core/widgets/loading_indicator.dart';
 import '../../../core/widgets/top_bar.dart';
@@ -20,10 +21,17 @@ final myBallotProvider = FutureProvider<Map<String, dynamic>>((ref) async {
   return data;
 });
 
-/// Every approved candidate (all positions) so draft rows can resolve the
-/// opaque `candidate_ref` values back to display names.
+/// The receipt token persisted locally at submit time. Restores the receipt
+/// after a relaunch if the server payload ever lacks one for a submitted
+/// ballot (audit §5 #8).
+final savedReceiptProvider = FutureProvider<String?>((ref) async {
+  return await ref.watch(voteRepositoryProvider).getSavedReceipt();
+});
+
+/// Every approved candidate (all positions, all pages) so draft rows can
+/// resolve the opaque `candidate_ref` values back to display names.
 final allApprovedCandidatesProvider = FutureProvider<List<Candidate>>((ref) async {
-  return await ref.watch(candidateRepositoryProvider).getCandidates();
+  return await ref.watch(candidateRepositoryProvider).getAllCandidates();
 });
 
 /// My Ballot: read-only summary of the in-progress (or submitted) ballot with
@@ -36,9 +44,10 @@ class MyBallotScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final ballotAsync = ref.watch(myBallotProvider);
     final votingState = ref.watch(votingProvider);
+    final savedReceiptAsync = ref.watch(savedReceiptProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.backgroundGray,
+      backgroundColor: context.appBackground,
       appBar: const TopBar(title: 'My Ballot'),
       body: ballotAsync.when(
         data: (ballot) {
@@ -47,11 +56,13 @@ class MyBallotScreen extends ConsumerWidget {
               (ballot['selections'] as Map?)?.cast<String, dynamic>() ?? {};
 
           if (status == 'submitted') {
-            return _SubmittedBallot(
-              receiptToken:
-                  (ballot['receipt_token'] ?? votingState.receipt?.receiptToken ?? '')
-                      .toString(),
-            );
+            final serverToken = (ballot['receipt_token'] ?? '').toString();
+            final token = serverToken.isNotEmpty
+                ? serverToken
+                : (votingState.receipt?.receiptToken ??
+                    savedReceiptAsync.valueOrNull ??
+                    '');
+            return _SubmittedBallot(receiptToken: token);
           }
 
           return _DraftBallot(selections: selections);
@@ -283,9 +294,9 @@ class _BallotRow extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 12),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: const BorderSide(color: AppColors.borderGray),
+        side: BorderSide(color: context.appBorder),
       ),
-      color: AppColors.surfaceWhite,
+      color: context.appSurface,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -293,10 +304,10 @@ class _BallotRow extends StatelessWidget {
           children: [
             Text(
               label,
-              style: const TextStyle(
+              style: TextStyle(
                 fontWeight: FontWeight.bold,
                 fontSize: 15,
-                color: AppColors.textPrimary,
+                color: context.appTextPrimary,
               ),
             ),
             const SizedBox(height: 8),
@@ -304,13 +315,13 @@ class _BallotRow extends StatelessWidget {
                   padding: const EdgeInsets.only(bottom: 4),
                   child: Row(
                     children: [
-                      const Icon(Icons.check_circle,
-                          size: 16, color: Color(0xFF16A34A)),
+                      Icon(Icons.check_circle,
+                          size: 16, color: AppColors.successGreen),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           byRef[ref]?.name ?? 'Candidate',
-                          style: const TextStyle(color: AppColors.textSecondary),
+                          style: TextStyle(color: context.appTextSecondary),
                         ),
                       ),
                     ],
@@ -336,30 +347,30 @@ class _SubmittedBallot extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.verified, size: 72, color: Color(0xFF16A34A)),
+            Icon(Icons.verified, size: 72, color: AppColors.successGreen),
             const SizedBox(height: 16),
-            const Text(
+            Text(
               'Ballot Submitted',
               style: TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.bold,
-                color: AppColors.textPrimary,
+                color: context.appTextPrimary,
               ),
             ),
             const SizedBox(height: 12),
-            const Text(
+            Text(
               'Your digital receipt token (use it on the Results tab to verify your vote was counted — it never reveals your choices):',
               textAlign: TextAlign.center,
-              style: TextStyle(color: AppColors.textSecondary),
+              style: TextStyle(color: context.appTextSecondary),
             ),
             const SizedBox(height: 16),
             SelectableText(
               receiptToken.isEmpty ? '(receipt pending)' : receiptToken,
               textAlign: TextAlign.center,
-              style: const TextStyle(
+              style: TextStyle(
                 fontFamily: 'monospace',
                 fontWeight: FontWeight.bold,
-                color: AppColors.textPrimary,
+                color: context.appTextPrimary,
               ),
             ),
             const SizedBox(height: 24),

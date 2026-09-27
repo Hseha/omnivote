@@ -21,17 +21,57 @@ class CandidateRepository {
   Future<List<Candidate>> getCandidates({
     String? positionId,
     String? tier,
+    String? department,
+    String? party,
     String? search,
     String? grade,
+    int? perPage,
+    int? page,
   }) async {
     final response = await _candidateService.getCandidates(
       positionId: positionId,
       tier: tier,
+      department: department,
+      party: party,
       search: search,
       grade: grade,
+      perPage: perPage,
+      page: page,
     );
     final List<dynamic> data = response.data['data'] ?? response.data;
     return data.map((json) => Candidate.fromJson(json)).toList();
+  }
+
+  /// Fetches *every* approved candidate across all pages of GET /candidates.
+  /// Used to resolve opaque `candidate_ref` values on the My Ballot screen,
+  /// where missing rows would otherwise render as the literal "Candidate".
+  Future<List<Candidate>> getAllCandidates() async {
+    final all = <Candidate>[];
+    var page = 1;
+    while (true) {
+      final List<Candidate> batch = await getCandidates(
+        perPage: 100,
+        page: page,
+      );
+      all.addAll(batch);
+      if (batch.length < 100) break;
+      page++;
+    }
+    return all;
+  }
+
+  Future<List<String>> getDepartments() async {
+    final response = await _candidateService.getDepartments();
+    final List<dynamic> data = response.data['data'] ?? response.data;
+    return data.map((e) => e.toString()).toList();
+  }
+
+  Future<List<String>> getParties() async {
+    final response = await _candidateService.getParties();
+    final List<dynamic> data = response.data['data'] ?? response.data;
+    return data
+        .map((json) => (json['name'] ?? json).toString())
+        .toList();
   }
 
   Future<Candidate> getCandidate(String id) async {

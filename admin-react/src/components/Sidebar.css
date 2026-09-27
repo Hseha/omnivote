@@ -1,0 +1,10 @@
+/* Shared sidebar component — src/components/Sidebar.jsx
+ *
+ * The shell classes (.sidebar, .logo-area, .nav-menu, .nav-item, footer)
+ * come from each page's own stylesheet on purpose — this file is imported
+ * by Sidebar.jsx but intentionally contains no rules that would fight
+ * the per-page shell styles. Any sidebar-specific additions for the shared
+ * component can be added here.
+ */
+
+

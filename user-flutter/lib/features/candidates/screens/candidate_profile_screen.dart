@@ -1,8 +1,11 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/constants/app_colors.dart';
+import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/safe_json.dart';
 import '../../../core/widgets/cached_avatar.dart';
+import '../../../core/widgets/top_bar.dart';
 import '../../../data/models/candidate_model.dart';
 import '../widgets/platform_points_list.dart';
 
@@ -14,50 +17,20 @@ class CandidateProfileScreen extends StatelessWidget {
     required this.candidate,
   });
 
-  // Design tokens from 07_DESIGN_SYSTEM.md
-  static const Color primaryBlue = Color(0xFF2F5EFF);
-  static const Color navyDark = Color(0xFF0F172A);
-  static const Color backgroundGray = Color(0xFFF8FAFC);
-  static const Color textPrimary = Color(0xFF0F172A);
-  static const Color textSecondary = Color(0xFF64748B);
-  static const Color borderGray = Color(0xFFE2E8F0);
-  static const Color tagBlueBg = Color(0xFFE0E7FF);
-  static const Color tagBlueText = Color(0xFF3730A3);
-
   @override
   Widget build(BuildContext context) {
     final String firstName = candidate.name.split(' ').first;
 
     return Scaffold(
-      backgroundColor: backgroundGray,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: textPrimary),
-          onPressed: () => context.pop(),
-        ),
-        title: const Text(
-          'Candidate Profile',
-          style: TextStyle(
-            color: textPrimary,
-            fontWeight: FontWeight.bold,
-            fontSize: 18,
-          ),
-        ),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Container(color: borderGray, height: 1),
-        ),
-      ),
+      backgroundColor: context.appBackground,
+      appBar: const TopBar(title: 'Candidate Profile'),
       body: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // Hero Area
             Container(
-              color: Colors.white,
+              color: context.appSurface,
               padding: const EdgeInsets.all(24),
               child: Column(
                 children: [
@@ -70,13 +43,13 @@ class CandidateProfileScreen extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(
-                      color: tagBlueBg,
+                      color: context.appTagBg,
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
                       candidate.position.label.toUpperCase(),
-                      style: const TextStyle(
-                        color: tagBlueText,
+                      style: TextStyle(
+                        color: context.appTagFg,
                         fontWeight: FontWeight.bold,
                         fontSize: 11,
                         letterSpacing: 0.8,
@@ -87,30 +60,32 @@ class CandidateProfileScreen extends StatelessWidget {
                   Text(
                     candidate.name,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.bold,
-                      color: textPrimary,
+                      color: context.appTextPrimary,
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    candidate.gradeLine,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      color: textSecondary,
+                  if (candidate.gradeLine.trim().isNotEmpty)
+                    Text(
+                      candidate.gradeLine,
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: context.appTextSecondary,
+                      ),
                     ),
-                  ),
                   const SizedBox(height: 16),
-                  Text(
-                    '"${candidate.slogan}"',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontStyle: FontStyle.italic,
-                      color: textSecondary,
+                  if (candidate.slogan.trim().isNotEmpty)
+                    Text(
+                      '"${candidate.slogan}"',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontStyle: FontStyle.italic,
+                        color: context.appTextSecondary,
+                      ),
                     ),
-                  ),
                   const SizedBox(height: 32),
                   Row(
                     children: [
@@ -122,7 +97,7 @@ class CandidateProfileScreen extends StatelessWidget {
                             context.go('/vote-now', extra: candidate.position.id);
                           },
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: primaryBlue,
+                            backgroundColor: AppColors.primaryBlue,
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(vertical: 16),
                             elevation: 0,
@@ -141,8 +116,8 @@ class CandidateProfileScreen extends StatelessWidget {
                         child: OutlinedButton(
                           onPressed: () => context.pop(),
                           style: OutlinedButton.styleFrom(
-                            foregroundColor: primaryBlue,
-                            side: const BorderSide(color: primaryBlue),
+                            foregroundColor: AppColors.primaryBlue,
+                            side: const BorderSide(color: AppColors.primaryBlue),
                             padding: const EdgeInsets.symmetric(vertical: 16),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8),
@@ -165,17 +140,21 @@ class CandidateProfileScreen extends StatelessWidget {
               child: Column(
                 children: [
                   // 1. Campaign Platform
-                  _buildSectionCard(
-                    title: 'Campaign Platform',
-                    child: PlatformPointsList(
-                      points: candidate.platformPoints,
-                      isNumbered: true,
+                  if (candidate.platformPoints.isNotEmpty)
+                    _buildSectionCard(
+                      context,
+                      title: 'Campaign Platform',
+                      child: PlatformPointsList(
+                        points: candidate.platformPoints,
+                        isNumbered: true,
+                      ),
                     ),
-                  ),
 
                   // 2. Campaign Video
-                  if (candidate.videoUrl != null)
+                  if (candidate.videoUrl != null &&
+                      candidate.videoUrl!.trim().isNotEmpty)
                     _buildSectionCard(
+                      context,
                       title: 'Campaign Video',
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -184,7 +163,7 @@ class CandidateProfileScreen extends StatelessWidget {
                             height: 200,
                             width: double.infinity,
                             decoration: BoxDecoration(
-                              color: navyDark,
+                              color: AppColors.navyDark,
                               borderRadius: BorderRadius.circular(8),
                               image: safeHttpImageUrl(candidate.photoUrl) != null
                                   ? DecorationImage(
@@ -210,8 +189,8 @@ class CandidateProfileScreen extends StatelessWidget {
                           const SizedBox(height: 12),
                           Text(
                             "Listen to ${candidate.name}'s 2-minute pitch to voters",
-                            style: const TextStyle(
-                              color: textSecondary,
+                            style: TextStyle(
+                              color: context.appTextSecondary,
                               fontSize: 14,
                             ),
                           ),
@@ -220,13 +199,15 @@ class CandidateProfileScreen extends StatelessWidget {
                     ),
 
                   // 3. Qualifications & Experience
-                  _buildSectionCard(
-                    title: 'Qualifications & Experience',
-                    child: PlatformPointsList(
-                      points: candidate.qualifications,
-                      isNumbered: false,
+                  if (candidate.qualifications.isNotEmpty)
+                    _buildSectionCard(
+                      context,
+                      title: 'Qualifications & Experience',
+                      child: PlatformPointsList(
+                        points: candidate.qualifications,
+                        isNumbered: false,
+                      ),
                     ),
-                  ),
                 ],
               ),
             ),
@@ -236,15 +217,15 @@ class CandidateProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildSectionCard({required String title, required Widget child}) {
+  Widget _buildSectionCard(BuildContext context, {required String title, required Widget child}) {
     return Card(
       elevation: 0,
       margin: const EdgeInsets.only(bottom: 16),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: const BorderSide(color: borderGray),
+        side: BorderSide(color: context.appBorder),
       ),
-      color: Colors.white,
+      color: context.appSurface,
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -252,10 +233,10 @@ class CandidateProfileScreen extends StatelessWidget {
           children: [
             Text(
               title,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
-                color: textPrimary,
+                color: context.appTextPrimary,
               ),
             ),
             const SizedBox(height: 16),

@@ -1,0 +1,7 @@
+/* Shared admin page header — src/components/Header.jsx
+ *
+ * Layout/visual rules for the shared header (.top-header, .breadcrumb,
+ * .header-right, .voting-status-badge, .system-time, .user-profile, …)
+ * live in the global stylesheet (src/index.css) so all pages share one
+ * light/dark theme. Nothing page-specific is defined here.
+ */

@@ -1,0 +1,291 @@
+/* Two-Factor Authentication setup widget (Settings Security tab + enforced screen) */
+.twofa-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 20px;
+}
+
+.twofa-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.twofa-title {
+  margin: 0 0 4px;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.twofa-desc {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #64748b;
+  line-height: 1.5;
+}
+
+.twofa-enforced-note {
+  margin-top: 10px;
+  color: #b45309;
+}
+
+.twofa-badge {
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.twofa-badge-on {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.twofa-recovery-note {
+  margin: 10px 0;
+  padding: 8px 12px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  color: #9a3412;
+}
+
+.twofa-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.twofa-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  color: #0f172a;
+  background: #fff;
+  box-sizing: border-box;
+  outline: none;
+}
+
+.twofa-input:focus {
+  border-color: var(--brand-primary);
+  box-shadow: 0 0 0 1px var(--brand-primary);
+}
+
+.twofa-code-input {
+  letter-spacing: 0.25em;
+  text-align: center;
+  font-weight: 600;
+  max-width: 220px;
+}
+
+.twofa-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.twofa-btn-primary,
+.twofa-btn-secondary,
+.twofa-btn-danger {
+  border: none;
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.twofa-btn-primary {
+  background: var(--brand-primary);
+  color: #ffffff;
+}
+
+.twofa-btn-primary:hover {
+  background: #3b82f6;
+}
+
+.twofa-btn-primary:disabled {
+  background: #93c5fd;
+  cursor: default;
+}
+
+.twofa-btn-secondary {
+  background: #e2e8f0;
+  color: #334155;
+}
+
+.twofa-btn-secondary:hover {
+  background: #cbd5e1;
+}
+
+.twofa-btn-danger {
+  background: #dc2626;
+  color: #ffffff;
+  max-width: 200px;
+}
+
+.twofa-btn-danger:hover {
+  background: #ef4444;
+}
+
+.twofa-btn-danger:disabled {
+  background: #fca5a5;
+  cursor: default;
+}
+
+.twofa-qr-wrap {
+  display: flex;
+  justify-content: center;
+  margin: 16px 0;
+  padding: 16px;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 10px;
+}
+
+.twofa-secret {
+  margin: 8px 0 4px;
+  font-size: 0.82rem;
+}
+
+.twofa-secret-code {
+  display: inline-block;
+  padding: 8px 12px;
+  background: #f1f5f9;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  letter-spacing: 0.08em;
+  color: #0f172a;
+  user-select: all;
+  word-break: break-all;
+}
+
+.twofa-codes {
+  max-width: 360px;
+}
+
+.twofa-code-list {
+  list-style: none;
+  margin: 14px 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.twofa-code {
+  padding: 10px;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  text-align: center;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 0.85rem;
+  letter-spacing: 0.05em;
+  color: #0f172a;
+}
+
+.twofa-error {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  color: #b91c1c;
+  font-size: 0.85rem;
+}
+
+.twofa-notify {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  color: #166534;
+  font-size: 0.85rem;
+}
+
+/* Dark-theme adjustments for the Settings embedded card */
+.twofa .twofa-card,
+.theme-dark .twofa .twofa-card {
+  background: #0f172a;
+  border-color: #1e293b;
+}
+
+.twofa .twofa-title {
+  color: #f1f5f9;
+}
+
+.twofa .twofa-desc {
+  color: #94a3b8;
+}
+
+.twofa .twofa-input {
+  background: #1e293b;
+  border-color: #334155;
+  color: #f1f5f9;
+}
+
+.twofa .twofa-input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 1px #3b82f6;
+}
+
+.twofa .twofa-qr-wrap {
+  background: #1e293b;
+  border-color: #334155;
+}
+
+.twofa .twofa-secret-code {
+  background: #1e293b;
+  color: #f1f5f9;
+}
+
+.twofa .twofa-code {
+  background: #1e293b;
+  border-color: #334155;
+  color: #f1f5f9;
+}
+
+.twofa .twofa-btn-secondary {
+  background: #334155;
+  color: #e2e8f0;
+}
+
+.twofa .twofa-btn-secondary:hover {
+  background: #475569;
+}
+
+.twofa .twofa-recovery-note {
+  background: #431407;
+  border-color: #7c2d12;
+  color: #fdba74;
+}
+
+.twofa .twofa-error {
+  background: #450a0a;
+  border-color: #7f1d1d;
+  color: #fca5a5;
+}
+
+.twofa .twofa-notify {
+  background: #052e16;
+  border-color: #14532d;
+  color: #86efac;
+}
+
+/* Dark theme is applied via .theme-dark body attribute, not always present in
+   Settings embed; ensure the dark card also appears correctly there. */
+.theme-dark .twofa .twofa-card {
+  background: #0f172a;
+  border-color: #1e293b;
+}

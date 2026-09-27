@@ -4,8 +4,13 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\CandidateApplicationRequest;
 use App\Models\Candidate;
+use App\Models\Department;
+use App\Models\Party;
+use App\Support\DepartmentCatalog;
+use App\Support\Notifier;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 class CandidateController extends Controller
@@ -14,23 +19,45 @@ class CandidateController extends Controller
      * GET /api/candidates
      *
      * Public, approved-only listing consumed by the Flutter Candidates screen.
-     * Supports `position`, `tier`, `search` and `grade` query filters and
-     * always emits `candidate_ref` (the opaque token used on the ballot).
+     * Supports `position`, `tier`, `department`, `party`, `search` and `grade`
+     * query filters and always emits `candidate_ref` (the opaque token used on
+     * the ballot).
      */
     public function index(Request $request): JsonResponse
     {
+        // Every filter is validated as a scalar before it touches a query.
+        // A raw array value (e.g. ?search[]=x) used to reach mb_strtolower()/
+        // LIKE interpolation and produced an unhandled 500 with a full debug
+        // payload — source paths, line numbers, stack trace — because
+        // APP_DEBUG was on (security assessment M-1). Validation turns those
+        // into a clean 422. The rules intentionally only assert *type*, not
+        // value, so an unknown-but-scalar filter keeps its previous
+        // "matches nothing" behaviour instead of becoming a 422.
+        $request->validate([
+            'position' => ['nullable', 'string', 'max:64'],
+            'tier' => ['nullable', 'string', 'max:32'],
+            'department' => ['nullable', 'string', 'max:255'],
+            'party' => ['nullable', 'string', 'max:255'],
+            'search' => ['nullable', 'string', 'max:255'],
+            'grade' => ['nullable', 'string', 'max:32'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+            'page' => ['nullable', 'integer', 'min:1'],
+        ]);
+
         $candidates = Candidate::query()
-            ->with(['user:id,name,email,student_id', 'position:id,slug,label,tier,seat_count'])
+            ->with(['user:id,name,email,department,year_level', 'position:id,slug,label,tier,seat_count'])
             ->where('approval_status', 'approved')
             ->when($request->query('position'), fn ($q, $p) => $q->where('position_id', $p))
             ->when($request->query('tier'), fn ($q, $t) => $q->whereHas('position', fn ($p) => $p->where('tier', $t)))
+            ->when($request->query('department'), fn ($q, $d) => $q->whereHas('user', fn ($u) => $u->where('department', $d)))
+            ->when($request->query('party'), fn ($q, $p) => $q->whereRaw('LOWER(party_name) = ?', [mb_strtolower($p)]))
             ->when($request->query('search'), fn ($q, $s) => $q->where(
                 fn ($w) => $w->where('slogan', 'like', "%{$s}%")
                     ->orWhereHas('user', fn ($u) => $u->where('name', 'like', "%{$s}%"))
             ))
-            ->when($request->query('grade'), fn ($q, $g) => $q->whereHas('user', fn ($u) => $u->where('email', 'like', "%{$g}%")))
+            ->when($request->query('grade'), fn ($q, $g) => $q->whereHas('user', fn ($u) => $u->where('year_level', $g)))
             ->orderByDesc('created_at')
-            ->paginate($request->integer('per_page', 50));
+            ->paginate(min(100, max(1, $request->integer('per_page', 50))));
 
         return response()->json([
             'data' => $candidates->map(fn (Candidate $c) => $this->payload($c)),
@@ -43,12 +70,56 @@ class CandidateController extends Controller
     }
 
     /**
+     * GET /api/departments
+     *
+     * Department list for the Candidates drill-down. Prefers the managed
+     * `departments` table, falling back to the registrar catalog when the
+     * table has not been seeded yet.
+     */
+    public function departments(): JsonResponse
+    {
+        if (Schema::hasTable('departments')) {
+            $names = Department::query()
+                ->whereNotNull('name')
+                ->where('name', '!=', '')
+                ->orderBy('sort_order')
+                ->pluck('name')
+                ->values();
+        }
+
+        if (! isset($names) || $names->isEmpty()) {
+            $names = collect(DepartmentCatalog::collegeNames())->values();
+        }
+
+        return response()->json(['data' => $names]);
+    }
+
+    /**
+     * GET /api/parties
+     *
+     * Canonical party list (ASLE, SVEA) for the Candidates drill-down.
+     */
+    public function parties(): JsonResponse
+    {
+        $parties = Party::query()
+            ->orderBy('sort_order')
+            ->get(['id', 'name'])
+            ->map(fn (Party $party) => [
+                'id' => $party->id,
+                'name' => $party->name,
+            ])
+            ->values();
+
+        return response()->json(['data' => $parties]);
+    }
+
+    /**
      * GET /api/candidates/{candidate}
      */
     public function show(Request $request, $candidate): JsonResponse
     {
         $candidate = Candidate::query()
-            ->with(['user:id,name,email,student_id', 'position:id,slug,label,tier,seat_count'])
+            ->with(['user:id,name,email,department,year_level', 'position:id,slug,label,tier,seat_count'])
             ->where('approval_status', 'approved')
             ->find($candidate);
 
@@ -93,6 +164,15 @@ class CandidateController extends Controller
             $candidate->save();
         }
 
+        Notifier::toAdmins(
+            'notifyOnRegistration',
+            'info',
+            'New candidate application',
+            "{$candidate->user->name} applied for ".($candidate->position->label ?? 'a position').'.',
+            '/candidates',
+            false,
+        );
+
         return response()->json(['candidate' => $this->payload($candidate->load('position', 'user'))], 201);
     }
 
@@ -111,9 +191,12 @@ class CandidateController extends Controller
             'candidate_ref' => $candidate->candidate_ref,
             'name' => $candidate->user?->name,
             'full_name' => $candidate->user?->name,
-            'student_id' => $candidate->user?->student_id,
-            'grade_line' => $candidate->user?->student_id ? "Student ID {$candidate->user->student_id}" : null,
-            'grade_level' => null,
+            // NOTE: the student_id is deliberately NOT exposed here. These
+            // payloads are served from public routes, and the student ID is a
+            // credential-adjacent identifier (registrar imports used to set it
+            // as the password). Admin views get it via the admin endpoints.
+            'grade_level' => $candidate->user?->year_level,
+            'department' => $candidate->user?->department,
             'photo_url' => $photo,
             'position' => $position ? [
                 'id' => $position->id,

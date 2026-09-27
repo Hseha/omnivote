@@ -32,9 +32,9 @@ return new class extends Migration
         // Relax the legacy enum so inserts that only provide position_id succeed.
         // MySQL-specific; the app is MySQL (see .env).
         DB::statement(
-            "ALTER TABLE candidates MODIFY ssg_office ENUM("
-            . "'President','Vice_President','Secretary','Treasurer','Auditor'"
-            . ") NULL DEFAULT NULL"
+            'ALTER TABLE candidates MODIFY ssg_office ENUM('
+            ."'President','Vice_President','Secretary','Treasurer','Auditor'"
+            .') NULL DEFAULT NULL'
         );
     }
 

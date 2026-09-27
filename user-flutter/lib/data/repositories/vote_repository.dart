@@ -33,13 +33,25 @@ class VoteRepository {
     await _voteService.saveDraft(selections);
   }
 
+  /// Returns the full `{ status, selections, receipt_token }` envelope from
+  /// GET /ballot/me. Previously this unwrapped `selections` and dropped the
+  /// envelope, which made My Ballot always render an empty draft and hid the
+  /// receipt token even after the ballot had been submitted.
+  ///
+  /// After submission the server returns empty `selections` and a null
+  /// `receipt_token` by design: keeping either next to the user id would let a
+  /// database dump re-attach the ballot to the voter. Callers must fall back
+  /// to [readSavedReceipt] (the copy stored on this device at submit time).
   Future<Map<String, dynamic>?> getMyBallot() async {
     final response = await _voteService.getMyBallot();
     final data = response.data;
     if (data is Map) {
-      return data.containsKey('selections')
-          ? Map<String, dynamic>.from(data['selections'] as Map)
-          : Map<String, dynamic>.from(data);
+      final envelope = Map<String, dynamic>.from(data);
+      if (envelope['selections'] is Map) {
+        envelope['selections'] =
+            Map<String, dynamic>.from(envelope['selections'] as Map);
+      }
+      return envelope;
     }
     return null;
   }

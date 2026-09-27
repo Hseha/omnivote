@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/error_message.dart';
 import '../../../core/widgets/cached_avatar.dart';
 import '../../../core/widgets/loading_indicator.dart';
@@ -13,6 +14,7 @@ import '../../../data/repositories/candidate_repository.dart';
 import '../../../data/repositories/vote_repository.dart';
 import '../../candidates/providers/candidates_provider.dart';
 import '../../dashboard/providers/election_status_provider.dart';
+import '../../auth/providers/auth_provider.dart';
 
 /// Fetches approved candidates for a single position for the guided flow
 /// (isolated from the shared Candidates-list filter provider).
@@ -50,12 +52,18 @@ class _VoteNowScreenState extends ConsumerState<VoteNowScreen> {
   Widget build(BuildContext context) {
     final positionsAsync = ref.watch(positionsProvider);
     final statusAsync = ref.watch(electionStatusProvider);
+    final authState = ref.watch(authProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.backgroundGray,
+      backgroundColor: context.appBackground,
       appBar: const TopBar(title: 'Vote Now'),
       body: statusAsync.when(
         data: (status) {
+          if (authState.student?.hasVoted ?? false) {
+            return _AlreadyVoted(
+              onViewBallot: () => context.go('/ballot'),
+            );
+          }
           if (status.phase != ElectionPhase.votingOpen) {
             return _PhaseBanner(
               message: status.isVotingClosed
@@ -84,7 +92,7 @@ class _VoteNowScreenState extends ConsumerState<VoteNowScreen> {
 
   Widget _buildFlow(List<Position> positions) {
     final activePositions =
-        positions.where((p) => p.tier == PositionTier.school).toList()
+        positions.where((p) => p.tier == PositionTier.national).toList()
           ..addAll(positions.where((p) => p.tier == PositionTier.provincial));
     if (activePositions.isEmpty) {
       return const Center(child: Text('No active positions.'));
@@ -119,7 +127,7 @@ class _VoteNowScreenState extends ConsumerState<VoteNowScreen> {
             children: [
               LinearProgressIndicator(
                 value: (_positionIndex + 1) / activePositions.length,
-                backgroundColor: AppColors.backgroundGray,
+                backgroundColor: context.appBorder,
                 color: AppColors.primaryBlue,
                 minHeight: 6,
                 borderRadius: BorderRadius.circular(3),
@@ -127,8 +135,8 @@ class _VoteNowScreenState extends ConsumerState<VoteNowScreen> {
               const SizedBox(height: 12),
               Text(
                 'Step ${_positionIndex + 1} of ${activePositions.length}',
-                style: const TextStyle(
-                  color: AppColors.textSecondary,
+                style: TextStyle(
+                  color: context.appTextSecondary,
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
                 ),
@@ -136,8 +144,8 @@ class _VoteNowScreenState extends ConsumerState<VoteNowScreen> {
               const SizedBox(height: 4),
               Text(
                 position.label,
-                style: const TextStyle(
-                  color: AppColors.textPrimary,
+                style: TextStyle(
+                  color: context.appTextPrimary,
                   fontSize: 22,
                   fontWeight: FontWeight.bold,
                 ),
@@ -146,7 +154,7 @@ class _VoteNowScreenState extends ConsumerState<VoteNowScreen> {
                 position.seatCount > 1
                     ? 'Select up to ${position.seatCount} candidates'
                     : 'Select one candidate',
-                style: const TextStyle(color: AppColors.textSecondary),
+                style: TextStyle(color: context.appTextSecondary),
               ),
             ],
           ),
@@ -222,11 +230,11 @@ class _VoteNowScreenState extends ConsumerState<VoteNowScreen> {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(
-          color: isSelected ? AppColors.primaryBlue : AppColors.borderGray,
+          color: isSelected ? AppColors.primaryBlue : context.appBorder,
           width: isSelected ? 2 : 1,
         ),
       ),
-      color: AppColors.surfaceWhite,
+      color: context.appSurface,
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () =>
@@ -248,16 +256,16 @@ class _VoteNowScreenState extends ConsumerState<VoteNowScreen> {
                   children: [
                     Text(
                       candidate.name,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 16,
-                        color: AppColors.textPrimary,
+                        color: context.appTextPrimary,
                       ),
                     ),
                     if (candidate.slogan.isNotEmpty)
                       Text(
                         candidate.slogan,
-                        style: const TextStyle(color: AppColors.textSecondary),
+                        style: TextStyle(color: context.appTextSecondary),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -277,7 +285,7 @@ class _VoteNowScreenState extends ConsumerState<VoteNowScreen> {
                       ? Icons.radio_button_checked
                       : Icons.radio_button_off,
                   color:
-                      isSelected ? AppColors.primaryBlue : AppColors.borderGray,
+                      isSelected ? AppColors.primaryBlue : context.appBorder,
                 ),
             ],
           ),
@@ -337,6 +345,53 @@ class _VoteNowScreenState extends ConsumerState<VoteNowScreen> {
   }
 }
 
+class _AlreadyVoted extends StatelessWidget {
+  final VoidCallback onViewBallot;
+
+  const _AlreadyVoted({required this.onViewBallot});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.verified,
+              size: 72,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'You have already cast your ballot',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: context.appTextPrimary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Each voter casts one ballot. Review your submission and receipt from the My Ballot tab.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: context.appTextSecondary),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: onViewBallot,
+              icon: const Icon(Icons.ballot),
+              label: const Text('View My Ballot'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _PhaseBanner extends StatelessWidget {
   final String message;
   final VoidCallback? onGoToBallot;
@@ -351,7 +406,7 @@ class _PhaseBanner extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.schedule, size: 64, color: AppColors.textSecondary),
+            Icon(Icons.schedule, size: 64, color: context.appTextSecondary),
             const SizedBox(height: 16),
             Text(message, textAlign: TextAlign.center),
             if (onGoToBallot != null) ...[

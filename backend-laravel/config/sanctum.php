@@ -50,7 +50,10 @@ return [
     |
     */
 
-    'expiration' => null,
+    // 30 days by default. Mobile tokens are bearer credentials, so they must
+    // expire; set SANCTUM_TOKEN_EXPIRATION to override. (First-party SPA
+    // sessions use the cookie, not these tokens.)
+    'expiration' => (int) env('SANCTUM_TOKEN_EXPIRATION', 60 * 24 * 30),
 
     /*
     |--------------------------------------------------------------------------

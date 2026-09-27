@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Candidate;
+use App\Http\Requests\ElectionConfigRequest;
 use App\Models\Phase;
 use App\Models\Position;
 use App\Models\RegistrarImport;
@@ -27,14 +27,18 @@ class ElectionController extends Controller
         $settings = $this->settings();
 
         return response()->json([
-            'phase' => $phase?->name ?? 'registration',
-            'phase_label' => $phase?->name === 'voting_open'
+            'phase' => $phase?->name,
+            'phase_label' => $phase?->name === 'registration_closed'
+                ? 'Registration Closed'
+                : ($phase?->name === 'voting_open'
                 ? 'Voting Open'
-                : ($phase?->name === 'voting_closed' ? 'Voting Closed' : ($phase?->name === 'registration' ? 'Registration' : $phase?->name)),
+                : ($phase?->name === 'voting_closed' ? 'Voting Closed' : ($phase?->name === 'registration' ? 'Registration' : 'Not Configured'))),
             'server_time' => now()->toIso8601String(),
+            'registration_opens_at' => $settings['registration_opens_at'],
+            'registration_closes_at' => $settings['registration_closes_at'],
             'voting_opens_at' => $settings['voting_opens_at'],
             'voting_closes_at' => $settings['voting_closes_at'],
-            'registration_open' => ($phase?->name ?? 'registration') === 'registration',
+            'registration_open' => $phase?->name === 'registration',
         ]);
     }
 
@@ -42,13 +46,40 @@ class ElectionController extends Controller
     {
         $user = $request->user();
 
+        // Turnout scoping (security assessment L-3).
+        //
+        // This endpoint previously returned election-wide roster counters to
+        // every authenticated student: `registered_students`,
+        // `total_students` and a live `actual_ballots_cast`. During the voting
+        // window that running count is election-night tactical information
+        // (turnout suppression, bandwagon effects), and the roster totals tell a
+        // caller how many accounts exist to attack or lock out.
+        //
+        // A student now sees only their OWN card. The election-wide aggregates
+        // are released once polls close, at which point results are public
+        // anyway. The keys stay present (null while polls are open) because the
+        // Flutter Turnout model tolerates a missing/null count, and the admin
+        // dashboard is unaffected — it reads AdminDashboardController::overview.
+        $pollsClosed = Phase::current()?->name === 'voting_closed';
+
         return response()->json([
             'registration_date' => $user->created_at?->toIso8601String(),
-            'eligibility_status' => 'Eligible Voter',
+            // Eligibility is derived from actual account state rather than a
+            // hardcoded literal: an active student account is the only gate the
+            // backend actually enforces (there is no grade/block predicate).
+            'eligibility_status' => $user->is_active
+                ? 'Eligible Voter'
+                : 'Ineligible - Account Disabled',
             'turnout' => [
-                'registered_students' => User::where('role', 'student')->count(),
-                'total_students' => RegistrarImport::count() ?: User::where('role', 'student')->count(),
-                'actual_ballots_cast' => User::where('has_voted', true)->count(),
+                // The caller's own ballot state — never an election-wide figure.
+                'has_voted' => (bool) $user->has_voted,
+                'voted_at' => $user->voted_at?->toIso8601String(),
+                // Null while polls are open, published after they close.
+                'registered_students' => $pollsClosed ? User::where('role', 'student')->count() : null,
+                'total_students' => $pollsClosed
+                    ? (RegistrarImport::count() ?: User::where('role', 'student')->count())
+                    : null,
+                'actual_ballots_cast' => $pollsClosed ? User::where('has_voted', true)->count() : null,
             ],
         ]);
     }
@@ -77,28 +108,35 @@ class ElectionController extends Controller
         return response()->json([
             'config' => [
                 'title' => $settings['title'],
-                'phase' => $phase?->name ?? 'registration',
-                'registration_opens_at' => $settings['voting_opens_at'],
+                'phase' => $phase?->name,
+                // Election Setup kept the single "Registration / Start" field; map
+                // it to the true registration-open date when one exists.
+                'registration_opens_at' => $settings['registration_opens_at'] ?? $settings['voting_opens_at'],
+                'registration_closes_at' => $settings['registration_closes_at'],
+                'voting_opens_at' => $settings['voting_opens_at'],
                 'voting_closes_at' => $settings['voting_closes_at'],
                 'positions' => $positions,
             ],
         ]);
     }
 
-    public function updateConfig(\App\Http\Requests\ElectionConfigRequest $request): JsonResponse
+    public function updateConfig(ElectionConfigRequest $request): JsonResponse
     {
         $validated = $request->validated();
 
-        if (isset($validated['phase'])) {
-            Phase::setCurrent($validated['phase']);
-        }
+        // The phase is purely time-driven from the Settings → Voting Windows
+        // timeline (`Phase::current()` derives it on every read); a manual
+        // write here would fight that derivation, so the 'phase' input from
+        // the legacy UI is intentionally ignored.
 
         $this->putSetting('title', $validated['title'] ?? null);
-        $this->putSetting(
-            'voting_opens_at',
-            $validated['registration_opens_at'] ?? $validated['voting_opens_at'] ?? null,
-        );
-        $this->putSetting('voting_closes_at', $validated['voting_closes_at'] ?? null);
+
+        // The election timeline lives exclusively in Settings → Voting Windows
+        // (`SettingsController::syncElectionTimeline`). Do not write the
+        // schedule from this screen: a save here must never clobber the
+        // Settings-configured window.
+        // (Date keys are accepted by ElectionConfigRequest but intentionally
+        // not persisted here; Election Setup UI no longer sends them.)
 
         foreach ($validated['positions'] ?? [] as $pos) {
             $position = Position::where('slug', (string) ($pos['slug'] ?? $pos['id'] ?? ''))->first();
@@ -120,8 +158,11 @@ class ElectionController extends Controller
     private function settings(): array
     {
         $rows = DB::table('election_settings')->pluck('value', 'key');
+
         return [
             'title' => $rows['title'] ?? 'Student Council General Election',
+            'registration_opens_at' => $rows['registration_opens_at'] ?? null,
+            'registration_closes_at' => $rows['registration_closes_at'] ?? null,
             'voting_opens_at' => $rows['voting_opens_at'] ?? null,
             'voting_closes_at' => $rows['voting_closes_at'] ?? null,
         ];

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_text_styles.dart';
+import '../theme/app_tokens.dart';
 import '../../data/models/candidate_model.dart';
 import 'cached_avatar.dart';
 
@@ -26,14 +27,15 @@ class CandidateCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final appText = AppTextStyles.of(context);
     return Card(
       elevation: 0,
       margin: const EdgeInsets.only(bottom: 16),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: const BorderSide(color: AppColors.borderGray),
+        side: BorderSide(color: context.appBorder),
       ),
-      color: AppColors.surfaceWhite,
+      color: context.appSurface,
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -60,22 +62,22 @@ class CandidateCard extends StatelessWidget {
                           vertical: 4
                         ),
                         decoration: BoxDecoration(
-                          color: AppColors.tagBlueBg,
+                          color: context.appTagBg,
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(
                           candidate.position.label.toUpperCase(),
-                          style: AppTextStyles.tag,
+                          style: appText.tag,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         candidate.name,
-                        style: AppTextStyles.cardTitle.copyWith(fontSize: 18),
+                        style: appText.cardTitle.copyWith(fontSize: 18),
                       ),
                       Text(
                         candidate.gradeLine,
-                        style: AppTextStyles.secondary,
+                        style: appText.secondary,
                       ),
                     ],
                   ),
@@ -91,13 +93,13 @@ class CandidateCard extends StatelessWidget {
             const SizedBox(height: 12),
             Text(
               '"${candidate.slogan}"',
-              style: AppTextStyles.slogan,
+              style: appText.slogan,
             ),
             const SizedBox(height: 16),
             Text(
               'KEY PLATFORM POINTS',
-              style: AppTextStyles.tag.copyWith(
-                color: AppColors.textSecondary,
+              style: appText.tag.copyWith(
+                color: context.appTextSecondary,
                 fontSize: 11,
                 letterSpacing: 0.5,
               ),
@@ -108,18 +110,18 @@ class CandidateCard extends StatelessWidget {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('• ', style: TextStyle(color: AppColors.textSecondary)),
+                      Text('• ', style: TextStyle(color: context.appTextSecondary)),
                       Expanded(
                         child: Text(
                           point,
-                          style: AppTextStyles.body,
+                          style: appText.body,
                         ),
                       ),
                     ],
                   ),
                 )),
             if (!isReadOnly) ...[
-              const Divider(height: 32, color: AppColors.borderGray),
+              Divider(height: 32, color: context.appBorder),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [

@@ -1,39 +1,48 @@
 import 'package:flutter/material.dart';
-import 'app_colors.dart';
+import '../theme/app_tokens.dart';
 
+/// Primary text styles, resolved from the active theme so dark mode keeps
+/// reading contrast automatically.
 class AppTextStyles {
-  static const TextStyle pageTitle = TextStyle(
-    fontSize: 24,
-    fontWeight: FontWeight.bold,
-    color: AppColors.textPrimary,
-  );
+  const AppTextStyles._(this.context);
 
-  static const TextStyle cardTitle = TextStyle(
-    fontSize: 16,
-    fontWeight: FontWeight.bold,
-    color: AppColors.textPrimary,
-  );
+  final BuildContext context;
 
-  static const TextStyle body = TextStyle(
-    fontSize: 14,
-    color: AppColors.textPrimary,
-  );
+  /// Text styles derived from the current theme.
+  factory AppTextStyles.of(BuildContext context) => AppTextStyles._(context);
 
-  static const TextStyle secondary = TextStyle(
-    fontSize: 14,
-    color: AppColors.textSecondary,
-  );
+  TextStyle get pageTitle => TextStyle(
+        fontSize: 24,
+        fontWeight: FontWeight.bold,
+        color: context.appTextPrimary,
+      );
 
-  static const TextStyle slogan = TextStyle(
-    fontSize: 14,
-    fontStyle: FontStyle.italic,
-    color: AppColors.textSecondary,
-  );
+  TextStyle get cardTitle => TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.bold,
+        color: context.appTextPrimary,
+      );
 
-  static const TextStyle tag = TextStyle(
-    fontSize: 11,
-    fontWeight: FontWeight.bold,
-    letterSpacing: 1.2,
-    color: AppColors.tagBlueText,
-  );
+  TextStyle get body => TextStyle(
+        fontSize: 14,
+        color: context.appTextPrimary,
+      );
+
+  TextStyle get secondary => TextStyle(
+        fontSize: 14,
+        color: context.appTextSecondary,
+      );
+
+  TextStyle get slogan => TextStyle(
+        fontSize: 14,
+        fontStyle: FontStyle.italic,
+        color: context.appTextSecondary,
+      );
+
+  TextStyle get tag => TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.bold,
+        letterSpacing: 1.2,
+        color: context.appTagFg,
+      );
 }
