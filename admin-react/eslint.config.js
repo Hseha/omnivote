@@ -17,5 +17,14 @@ export default defineConfig([
       globals: globals.browser,
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
+    rules: {
+      // Context modules intentionally colocate their provider component with
+      // the matching consumer hook (e.g. AuthProvider + useAuth). Allow those
+      // hook names so Fast Refresh isn't flagged for the whole file.
+      'react-refresh/only-export-components': [
+        'error',
+        { allowConstantExport: true, allowExportNames: ['useAuth', 'useTheme'] },
+      ],
+    },
   },
 ])

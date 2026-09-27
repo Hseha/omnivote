@@ -1,118 +1,47 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-import '../../../core/constants/app_colors.dart';
-import '../../../core/utils/error_message.dart';
-import '../../../core/widgets/loading_indicator.dart';
+import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/top_bar.dart';
 import '../../auth/providers/auth_provider.dart';
-import '../providers/dashboard_provider.dart';
+import '../providers/announcements_provider.dart';
 import '../providers/election_status_provider.dart';
-import '../widgets/registration_banner.dart';
-import '../widgets/registration_details_card.dart';
-import '../widgets/turnout_progress.dart';
-import '../widgets/eligibility_faq_card.dart';
+import '../widgets/announcements_card.dart';
+import '../widgets/welcome_banner.dart';
 
+/// Dashboard: a welcome banner (greeting + phase + department/course) and the
+/// published announcements. Registration details live in My Profile; the
+/// other screens (Vote Now, Candidates, My Ballot, Results) are one tap away
+/// in the bottom navigation, so this tab stays compact and scroll-free.
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final authState = ref.watch(authProvider);
-    final registrationAsync = ref.watch(registrationDataProvider);
-    final student = authState.student;
+    final student = ref.watch(authProvider).student;
 
     if (student == null) {
       return const Scaffold(body: Center(child: Text('Not authenticated')));
     }
 
     return Scaffold(
-      backgroundColor: AppColors.backgroundGray,
+      backgroundColor: context.appBackground,
       appBar: const TopBar(title: 'Dashboard'),
-      body: registrationAsync.when(
-        data: (registration) => RefreshIndicator(
-          onRefresh: () async {
-            // Pull-to-refresh: re-fetch both the registration and the phase
-            // status so the dashboard reflects an admin phase flip in place.
-            ref.invalidate(registrationDataProvider);
-            ref.read(electionStatusEpochProvider.notifier).state++;
-          },
-          child: ListView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.all(16.0),
-            children: [
-            RegistrationBanner(
-              registrationDate: registration.registrationDate,
-            ),
-            const SizedBox(height: 24),
-            RegistrationDetailsCard(
-              student: student,
-              registrationDate: registration.registrationDate,
-              eligibilityStatus: registration.eligibilityStatus,
-            ),
-            const SizedBox(height: 16),
-            TurnoutProgress(
-              turnout: registration.turnout,
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: () => context.go('/candidates'),
-              icon: const Icon(Icons.people),
-              label: const Text('View All Candidates'),
-            ),
-            const SizedBox(height: 12),
-            ElevatedButton.icon(
-              onPressed: () => context.go('/vote-now'),
-              icon: const Icon(Icons.how_to_vote),
-              label: const Text('Vote Now'),
-            ),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: () => context.go('/ballot'),
-              icon: const Icon(Icons.receipt_long),
-              label: const Text('My Ballot'),
-            ),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: () => context.go('/results'),
-              icon: const Icon(Icons.bar_chart),
-              label: const Text('Election Results'),
-            ),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: () => context.go('/candidacy'),
-              icon: const Icon(Icons.how_to_reg),
-              label: const Text('Apply for Candidacy'),
-            ),
-            const SizedBox(height: 32),
-            const EligibilityFAQCard(),
-            const SizedBox(height: 40),
+      body: RefreshIndicator(
+        onRefresh: () async {
+          // Fresh announcements + a phase re-check (also refreshes results)
+          // whenever the student pulls down.
+          ref.invalidate(announcementsProvider);
+          ref.read(electionStatusEpochProvider.notifier).state++;
+        },
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(16.0),
+          children: const [
+            WelcomeBanner(),
+            SizedBox(height: 20),
+            AnnouncementsCard(),
+            SizedBox(height: 24),
           ],
-          ),
-        ),
-        loading: () => const LoadingIndicator(),
-        error: (error, stack) => Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.error_outline, size: 48, color: AppColors.errorRed),
-              const SizedBox(height: 16),
-              Text(
-                apiErrorMessage(
-                  error,
-                  fallback: 'Could not load your registration status.',
-                ),
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: () {
-                  ref.invalidate(registrationDataProvider);
-                  ref.read(electionStatusEpochProvider.notifier).state++;
-                },
-                child: const Text('Retry'),
-              ),
-            ],
-          ),
         ),
       ),
     );

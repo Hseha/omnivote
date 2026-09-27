@@ -1,0 +1,113 @@
+/* Forced-enrollment interstitial shown when Security → 2FA Required is ON and
+   the signed-in staff member is not yet enrolled (locked out of panel routes).
+   Styled to echo the login screen so it reads as a security checkpoint. */
+.twofa-screen {
+  min-height: 100vh;
+  background-color: #0b0f19;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 40px 16px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: #e2e8f0;
+}
+
+.twofa-screen-card {
+  width: 100%;
+  max-width: 480px;
+}
+
+.twofa-screen-icon {
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 16px;
+  border-radius: 12px;
+  background: var(--brand-primary);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 10px 20px -5px rgba(37, 99, 235, 0.4);
+}
+
+.twofa-screen-title {
+  margin: 0 0 8px;
+  font-size: 20px;
+  font-weight: 700;
+  color: #ffffff;
+  text-align: center;
+}
+
+.twofa-screen-desc {
+  margin: 0 0 20px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #94a3b8;
+  text-align: center;
+}
+
+.twofa-screen .twofa-card {
+  background: #131b2e;
+  border: 1px solid rgba(51, 65, 85, 0.6);
+}
+
+.twofa-screen .twofa-title {
+  color: #f1f5f9;
+}
+
+.twofa-screen .twofa-input {
+  background: #1a233a;
+  border-color: #334155;
+  color: #ffffff;
+}
+
+.twofa-screen .twofa-input:focus {
+  border-color: var(--brand-primary);
+  box-shadow: 0 0 0 1px var(--brand-primary);
+}
+
+.twofa-screen .twofa-qr-wrap {
+  background: #ffffff;
+  border-color: #334155;
+}
+
+.twofa-screen .twofa-secret-code {
+  background: #1a233a;
+  color: #f1f5f9;
+}
+
+.twofa-screen .twofa-code {
+  background: #1a233a;
+  border-color: #334155;
+  color: #e2e8f0;
+}
+
+.twofa-screen-error {
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  background: rgba(220, 38, 38, 0.12);
+  border: 1px solid rgba(220, 38, 38, 0.5);
+  border-radius: 8px;
+  color: #fca5a5;
+  font-size: 0.85rem;
+}
+
+.twofa-screen-logout {
+  display: block;
+  margin: 18px auto 0;
+  background: transparent;
+  border: none;
+  color: #64748b;
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.twofa-screen-logout:hover {
+  color: #cbd5e1;
+}
+
+.twofa-screen-logout:disabled {
+  cursor: default;
+  opacity: 0.6;
+}

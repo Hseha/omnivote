@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_tokens.dart';
 
 class EmptyState extends StatelessWidget {
   final String message;
@@ -18,19 +19,19 @@ class EmptyState extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(
+            Icon(
               Icons.search_off,
               size: 64,
-              color: Color(0xFFE2E8F0),
+              color: context.appBorder,
             ),
             const SizedBox(height: 16),
             Text(
               message,
               textAlign: TextAlign.center,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
-                color: Color(0xFF0F172A),
+                color: context.appTextPrimary,
               ),
             ),
             if (subMessage != null) ...[
@@ -38,8 +39,8 @@ class EmptyState extends StatelessWidget {
               Text(
                 subMessage!,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Color(0xFF64748B),
+                style: TextStyle(
+                  color: context.appTextSecondary,
                 ),
               ),
             ],

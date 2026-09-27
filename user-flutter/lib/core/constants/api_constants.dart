@@ -9,9 +9,17 @@ class ApiConstants {
 
   // Auth endpoints
   static const String login = '/auth/login';
-  static const String register = '/auth/register';
   static const String logout = '/auth/logout';
   static const String me = '/auth/me';
+  static const String changePassword = '/auth/password/change';
+
+  // Self-service recovery (assessment M-3).
+  //
+  // Students have no mailbox — their handle is a name-derived slug — so an
+  // emailed reset link has nowhere to go. This redeems the registrar-issued
+  // activation code instead, which is what lets a locked-out voter recover
+  // without an administrator touching the account.
+  static const String resetPasswordWithCode = '/auth/password/reset-with-code';
 
   // Election endpoints
   static const String electionStatus = '/election/status';
@@ -20,6 +28,8 @@ class ApiConstants {
   // Candidate endpoints
   static const String positions = '/positions';
   static const String candidates = '/candidates';
+  static const String departments = '/departments';
+  static const String parties = '/parties';
 
   // Candidacy application endpoint (registration phase only)
   static const String candidacyMe = '/candidacy/me';
@@ -32,6 +42,12 @@ class ApiConstants {
   // Results endpoints
   static const String results = '/results';
   static const String verifyResult = '/results/verify';
+
+  // Announcements (public)
+  static const String announcements = '/announcements';
+
+  // Public branding (site name, colors, logo) — safe before/without auth
+  static const String branding = '/branding';
 
   // Vote submission endpoint (voting_open phase only)
   static const String voteSubmit = '/vote';

@@ -1,4 +1,4 @@
-enum ElectionPhase { registration, votingOpen, votingClosed, unknown }
+enum ElectionPhase { registration, registrationClosed, votingOpen, votingClosed, unknown }
 
 class ElectionStatus {
   final ElectionPhase phase;
@@ -16,6 +16,7 @@ class ElectionStatus {
   bool get isVotingOpen => phase == ElectionPhase.votingOpen;
   bool get isVotingClosed => phase == ElectionPhase.votingClosed;
   bool get isRegistration => phase == ElectionPhase.registration;
+  bool get isRegistrationClosed => phase == ElectionPhase.registrationClosed;
 
   factory ElectionStatus.fromJson(Map<String, dynamic> json) {
     final phase = _parsePhase(
@@ -33,6 +34,9 @@ class ElectionStatus {
     switch (raw?.toString().toLowerCase()) {
       case 'registration':
         return ElectionPhase.registration;
+      case 'registration_closed':
+      case 'registration closed':
+        return ElectionPhase.registrationClosed;
       case 'voting_open':
       case 'voting open':
       case 'active':

@@ -1,5 +1,8 @@
 # OmniVote — nginx + PHP-FPM production setup (24/7 backend)
 
+> Repo-wide orientation lives in the [root README](../README.md). This runbook is the one
+> document that deliberately stays here, beside the scripts and unit files it describes.
+
 This guide turns your Laravel backend (`backend-laravel/`) into a permanent
 service using the **standard PHP-FPM** stack:
 
@@ -109,6 +112,74 @@ sudo -u www-data php8.3 artisan migrate --force
 > **Important:** never commit the real `.env`. The one in the repo is a local
 > dev copy — the server reads its own `.env` only.
 
+### 3a. Exact diff from the dev `.env`
+
+The dev copy at `backend-laravel/.env` differs from production only in these
+keys. Edit the server copy to match the right-hand column:
+
+| Key | Dev value | Production value |
+|---|---|---|
+| `APP_ENV` | `local` | `production` |
+| `APP_DEBUG` | `true` | `false` |
+| `APP_URL` | `http://127.0.0.1:8000` | `https://debian.tail7e9e1e.ts.net` |
+| `FRONTEND_URL` | *(unset)* | `http://localhost:5173` |
+| `SANCTUM_STATEFUL_DOMAINS` | *(unset)* | `debian.tail7e9e1e.ts.net,localhost,localhost:5173,127.0.0.1` |
+| `SESSION_SECURE_COOKIE` | *(unset → false)* | `true` |
+| `SANCTUM_TOKEN_EXPIRATION` | *(unset → 43200)* | `43200` (default already 30 days) |
+| `DB_DATABASE` | `omnivote_local` | `omnivote` |
+| `DB_USERNAME` | `root` | `omnivote` (a dedicated user, or `root`) |
+| `DB_PASSWORD` | *(local password)* | a strong password |
+| `LOG_LEVEL` | `debug` | `warning` |
+| `MAIL_MAILER` | `log` | `smtp` + real `MAIL_HOST/PORT/USERNAME/PASSWORD` |
+
+Notes:
+
+- `APP_KEY`: keep the existing key if this host shares the current database
+  (a new key invalidates every encrypted value and session). Only run
+  `artisan key:generate` on a brand-new deploy with an empty DB.
+- The checked-in dev `.env` has a **leading space** before some `DB_*` values.
+  Trim any whitespace when editing, or Laravel will treat `" omnivote_local"`
+  as the database name.
+- `TRUSTED_PROXIES` is not needed: `bootstrap/app.php` already trusts
+  `127.0.0.1`, which is what nginx/php-fpm use on-loopback.
+
+### 3b. Go-sequence (run on the host, with sudo where shown)
+
+```bash
+cd /var/www/omnivote/deploy
+
+# 1) encrypted daily backups (timer)
+sudo cp omnivote-backup.service omnivote-backup.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now omnivote-backup.timer
+systemctl list-timers omnivote-backup.timer
+
+# 2) nginx vhost + php-fpm pool + queue worker
+sudo cp nginx-omnivote.conf /etc/nginx/sites-available/omnivote
+sudo ln -sf /etc/nginx/sites-available/omnivote /etc/nginx/sites-enabled/omnivote
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo cp php-fpm-pool.conf /etc/php/8.3/fpm/pool.d/omnivote.conf
+sudo cp omnivote-worker.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo nginx -t && sudo systemctl reload nginx
+sudo systemctl restart php8.3-fpm
+sudo systemctl enable --now omnivote-worker
+
+# 3) clear + rebuild caches with the production env
+sudo -u www-data php8.3 artisan config:clear
+sudo -u www-data php8.3 artisan config:cache
+sudo systemctl restart php8.3-fpm
+
+# 4) verify
+systemctl is-active nginx php8.3-fpm mysql omnivote-worker omnivote-backup.timer
+curl -k https://debian.tail7e9e1e.ts.net/up
+curl -k https://debian.tail7e9e1e.ts.net/api/election/status
+```
+
+`php artisan serve` on port 8000 stays available for local testing and is
+unaffected by any of the above — it binds its own port. Leave it running for
+dev only; the deployed endpoint is nginx + php-fpm.
+
 ---
 
 ## 4. nginx — server block
@@ -171,6 +242,31 @@ journalctl -u omnivote-worker -f
 On every deploy, restart it gracefully:
 ```bash
 sudo -u www-data php8.3 artisan queue:restart
+```
+
+---
+
+## Scheduled encrypted backups
+
+`omnivote:backup` writes an AES-256-GCM snapshot to
+`storage/app/backups/` and prunes files past the retention window. Nothing runs
+it automatically by default, so install the timer (a real backup must exist
+before election day):
+
+```bash
+sudo cp deploy/omnivote-backup.service /etc/systemd/system/
+sudo cp deploy/omnivote-backup.timer   /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now omnivote-backup.timer
+
+# check scheduling + last result
+systemctl list-timers omnivote-backup.timer
+journalctl -u omnivote-backup -n 20
+```
+
+Run one on demand (e.g. right before polls close):
+```bash
+sudo -u www-data php8.3 artisan omnivote:backup
 ```
 
 ---
@@ -249,6 +345,69 @@ sudo -u www-data php8.3 artisan queue:restart
 sudo systemctl restart php8.3-fpm
 sudo systemctl reload nginx
 ```
+
+---
+
+## Continuous deployment (auto-deploy on push)
+
+`.github/workflows/deploy.yml` turns a push to `main` into an automatic deploy:
+
+```
+git push origin main
+   │
+   ├─ test  (GitHub-hosted): phpunit + npm lint/build + flutter analyze/test
+   │        └─ fails → deploy never runs
+   └─ deploy (self-hosted runner on the app server) → deploy/deploy.sh
+            ├─ git fetch && git reset --hard origin/main
+            ├─ composer install --no-dev
+            ├─ php artisan migrate --force
+            ├─ config:cache / route:cache / view:cache
+            └─ systemctl restart php8.3-fpm
+```
+
+### One-time: install the self-hosted runner (on the app server)
+
+A self-hosted runner makes an **outbound** connection to GitHub, so the server
+stays private (no inbound SSH or open ports needed — works fine over Tailscale).
+The deploy script calls `sudo systemctl restart php8.3-fpm`, so the account
+running the runner needs passwordless sudo for that command.
+
+1. On GitHub: **Settings → Actions → Runners → New self-hosted runner**, copy
+   the token and the follow-up commands for Linux x64.
+2. On the server, run those commands (approx.):
+   ```bash
+   mkdir -p ~/actions-runner && cd ~/actions-runner
+   curl -o actions-runner.tar.gz -L https://github.com/actions/runner/releases/latest/download/actions-runner-linux-x64.tar.gz
+   tar xzf actions-runner.tar.gz
+   ./config.sh --url https://github.com/<owner>/<repo> --token <TOKEN> \
+               --name omnivote-server --labels self-hosted --unattended
+   sudo ./svc.sh install && sudo ./svc.sh start
+   ```
+3. Give the runner account sudo for the two privileged commands:
+   ```bash
+   echo "$USER ALL=(root) NOPASSWD: /usr/bin/systemctl restart php8.3-fpm, /usr/bin/chown" \
+     | sudo tee /etc/sudoers.d/omnivote-runner
+   sudo chmod 440 /etc/sudoers.d/omnivote-runner
+   ```
+4. Verify it shows **Idle** under Settings → Actions → Runners.
+
+### One-time: make the server repo a clean mirror
+
+The deploy script does `git reset --hard origin/main`, which **discards any
+server-local edits** (your `.env` is untracked, so it survives). Make sure any
+server-only edits are moved into the repo or stashed first.
+
+### First deploy
+
+1. Commit + push this updated code (the workflow and `deploy/deploy.sh` must be
+   on `main` for CI/CD to have anything to run).
+2. Push a trivial commit to `main` and watch **Actions** — `test` must pass,
+   then `deploy` runs on the runner.
+
+If you can already SSH to the server from the internet, you can skip the
+self-hosted runner: replace the `deploy` job's `runs-on: self-hosted` with
+`runs-on: ubuntu-latest` and add an `appleboy/ssh-action` step that runs
+`bash /var/www/omnivote/deploy/deploy.sh` (store the key as a GitHub secret).
 
 ---
 

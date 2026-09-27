@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/routes/app_router.dart';
 import 'core/theme/app_theme.dart';
+import 'data/services/theme_mode.dart';
 import 'features/auth/providers/auth_provider.dart';
 
 // Entrypoint is lib/main.dart; this file only defines the root widget tree.
@@ -24,17 +25,30 @@ class _OmniVoteAppState extends ConsumerState<OmniVoteApp> {
       final isNowAuthenticated = next.isAuthenticated;
 
       if (isNowAuthenticated && !wasAuthenticated) {
+        // Registrar-provisioned accounts must rotate their temporary password
+        // before they can reach the dashboard.
+        AppRouter.router.go(
+          next.mustChangePassword ? '/change-password' : '/dashboard',
+        );
+      } else if (isNowAuthenticated &&
+          !next.mustChangePassword &&
+          (previous?.mustChangePassword ?? false)) {
+        // Password rotation finished: advance into the app.
         AppRouter.router.go('/dashboard');
       } else if (!isNowAuthenticated && wasAuthenticated) {
         AppRouter.router.go('/login');
       }
     });
 
+    final themeMode = ref.watch(themeModeProvider);
+
     return MaterialApp.router(
       title: 'OmniVote',
       debugShowCheckedModeBanner: false,
       routerConfig: AppRouter.router,
       theme: AppTheme.lightTheme,
+      darkTheme: AppTheme.darkTheme,
+      themeMode: themeMode,
     );
   }
 }

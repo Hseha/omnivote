@@ -1,6 +1,6 @@
 import '../../core/utils/safe_json.dart';
 
-enum PositionTier { school, provincial }
+enum PositionTier { national, provincial }
 
 class Position {
   final String id;
@@ -33,8 +33,9 @@ class Position {
   static PositionTier _parseTier(Object? raw) {
     if (raw is String) {
       if (raw.toLowerCase() == 'provincial') return PositionTier.provincial;
+      if (raw.toLowerCase() == 'national') return PositionTier.national;
     }
-    return PositionTier.school;
+    return PositionTier.national;
   }
 
   Map<String, dynamic> toJson() {

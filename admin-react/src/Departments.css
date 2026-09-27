@@ -1,0 +1,95 @@
+/* Departments — page-specific rules.
+ * Shell (dashboard-container / sidebar / main-content / .dept-header layout)
+ * comes from src/index.css so the page follows the global light/dark theme. */
+
+.dept-body { padding: 24px; max-width: 1120px; }
+
+.dept-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 18px; }
+.dept-header-text h2 { font-size: 1.35rem; color: var(--heading); margin: 0 0 4px; }
+.dept-subtext { font-size: 0.875rem; color: var(--text-muted); margin: 0; }
+
+.dept-banner { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 8px; margin-bottom: 12px; font-size: 0.85rem; }
+.dept-banner-success { background: rgba(16,185,129,0.12); color: #34d399; border: 1px solid rgba(16,185,129,0.3); }
+.dept-banner-error { background: rgba(239,68,68,0.12); color: #f87171; border: 1px solid rgba(239,68,68,0.3); }
+.dept-muted-block { color: var(--text-muted); font-size: 0.9rem; padding: 24px 0; }
+
+.dept-chip-row { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 24px; }
+.dept-chip { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 0.85rem; cursor: pointer; transition: all 0.15s ease; }
+.dept-chip:hover { border-color: var(--accent); color: var(--accent); }
+.dept-chip-active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.dept-members-section { margin-top: 8px; }
+.dept-members-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; }
+.dept-section-title { font-size: 1.1rem; color: var(--heading); margin: 0; display: flex; align-items: center; gap: 8px; }
+.dept-count-pill { background: var(--accent); color: #fff; border-radius: 999px; font-size: 0.72rem; font-weight: 700; padding: 1px 9px; }
+.dept-staff-label { font-size: 0.78rem; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: var(--text-muted); }
+
+.dept-table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow); }
+.dept-users-table { width: 100%; border-collapse: collapse; min-width: 640px; }
+.dept-users-table th { text-align: left; padding: 10px 14px; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); border-bottom: 1px solid var(--border); background: var(--surface-2); }
+.dept-users-table td { padding: 10px 14px; font-size: 0.85rem; color: var(--text); border-bottom: 1px solid var(--border); }
+.dept-users-table tbody tr:last-child td { border-bottom: none; }
+.dept-users-table tbody tr:hover { background: var(--surface-2); }
+.dept-user-cell { display: flex; align-items: center; gap: 10px; }
+.dept-avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 700; flex-shrink: 0; }
+.dept-user-name { font-weight: 600; }
+.dept-muted { color: var(--text-muted); }
+
+.dept-role-badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 0.72rem; font-weight: 600; }
+.dept-role-badge.role-admin { background: rgba(239,68,68,0.12); color: #f87171; }
+.dept-role-badge.role-teacher { background: rgba(147,51,234,0.12); color: #c084fc; }
+.dept-role-badge.role-candidate { background: rgba(249,115,22,0.12); color: #fb923c; }
+.dept-role-badge.role-student { background: rgba(16,185,129,0.12); color: #34d399; }
+.dept-role-badge.role-ssg { background: rgba(59,130,246,0.12); color: #60a5fa; }
+
+.dept-title-group { display: flex; flex-direction: column; gap: 2px; }
+
+.dept-vote-badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 0.72rem; font-weight: 600; white-space: nowrap; }
+.dept-vote-voted { background: rgba(16,185,129,0.12); color: #34d399; }
+.dept-vote-not { background: rgba(239,68,68,0.12); color: #f87171; }
+
+.dept-voted-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 999px; border: 1px solid rgba(16,185,129,0.3); background: rgba(16,185,129,0.08); color: #34d399; font-size: 0.78rem; font-weight: 600; white-space: nowrap; }
+.dept-voted-chip-partial { color: var(--text-muted); border-color: var(--border); background: var(--surface-2); }
+
+.dept-load-more-wrap { display: flex; justify-content: center; padding: 12px; border-top: 1px solid var(--border); }
+
+.dept-search-wrap { position: relative; margin-bottom: 12px; }
+.dept-search-input { width: 100%; padding: 9px 34px 9px 12px; font-size: 0.875rem; color: var(--input-color); background: var(--input-bg); border: 1px solid var(--input-border); border-radius: 8px; outline: none; }
+.dept-search-input:focus { border-color: var(--accent); }
+.dept-search-clear { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); border: none; background: transparent; color: var(--text-muted); font-size: 1.1rem; line-height: 1; cursor: pointer; padding: 2px 6px; }
+.dept-search-clear:hover { color: var(--text); }
+
+/* Manage Departments modal */
+.dept-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 16px; }
+.dept-modal { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; width: 460px; max-width: 100%; max-height: 90vh; overflow-y: auto; padding: 22px; box-shadow: var(--shadow-lg, 0 20px 50px rgba(0,0,0,0.25)); }
+.dept-modal-title { display: flex; align-items: center; gap: 8px; font-size: 1.05rem; color: var(--heading); margin: 0 0 10px; }
+.dept-modal-text { font-size: 0.88rem; color: var(--text-muted); margin: 0 0 14px; line-height: 1.5; }
+.dept-field { display: block; margin-bottom: 16px; font-size: 0.8rem; color: var(--text-muted); }
+.dept-field > span { display: block; margin-bottom: 6px; font-weight: 600; }
+.dept-add-row { display: flex; gap: 8px; }
+.dept-input { flex: 1; padding: 8px 10px; font-size: 0.875rem; color: var(--input-color); background: var(--input-bg); border: 1px solid var(--input-border); border-radius: 8px; outline: none; }
+.dept-input:focus { border-color: var(--accent); }
+.dept-list { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; max-height: 280px; overflow-y: auto; }
+.dept-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; }
+.dept-name { font-size: 0.9rem; font-weight: 600; color: var(--heading); }
+.dept-row-actions { display: flex; gap: 8px; }
+.dept-modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+.dept-btn-primary { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 8px; border: none; background: var(--accent); color: #fff; font-size: 0.85rem; font-weight: 600; cursor: pointer; }
+.dept-btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+.dept-btn-ghost { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--text-muted); font-size: 0.85rem; cursor: pointer; }
+.dept-btn-ghost:disabled { opacity: 0.6; cursor: not-allowed; }
+.dept-btn-danger { color: #f87171; border-color: rgba(239,68,68,0.3); }
+.dept-btn-danger:hover { background: rgba(239,68,68,0.08); }
+
+/* Courses / Programs card */
+.dept-courses-section { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--border); }
+.dept-courses-hint { font-size: 0.78rem; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: var(--text-muted); }
+.dept-courses-section .dept-members-header { margin-bottom: 14px; }
+.dept-course-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.dept-course-chip { padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); font-size: 0.82rem; }
+
+@media (max-width: 768px) {
+  .dept-body { padding: 16px; }
+  .dept-header { flex-direction: column; align-items: flex-start; }
+  .dept-members-header { flex-direction: column; align-items: flex-start; }
+}

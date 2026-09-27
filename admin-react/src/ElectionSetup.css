@@ -1,3 +1,7 @@
+/* Election Setup — page-specific rules.
+ * Shell (dashboard-container, sidebar, main-content, top-header) comes from
+ * src/index.css so the page follows the global light/dark theme. */
+
 .setup-body {
   padding: 24px;
 }
@@ -13,12 +17,12 @@
 .setup-title {
   font-size: 1.35rem;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--heading);
   margin-bottom: 2px;
 }
 
 .setup-subtitle {
-  color: #64748b;
+  color: var(--text-muted);
   font-size: 0.875rem;
 }
 
@@ -30,9 +34,9 @@
 }
 
 .btn-back {
-  background: #ffffff;
-  border: 1px solid #0f172a;
-  color: #0f172a;
+  background: var(--surface);
+  border: 1px solid var(--text);
+  color: var(--text);
   padding: 8px 20px;
   border-radius: 8px;
   font-weight: 600;
@@ -41,9 +45,9 @@
 }
 
 .btn-reset {
-  background: #ffffff;
-  border: 1px solid #cbd5e1;
-  color: #334155;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  color: var(--text-muted);
   padding: 8px 18px;
   border-radius: 6px;
   font-weight: 600;
@@ -85,8 +89,8 @@
 }
 
 .column-card {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 20px;
   display: flex;
@@ -103,13 +107,13 @@
 .column-header h3 {
   font-size: 1rem;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--heading);
 }
 
 .active-count-badge {
-  background: #f1f5f9;
-  border: 1px solid #e2e8f0;
-  color: #64748b;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
   font-size: 0.75rem;
   padding: 2px 8px;
   border-radius: 4px;
@@ -124,32 +128,43 @@
   margin-bottom: 16px;
 }
 
-.position-item {
-  background: #ffffff;
+.position-empty {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  line-height: 1.6;
+  border: 1px dashed var(--border-subtle);
   border-radius: 8px;
+  padding: 16px;
+  margin: 0;
+}
+
+.position-item {
+  background: var(--surface);
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
   padding: 12px 16px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  box-shadow: var(--shadow);
 }
 
 .position-name {
   font-weight: 700;
   font-size: 0.875rem;
-  color: #0f172a;
+  color: var(--heading);
   margin-bottom: 2px;
 }
 
 .position-meta {
   font-size: 0.75rem;
-  color: #94a3b8;
+  color: var(--text-faint);
 }
 
 .btn-add-position {
-  background: #f1f5f9;
-  border: 1px solid #e2e8f0;
-  color: #2563eb;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  color: var(--brand-primary);
   padding: 10px;
   border-radius: 8px;
   font-weight: 600;
@@ -161,6 +176,98 @@
   gap: 6px;
   width: 100%;
   margin-top: auto;
+}
+
+.position-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.btn-edit-position {
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  color: var(--brand-primary);
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-edit-position:hover {
+  background: var(--brand-primary);
+  border-color: var(--brand-primary);
+  color: #ffffff;
+}
+
+/* Position edit dialog */
+
+.setup-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: var(--overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.setup-modal {
+  background: var(--modal-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  width: min(520px, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow);
+}
+
+.setup-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 20px 22px 0;
+}
+
+.setup-modal-header h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  color: var(--heading);
+}
+
+.setup-modal-header p {
+  margin: 4px 0 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.setup-modal-body {
+  padding: 20px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.setup-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 22px 20px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.setup-dialog-error {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: #ef4444;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 0.85rem;
 }
 
 /* Toggle Switch CSS */
@@ -181,7 +288,7 @@
   position: absolute;
   cursor: pointer;
   top: 0; left: 0; right: 0; bottom: 0;
-  background-color: #cbd5e1;
+  background-color: var(--border-strong);
   transition: 0.3s;
 }
 
@@ -192,7 +299,7 @@
   width: 16px;
   left: 3px;
   bottom: 3px;
-  background-color: white;
+  background-color: #ffffff;
   transition: 0.3s;
 }
 
@@ -214,18 +321,19 @@ input:checked + .slider:before {
 
 /* General Parameters Card View */
 .general-parameters-card {
-  background: #cbd5e1;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 16px;
   padding: 28px;
   max-width: 900px;
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow);
   margin-top: 12px;
 }
 
 .general-parameters-card h3 {
   font-size: 1.1rem;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--heading);
   margin-bottom: 20px;
 }
 
@@ -244,17 +352,33 @@ input:checked + .slider:before {
 .form-label {
   font-size: 0.8rem;
   font-weight: 600;
-  color: #475569;
+  color: var(--text-muted);
   margin-bottom: 8px;
 }
 
+/* Inline qualifier inside a label, e.g. "(optional)". */
+.form-hint-inline {
+  font-weight: 400;
+  font-style: italic;
+}
+
+/* Explanatory copy under a form control. Used to spell out what an electorate
+   scope actually means, since "their own year level" and "one department" behave
+   very differently and getting it wrong silently disenfranchises students. */
+.form-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 6px;
+  line-height: 1.4;
+}
+
 .form-input {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
   border-radius: 8px;
   padding: 12px 16px;
   font-size: 0.9rem;
-  color: #1e293b;
+  color: var(--input-color);
   outline: none;
   width: 100%;
 }
@@ -268,7 +392,7 @@ input:checked + .slider:before {
 .input-icon {
   position: absolute;
   left: 12px;
-  color: #64748b;
+  color: var(--text-muted);
 }
 
 .form-input.icon-padded {
@@ -276,9 +400,41 @@ input:checked + .slider:before {
 }
 
 /* Segmented Control for Phases */
+.phase-readonly {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.phase-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  color: var(--heading);
+}
+
+.phase-badge.registration { color: #d97706; background: rgba(245, 158, 11, 0.12); border-color: rgba(245, 158, 11, 0.25); }
+.phase-badge.registration_closed { color: #64748b; background: rgba(100, 116, 139, 0.12); border-color: rgba(100, 116, 139, 0.25); }
+.phase-badge.voting_open { color: #10b981; background: rgba(16, 185, 129, 0.12); border-color: rgba(16, 185, 129, 0.25); }
+.phase-badge.voting_closed { color: #ef4444; background: rgba(239, 68, 68, 0.12); border-color: rgba(239, 68, 68, 0.25); }
+
+.phase-hint {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  max-width: 460px;
+}
+
 .phase-segmented-control {
   display: flex;
-  background: #f1f5f9;
+  background: var(--surface-3);
   border-radius: 8px;
   padding: 4px;
 }
@@ -290,51 +446,14 @@ input:checked + .slider:before {
   padding: 10px 0;
   font-size: 0.85rem;
   font-weight: 600;
-  color: #64748b;
+  color: var(--text-muted);
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .phase-btn.active {
-  background: #ffffff;
-  color: #2563eb;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-/* Sidebar Footer & Logout (shared admin shell) */
-.sidebar-footer-container {
-  margin-top: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding-top: 16px;
-  border-top: 1px solid rgba(51, 65, 85, 0.6);
-}
-
-.logout-button {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: rgba(239, 68, 68, 0.08);
-  border: 1px solid rgba(239, 68, 68, 0.2);
-  color: #f87171;
-  font-size: 0.88rem;
-  font-weight: 500;
-  padding: 10px 14px;
-  border-radius: 8px;
-  cursor: pointer;
-  width: 100%;
-  transition: all 0.2s ease;
-}
-
-.logout-button:hover {
-  background: rgba(239, 68, 68, 0.2);
-  color: #ef4444;
-}
-
-.sidebar-footer {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.75rem;
+  background: var(--surface);
+  color: var(--brand-primary);
+  box-shadow: var(--shadow);
 }
