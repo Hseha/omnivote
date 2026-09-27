@@ -15,6 +15,7 @@ class Candidate {
   final List<String> qualifications;
   final String? videoUrl;
   final String? party;
+  final String? department;
 
   /// Lowercase approval status emitted on the wire (`pending|approved|rejected`).
   final String? approvalStatus;
@@ -31,6 +32,7 @@ class Candidate {
     required this.qualifications,
     this.videoUrl,
     this.party,
+    this.department,
     this.approvalStatus,
   });
 
@@ -66,7 +68,7 @@ class Candidate {
           (valueOr(json, const ['photo_url', 'photoUrl', 'avatar']) ?? '').toString(),
       position: position,
       gradeLine:
-          (valueOr(json, const ['grade_line', 'gradeLevel', 'gradeLine']) ?? '').toString(),
+          (valueOr(json, const ['grade_level', 'grade_line', 'gradeLevel', 'gradeLine']) ?? '').toString(),
       slogan: (valueOr(json, const ['slogan']) ?? '').toString(),
       platformPoints: List<String>.from(
         valueOr(json, const ['platform_points', 'platformPoints']) as List? ?? const [],
@@ -76,6 +78,7 @@ class Candidate {
       ),
       videoUrl: (valueOr(json, const ['video_url', 'videoUrl']) as String?),
       party: (valueOr(json, const ['party_name', 'party']) as String?),
+      department: (valueOr(json, const ['department']) as String?),
       approvalStatus:
           (valueOr(json, const ['approval_status', 'status']) as String?),
     );
@@ -93,6 +96,7 @@ class Candidate {
       'qualifications': qualifications,
       'video_url': videoUrl,
       'party_name': party,
+      'department': department,
       'approval_status': approvalStatus,
     };
   }

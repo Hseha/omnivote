@@ -2,16 +2,15 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Phase;
 use Closure;
 use Illuminate\Http\Request;
-use Illuminate\Http\JsonResponse;
-use App\Models\Phase;
 
 class CheckPhase
 {
-    public function handle(Request $request, Closure $next, string $requiredPhase = null)
+    public function handle(Request $request, Closure $next, ?string $requiredPhase = null)
     {
-        $phase = Phase::current()?->name ?? 'registration';
+        $phase = Phase::current()?->name;
 
         if ($requiredPhase && $phase !== $requiredPhase) {
             return response()->json([

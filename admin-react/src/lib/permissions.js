@@ -1,7 +1,7 @@
 const ROLE_VIEWS = {
-  admin: ['dashboard', 'candidates', 'voters', 'setup', 'results', 'settings'],
-  teacher: ['dashboard', 'candidates', 'results'],
-  ssg_president: ['ssg'],
+  admin: ['dashboard', 'candidates', 'voters', 'user_management', 'departments', 'setup', 'results', 'announcements', 'settings'],
+  teacher: ['dashboard', 'candidates', 'results', 'announcements', 'settings'],
+  ssg_president: ['ssg', 'settings'],
 };
 
 const ROLE_DEFAULT_VIEW = {

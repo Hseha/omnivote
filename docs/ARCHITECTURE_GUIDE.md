@@ -78,6 +78,84 @@ wrong election phase.
 - Passwords are hashed through the `User` model cast and are never returned in
   API responses.
 - `GET /api/admin/me` and `GET /api/auth/me` restore the current identity.
+- `two_factor_secret` is stored encrypted, recovery codes are bcrypt-hashed,
+  and neither these nor `FAILED_LOGIN` counters are ever returned in responses.
+
+#### Admin login hardening (security fix)
+
+Panel sign-in now combines layered throttling, account lockout, disabled-account
+guards, and optional TOTP two-factor authentication. This lives in
+`HandlesLoginThrottling` (controller concern), the `User` model,
+`App\Support\TwoFactor`, and `AppSettings`.
+
+#### Student credential lifecycle
+
+Students have no mailbox — the login handle is a name slug (`john.michael.valles`) — so
+credentials are issued by the registrar, not self-served.
+
+- **Import.** `App\Support\TemporaryPassword` generates a random per-student password at CSV
+  import and sets `must_change_password`. It is never the student ID.
+- **Gate.** `EnsurePasswordChanged` is applied server-side to the student middleware stack, so a
+  client that skips the rotation screen cannot vote. A flagged account is refused at the API, not
+  just hidden in the UI.
+- **Recovery.** `POST /api/auth/password/reset-with-code` consumes a single-use registrar code
+  (`App\Support\RegistrarCode`, hashed at rest). It returns a deliberately generic body so it
+  cannot be used to enumerate who is registered, and a successful reset revokes every existing
+  token.
+- **Rotation of the pre-existing accounts.** `php artisan security:rotate-student-credentials`
+  issues fresh credentials for accounts still carrying an imported value. Run `--dry-run` first.
+
+#### Login backoff (not lockout)
+
+A hard lock is a denial-of-service against voters — five guesses from anyone locks a classmate out.
+Instead `User::registerFailedLogin` applies exponential backoff: 1, 2, 4, 8, 16, 32 minutes, capped
+at 60, and the counter decays once `locked_until` has passed. `HandlesLoginThrottling` makes the
+response non-enumerating: an unknown account, a wrong password and a backed-off account all return
+the same `401 Invalid credentials`, with the remaining wait carried in `Retry-After`. Admins can
+clear a single account or bulk-clear from the panel.
+
+1. **Layered throttling.** Before credentials are verified, two independent
+   `RateLimiter` keys are checked:
+   - Per-account (hashed email, `admin-login-account:`): 5 failures in 15
+     minutes by default, so brute-forcing one account never blocks others.
+   - Per-IP (`admin-login-ip:`): 15 failures across all accounts in 30 minutes,
+     which stops credential stuffing without locking out shared school/office
+     networks.
+   An exhausted key returns `429`. Both keys clear on a successful login. The
+   per-account threshold is configurable from Settings → Security
+   (`appSettings.security.maxLoginAttempts`, clamped 1–20). The student mobile
+   flow reuses the same concern under its own `login` key prefix.
+2. **Account lockout.** After 5 failed password attempts the account is locked
+   (`locked_until`, 15 minutes) and further sign-ins return `423` until the
+   lock expires or an administrator calls
+   `POST /admin/users/{user}/unlock`.
+3. **Disabled-account guard.** A disabled account (`is_active = false`) never
+   mints a session or token (`403`), and a disabled panel user is bounced from
+   `GET /admin/me` so the SPA clears its session mid-flight.
+4. **Two-factor authentication.** Accounts with 2FA enabled use a two-step
+   sign-in:
+   - `POST /admin/login` verifies the password, then stores a short-lived
+     pending marker in the session (5-minute TTL) and returns
+     `requires_two_factor: true`.
+   - `POST /admin/login/2fa` verifies a 6-digit TOTP or consumes a one-time
+     recovery code, then issues the session token. Two-factor attempts are
+     rate limited (`429` after 5 tries in a minute) and an expired pending
+     marker returns `401`.
+   - `GET /admin/me` reports whether 2FA is `enabled`/`required` so the SPA
+     can prompt enrollment; the enforcement flag is
+     `appSettings.security.twoFactorRequired`.
+- Enrollment is self-service (`/admin/2fa/status|prepare|confirm|disable`,
+      auth-only) so staff can set up 2FA before the enforcement gate applies.
+5. **Self-service profile (Settings → My Profile).** Every panel role sees a
+   read-only profile card (name, email, role, role-specific fields, status
+   badges) backed by the same `GET /admin/me` payload. The avatar picker
+   (DiceBear pixel-art presets or a cropped/optional pixelated device upload)
+   persists via `PATCH /admin/me/avatar` into the `users.avatar_url` column;
+   the server validates an http(s) URL or a `data:image/*` PNG/JPEG/GIF/WebP
+   base64 payload ≤ 100 KB and never stores anything else (`422` otherwise).
+   Sending `null`/empty clears the avatar back to the initials/DiceBear
+   fallback. The pre-deployment frontend falls back to a per-account device
+   cache (`localStorage`) until the server ships the column.
 
 ### Authorization
 
@@ -110,7 +188,7 @@ All routes below are under the configured API base URL.
 
 | Surface | Key endpoints | Client |
 | --- | --- | --- |
-| Admin auth | `/admin/login`, `/admin/me`, `/admin/logout` | React |
+| Admin auth | `/admin/login`, `/admin/login/2fa`, `/admin/me`, `/admin/me/avatar`, `/admin/logout`, `/admin/2fa/{status,prepare,confirm,disable}` | React |
 | Admin dashboard | `/admin/dashboard-overview` | React |
 | Candidate review | `/admin/candidates` | React |
 | Registrar | `/admin/registrar/import`, `/admin/registrar/imports` | React |
@@ -150,12 +228,16 @@ Important entities and their roles:
 
 - `users`: students and panel users; includes role, student identity, year/block,
   and voting status.
-- `positions`: offices, tier/order, seat count, and active state.
+- `positions`: offices, tier/order, seat count, active state, and the electorate
+  `scope_type` (`global`/`year_level`/`department`/`course`) + `scope_value`.
 - `candidates`: candidacy applications and approval status.
 - `phases`: current election lifecycle state.
 - `ballot_drafts`: a student's saved in-progress ballot.
 - `vote_ledger`: immutable vote records used for counting and auditability.
-- `registrar_imports`: imported registrar/student records and import history.
+- `registrar_imports`: imported registrar/student records and import history, plus the
+  password-recovery fields `activation_code_hash` and `activation_code_used_at`. The code is
+  stored hashed and is single-use; `registrar_imports` is the source of truth for who may
+  recover an account.
 - `announcements`: public or panel-managed SSG announcements.
 - `personal_access_tokens`: Sanctum tokens for Flutter authentication.
 - `sessions`, `cache`, and `jobs`: Laravel operational tables when configured for
@@ -211,6 +293,16 @@ student, turnout, candidate, or result values.
 6. Candidate approval and election configuration are protected admin actions.
 7. Do not manually change vote counts or user voting flags in production without
    an auditable, reviewed procedure.
+8. **Positions carry an electorate.** `positions.scope_type` (`global`, `year_level`, `department`,
+   `course`) plus `scope_value` is checked against *both* the voter and the candidate when a ballot
+   is written. `global` is the default for pre-existing positions.
+9. **Scoping is enforced at write time, not tally time.** `vote_ledger` rows hold no voter
+   correlation, so there is nothing to check later; a scope that could be validated after the fact
+   would be a scope that can be violated. For the same reason a position's scope is refused once a
+   ledger row exists for it.
+10. **Ballot secrecy is structural.** The ledger keeps no candidate reference per voter, receipts are
+    HMACs of the anonymised tally, and draft selections are cleared on submit. Nothing may
+    reintroduce a voter-to-ballot link — not for analytics, not for debugging.
 
 ## 8. Configuration and environments
 
@@ -221,6 +313,11 @@ student, turnout, candidate, or result values.
 - Flutter can override the API with:
   `--dart-define=API_BASE_URL=http://10.0.2.2:8000/api` on an Android emulator.
 - Keep secrets in local `.env` files; commit only `.env.example` templates.
+- Run the backend suite with `backend-laravel/bin/test-local` (or `composer test:local`).
+  `tests/bootstrap.php` requires `pdo_sqlite` and **exits non-zero** if it is missing rather than
+  skipping, because the feature tests each build an in-memory SQLite schema. Prefer the script over
+  `php artisan test`: artisan re-executes phpunit as a subprocess, so `-d extension=…` flags do not
+  reach it. CI installs the extension itself and needs none of this.
 
 ### Production
 
@@ -236,6 +333,23 @@ student, turnout, candidate, or result values.
 Do not copy a development `.env` over the production `.env`. Production
 credentials, TLS private keys, and tokens must remain on the server or in the
 deployment secret store.
+
+#### Failing closed on misconfiguration
+
+A production box with `APP_DEBUG=true`, a debug session cookie, an HTTP `APP_URL` or a missing
+`APP_KEY` would otherwise serve happily and leak. `App\Support\ProductionConfigGuard` refuses
+that, and `php artisan security:assert-production-config` exposes it as a check.
+
+`deploy/deploy.sh` runs that command as a preflight **before** migrations and the config cache
+rebuild, so a release with unsafe settings is stopped rather than published. It is a no-op outside
+`APP_ENV=production`, so it is safe to run anywhere. Do not reorder it after the migration step.
+
+Security headers are set by the `SecurityHeaders` middleware, which is prepended globally: it
+calls `header_remove('X-Powered-By')` and adds `X-Content-Type-Options`, `X-Frame-Options`, and —
+for safe requests — CSP and HSTS. `deploy/nginx-omnivote.conf` additionally sets
+`server_tokens off`. Proxy and host trust are configured in `bootstrap/app.php` via
+`trustProxies` and `trustHosts`; see the security assessment for why loopback proxy trust is a
+deliberate trade-off rather than an oversight.
 
 ## 9. Deployment runbook
 
@@ -304,9 +418,15 @@ Interpret common failures as follows:
 
 - **401:** missing/expired session or bearer token; log in again.
 - **403:** role/permission or election-phase restriction; show the server
-  message and do not retry blindly.
+  message and do not retry blindly. Also returned for disabled panel accounts.
 - **409:** ballot already submitted; do not resubmit.
 - **419:** stale/missing CSRF token; refresh the CSRF cookie/session.
+- **422:** invalid two-factor authentication code; verify the TOTP or recovery
+  code and retry.
+- **423:** account locked by failed-login lockout; wait 15 minutes or ask an
+  administrator to unlock it.
+- **429:** login or 2FA attempt limit exhausted; observe the `Retry-After`
+  header or wait before retrying.
 - **5xx:** inspect Laravel and Nginx logs; do not replace the response with
   mock data.
 - **Empty results:** verify the election is `voting_closed` and that the API
@@ -331,5 +451,5 @@ Related references:
 - [API integration fixes](API_INTEGRATION_FIXES.md)
 - [SSG President role](ssg-president-role.md)
 - [Nginx and Tailscale access](NGINX_TAILSCALE_TEAM_ACCESS.md)
-- [Flutter audit fixes](FLUTTER_AUDIT_FIXES_APPLIED.md)
+- [Flutter audit (and the fixes applied)](FLUTTER_AUDIT_2026_09_13.md)
 - [Build and release guide](08_BUILD_RELEASE.md)

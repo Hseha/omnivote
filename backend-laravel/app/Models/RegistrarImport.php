@@ -16,9 +16,26 @@ class RegistrarImport extends Model
         'student_id',
         'full_name',
         'email',
-        'grade_level',
         'role',
         'year_level',
         'block_number',
+        'department',
+        'course',
+        'needs_review',
+        'review_reason',
+        'activation_code_hash',
+        'activation_code_issued_at',
+        'activation_code_used_at',
+    ];
+
+    protected $hidden = [
+        // Only the bcrypt hash is stored; it must never leave the server.
+        'activation_code_hash',
+    ];
+
+    protected $casts = [
+        'needs_review' => 'boolean',
+        'activation_code_issued_at' => 'datetime',
+        'activation_code_used_at' => 'datetime',
     ];
 }

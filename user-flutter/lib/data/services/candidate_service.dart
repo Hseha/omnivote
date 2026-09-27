@@ -19,18 +19,34 @@ class CandidateService {
   Future<Response> getCandidates({
     String? positionId,
     String? tier,
+    String? department,
+    String? party,
     String? search,
     String? grade,
+    int? perPage,
+    int? page,
   }) async {
     return await _dio.get(
       ApiConstants.candidates,
       queryParameters: {
         'position': ?positionId,
         'tier': ?tier,
+        'department': ?department,
+        'party': ?party,
         'search': ?search,
         'grade': ?grade,
+        'per_page': ?perPage,
+        'page': ?page,
       },
     );
+  }
+
+  Future<Response> getDepartments() async {
+    return await _dio.get(ApiConstants.departments);
+  }
+
+  Future<Response> getParties() async {
+    return await _dio.get(ApiConstants.parties);
   }
 
   Future<Response> getCandidate(String id) async {

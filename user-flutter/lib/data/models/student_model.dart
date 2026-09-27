@@ -9,6 +9,7 @@ class Student {
   final String? blockNumber;
   final String? course;
   final String? homeroom;
+  final String? department;
   final String? avatarUrl;
   final bool hasVoted;
 
@@ -23,6 +24,7 @@ class Student {
     this.blockNumber,
     this.course,
     this.homeroom,
+    this.department,
     this.avatarUrl,
     this.hasVoted = false,
   });
@@ -49,6 +51,7 @@ class Student {
       blockNumber: strOf(json['block_number'] ?? json['blockNumber']),
       course: strOf(json['course']),
       homeroom: strOf(json['homeroom']),
+      department: strOf(json['department']),
       avatarUrl: strOf(json['avatar_url'] ?? json['photo_url']),
       hasVoted: json['has_voted'] == true || json['has_voted'] == 1,
     );

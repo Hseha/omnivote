@@ -17,10 +17,20 @@ class Candidate extends Model
         'platform_points',
         'photo_path',
         'approval_status',
+        'certified_winner',
+        'certified_at',
+        'election_status',
+        'winner_rank',
+        'vote_total',
     ];
 
     protected $casts = [
         'platform_points' => 'array',
+        'certified_winner' => 'boolean',
+        'certified_at' => 'datetime',
+        'winner_rank' => 'integer',
+        'vote_total' => 'integer',
+        'archived_at' => 'datetime',
     ];
 
     public function user(): BelongsTo

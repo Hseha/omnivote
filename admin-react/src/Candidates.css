@@ -1,205 +1,38 @@
-/* Layout Structure */
-.dashboard-container {
-  display: flex;
-  min-height: 100vh;
-  background-color: #f8fafc;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-  color: #1e293b;
-}
-
-/* Sidebar */
-.sidebar {
-  width: 240px;
-  background-color: #0b1329;
-  color: #94a3b8;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  padding: 24px 16px;
-}
-
-.logo-area {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 32px;
-}
-
-.logo-icon {
-  background-color: #2563eb;
-  color: #ffffff;
-  padding: 8px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.brand-name {
-  color: #ffffff;
-  font-size: 1.1rem;
-  font-weight: 700;
-  margin: 0;
-}
-
-.brand-sub {
-  font-size: 0.65rem;
-  letter-spacing: 0.05em;
-  color: #64748b;
-  margin: 0;
-}
-
-.nav-menu {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.nav-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 14px;
-  border: none;
-  background: transparent;
-  color: #94a3b8;
-  border-radius: 6px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  cursor: pointer;
-  text-align: left;
-  transition: all 0.2s ease;
-}
-
-.nav-item:hover {
-  background-color: #1e293b;
-  color: #ffffff;
-}
-
-.nav-item.active {
-  background-color: #1e293b;
-  color: #ffffff;
-}
-
-.sidebar-footer {
-  font-size: 0.75rem;
-  color: #64748b;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.status-dot-green {
-  width: 8px;
-  height: 8px;
-  background-color: #10b981;
-  border-radius: 50%;
-  display: inline-block;
-}
-
-/* Main Content Area */
-.main-content {
-  flex: 1;
-  padding: 24px 36px;
-}
-
-/* Header */
-.top-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 24px;
-}
-
-.breadcrumb {
-  font-size: 1.1rem;
-}
-
-.breadcrumb .muted {
-  color: #64748b;
-  font-weight: 400;
-}
-
-.breadcrumb-candidates {
-  font-weight: 700;
-  color: #000000;
-}
-
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-}
-
-.voting-status-badge {
-  background-color: #e6f4ea;
-  color: #137333;
-  font-size: 0.75rem;
-  font-weight: 600;
-  padding: 6px 12px;
-  border-radius: 16px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.system-time {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: #64748b;
-  font-size: 0.85rem;
-}
-
-.user-profile {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.user-info {
-  display: flex;
-  flex-direction: column;
-  text-align: right;
-}
-
-.user-name {
-  font-weight: 600;
-  font-size: 0.85rem;
-  color: #0f172a;
-}
-
-.user-role {
-  font-size: 0.75rem;
-  color: #64748b;
-}
-
-.user-avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  object-fit: cover;
-}
+/* Candidates — page-specific rules.
+ * Shell (dashboard-container, sidebar, main-content, top-header, card,
+ * actions-table) comes from src/index.css so the page follows the global
+ * light/dark theme. */
 
 /* Toolbar Filters */
 .filter-toolbar {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   margin-bottom: 24px;
+  /* Keep the status pills on the SAME row as the search controls. The pills
+     cannot shrink, so letting this row wrap pushes them under the search bar
+     whenever the row gets tight (e.g. a tier filter is active). Instead the
+     row stays put and the search-group wraps its own dropdowns below. */
+  flex-wrap: nowrap;
+  gap: 12px;
 }
 
 .search-group {
   display: flex;
   gap: 12px;
+  flex-wrap: wrap;
+  /* As the wrapping child of the toolbar, shrink + wrap the dropdowns
+     instead of forcing the status pills onto a second row. */
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .search-bar {
   display: flex;
   align-items: center;
   gap: 8px;
-  background-color: #ffffff;
-  border: 1px solid #cbd5e1;
+  background-color: var(--surface);
+  border: 1px solid var(--input-border);
   padding: 8px 14px;
   border-radius: 6px;
   width: 260px;
@@ -210,28 +43,82 @@
   background: transparent;
   outline: none;
   font-size: 0.875rem;
+  color: var(--input-color);
   width: 100%;
 }
 
 .position-dropdown {
-  background-color: #ffffff;
-  border: 1px solid #cbd5e1;
+  background-color: var(--input-bg);
+  border: 1px solid var(--input-border);
   border-radius: 6px;
   padding: 8px 12px;
   font-size: 0.875rem;
-  color: #334155;
+  color: var(--input-color);
   outline: none;
   cursor: pointer;
+}
+
+.search-group .position-dropdown {
+  /* Lock widths: a native select resizes to its selected text, so opening
+     the dropdown and picking a longer option ("President · School") would
+     widen the box and reflow the whole row. Fixed widths keep it stable. */
+  flex: 0 0 auto;
+  width: 190px;
+  min-width: 150px;
+  text-overflow: ellipsis;
+}
+
+.search-group .position-dropdown:last-of-type {
+  width: 170px;
+}
+
+@media (min-width: 768px) and (max-width: 1150px) {
+  .search-group .position-dropdown {
+    width: 168px;
+  }
+}
+
+/* Desktop/tablet keeps the pills on the same row (see .filter-toolbar above).
+   Only on phones do the status pills drop below the search controls. */
+@media (max-width: 767px) {
+  .filter-toolbar {
+    flex-wrap: wrap;
+    align-items: stretch;
+  }
+
+  .status-filter-buttons {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .search-group {
+    flex-basis: 100%;
+  }
+
+  .search-bar {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 160px;
+  }
 }
 
 /* Status Filter Buttons */
 .status-filter-buttons {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* The three status pills must never resize when "Clear filters" appears or
+   the counts change — lock their width so flex-shrink can't compress them. */
+.filter-btn,
+.status-filter-buttons .page-btn {
+  flex-shrink: 0;
 }
 
 .filter-btn {
-  background-color: #64748b;
+  background-color: var(--text-muted);
   color: #ffffff;
   border: none;
   padding: 8px 16px;
@@ -240,6 +127,14 @@
   font-weight: 500;
   cursor: pointer;
   transition: background-color 0.2s ease;
+  /* Keep the three status buttons a constant size even when the live counts
+     (e.g. "Pending 12" vs "Pending 2") change with the active tier filter. */
+  min-width: 112px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
 }
 
 .filter-btn:hover {
@@ -253,7 +148,7 @@
 }
 
 .filter-approved.active {
-  background-color: #2563eb; /* Blue */
+  background-color: var(--brand-primary); /* Blue */
   color: #ffffff;
 }
 
@@ -262,42 +157,302 @@
   color: #ffffff;
 }
 
-/* Card & Table */
-.card {
-  background-color: #ffffff;
-  border-radius: 12px;
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.02);
-}
-
-.table-card {
-  padding: 20px 24px;
+.card-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .card-header-actions h3 {
-  margin: 0 0 16px 0;
+  margin: 0;
   font-size: 1.1rem;
-  color: #0f172a;
+  color: var(--heading);
 }
 
-.actions-table {
-  width: 100%;
-  border-collapse: collapse;
-  text-align: left;
+.candidates-action-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.actions-table th {
-  color: #64748b;
-  font-size: 0.75rem;
+.cm-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--brand-primary);
+  border: 1px solid var(--brand-primary);
+  color: #fff;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 0.85rem;
   font-weight: 600;
-  padding: 12px 16px;
-  border-bottom: 1px solid #f1f5f9;
+  cursor: pointer;
+  transition: background 0.15s;
 }
 
-.actions-table td {
-  padding: 14px 16px;
-  border-bottom: 1px solid #f1f5f9;
+.cm-btn-primary:hover:not(:disabled) {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+}
+
+.cm-btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cm-btn-outline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid var(--border-strong, var(--border));
+  color: var(--text, var(--heading));
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.cm-btn-outline:hover:not(:disabled) {
+  background: var(--border-subtle);
+}
+
+.cm-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: var(--overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.cm-modal {
+  background: var(--modal-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  width: min(560px, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow);
+}
+
+.cm-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 20px 22px 0;
+}
+
+.cm-modal-header h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  color: var(--heading);
+}
+
+.cm-modal-header p {
+  margin: 4px 0 0;
+  font-size: 0.8rem;
+  color: var(--text-muted, inherit);
+}
+
+.cm-modal-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--text-muted, inherit);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 8px;
+}
+
+.cm-modal-close:hover:not(:disabled) {
+  background: var(--border-subtle);
+}
+
+.cm-modal-close:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cm-modal-body {
+  padding: 20px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cm-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 22px 20px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.cm-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cm-form-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--heading);
+}
+
+.cm-form-input {
+  width: 100%;
+  background: var(--modal-bg);
+  border: 1px solid var(--border-strong, var(--border));
+  border-radius: 8px;
+  color: var(--heading);
+  padding: 9px 12px;
   font-size: 0.875rem;
+  font-family: inherit;
+}
+
+.cm-form-input:focus {
+  outline: none;
+  border-color: var(--brand-primary);
+}
+
+.cm-form-textarea {
+  resize: vertical;
+  line-height: 1.4;
+}
+
+.cm-user-search-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cm-user-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border-strong, var(--border));
+  border-radius: 8px;
+  padding: 0 10px;
+}
+
+.cm-user-search input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--heading);
+  padding: 9px 0;
+  font-size: 0.875rem;
+  font-family: inherit;
+}
+
+.cm-user-search input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.cm-user-search input:focus {
+  outline: none;
+}
+
+.cm-user-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--text-muted, inherit);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+}
+
+.cm-user-clear:hover {
+  background: var(--border-subtle);
+}
+
+.cm-user-results {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.cm-user-result {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  background: var(--modal-bg);
+  border: none;
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 10px 12px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.cm-user-result:last-child {
+  border-bottom: none;
+}
+
+.cm-user-result:hover {
+  background: var(--border-subtle);
+}
+
+.cm-user-result-name {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--heading);
+}
+
+.cm-user-empty {
+  padding: 12px;
+  font-size: 0.85rem;
+  color: var(--text-muted, inherit);
+}
+
+.cm-selected-user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--heading);
+  background: var(--border-subtle);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.cm-selected-user-meta {
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: var(--text-muted, inherit);
+}
+
+.cm-modal-hint {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--text-muted, inherit);
+}
+
+.cm-modal-error {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: #ef4444;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 0.85rem;
 }
 
 .candidate-profile-cell {
@@ -311,10 +466,6 @@
   height: 36px;
   border-radius: 50%;
   object-fit: cover;
-}
-
-.muted-text {
-  color: #64748b;
 }
 
 .text-right {
@@ -367,7 +518,7 @@
 }
 
 .btn-reject {
-  background-color: #ffffff;
+  background-color: var(--surface);
   color: #dc2626;
   border: 1px solid #fca5a5;
   padding: 6px 14px;
@@ -385,7 +536,7 @@
 }
 
 .btn-reject:hover {
-  background-color: #fef2f2;
+  background-color: var(--surface-3);
 }
 
 /* Pagination */
@@ -399,7 +550,7 @@
 
 .pagination-info {
   font-size: 0.8rem;
-  color: #64748b;
+  color: var(--text-muted);
 }
 
 .pagination-buttons {
@@ -408,54 +559,55 @@
 }
 
 .page-btn {
-  background-color: #f1f5f9;
-  border: 1px solid #cbd5e1;
+  background-color: var(--surface-3);
+  border: 1px solid var(--border-strong);
   padding: 6px 12px;
   border-radius: 6px;
   font-size: 0.8rem;
   cursor: pointer;
-  color: #334155;
+  color: var(--input-color);
 }
 
 .page-btn.active {
-  background-color: #2563eb;
+  background-color: var(--brand-primary);
   color: #ffffff;
-  border-color: #2563eb;
-}
-/* Sidebar Footer & Logout (shared admin shell) */
-.sidebar-footer-container {
-  margin-top: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding-top: 16px;
-  border-top: 1px solid rgba(51, 65, 85, 0.6);
+  border-color: var(--brand-primary);
 }
 
-.logout-button {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: rgba(239, 68, 68, 0.08);
-  border: 1px solid rgba(239, 68, 68, 0.2);
-  color: #f87171;
-  font-size: 0.88rem;
-  font-weight: 500;
-  padding: 10px 14px;
-  border-radius: 8px;
-  cursor: pointer;
-  width: 100%;
-  transition: all 0.2s ease;
+.page-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
-.logout-button:hover {
-  background: rgba(239, 68, 68, 0.2);
-  color: #ef4444;
+/* Always-reserved slot: the Clear-filters button is invisible (but still
+   occupies its width) while no filters are active, so the status pills and
+   the toolbar never reflow when it appears or disappears. */
+.status-filter-buttons .page-btn:disabled {
+  visibility: hidden;
+  opacity: 1;
+  pointer-events: none;
 }
 
-.sidebar-footer {
+.page-ellipsis {
+  padding-top: 4px;
+  padding-bottom: 4px;
+  color: var(--text-muted);
+}
+
+/* Rows-per-page control */
+.table-page-size {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
-  font-size: 0.75rem;
+  margin-top: 16px;
+}
+
+.table-page-size label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.table-page-size .position-dropdown {
+  padding: 5px 10px;
 }

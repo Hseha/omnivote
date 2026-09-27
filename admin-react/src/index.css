@@ -1,3 +1,677 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/*
+ * Global stylesheet — admin theme tokens + shared admin shell.
+ *
+ * This project does NOT use Tailwind. Each page still owns its component
+ * CSS, but every page shares the same admin shell (sidebar, top header,
+ * main content column, cards, tables). Those shared rules live HERE so the
+ * whole dashboard follows one light/dark theme, toggled from Settings
+ * (`data-theme="dark"` on <html>, persisted via ThemeContext).
+ *
+ * Page stylesheets should NOT redefine the shell classes below; they only
+ * add page-specific component rules (and may reference the --v-* tokens).
+ */
+
+/* ===== Theme tokens: light (default) ===== */
+:root {
+  --bg: #f1f5f9;
+  --surface: #ffffff;
+  --surface-2: #f8fafc;
+  --surface-3: #eef2f7;
+  --border: #e2e8f0;
+  --border-strong: #cbd5e1;
+  --border-subtle: #eef2f7;
+  --text: #0f172a;
+  --text-muted: #64748b;
+  --text-faint: #94a3b8;
+  --heading: #0f172a;
+  --brand-primary: #2563eb;
+  --brand-secondary: #64748b;
+  --sidebar-bg: #0d1527;
+  --sidebar-border: rgba(51, 65, 85, 0.6);
+  --nav-color: #94a3b8;
+  --nav-hover-bg: rgba(255, 255, 255, 0.06);
+  --nav-hover-color: #f8fafc;
+  --nav-active-bg: var(--brand-primary);
+  --nav-active-color: #ffffff;
+  --header-text: #0f172a;
+  --header-muted: #64748b;
+  --input-bg: #ffffff;
+  --input-border: #cbd5e1;
+  --input-color: #334155;
+  --placeholder: #94a3b8;
+  --table-head-bg: #f8fafc;
+  --table-head-color: #64748b;
+  --table-border: #eef2f7;
+  --row-hover: #f8fafc;
+  --badge-bg: #e6f4ea;
+  --badge-color: #137333;
+  --badge-border: rgba(16, 185, 129, 0.25);
+  --shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+  --overlay: rgba(2, 6, 23, 0.6);
+  --modal-bg: #ffffff;
+  color-scheme: light;
+}
+
+/* ===== Theme tokens: dark ===== */
+[data-theme='dark'] {
+  --bg: #0b0f19;
+  --surface: #131b2e;
+  --surface-2: #0b0f19;
+  --surface-3: #1a233a;
+  --border: rgba(51, 65, 85, 0.7);
+  --border-strong: #334155;
+  --border-subtle: rgba(51, 65, 85, 0.4);
+  --text: #f8fafc;
+  --text-muted: #94a3b8;
+  --text-faint: #64748b;
+  --heading: #f8fafc;
+  --sidebar-bg: #131b2e;
+  --sidebar-border: rgba(51, 65, 85, 0.6);
+  --nav-color: #94a3b8;
+  --nav-hover-bg: rgba(255, 255, 255, 0.05);
+  --nav-hover-color: #ffffff;
+  --nav-active-bg: var(--brand-primary);
+  --nav-active-color: #ffffff;
+  --header-text: #f8fafc;
+  --header-muted: #94a3b8;
+  --input-bg: #131b2e;
+  --input-border: rgba(51, 65, 85, 0.7);
+  --input-color: #f8fafc;
+  --placeholder: #64748b;
+  --table-head-bg: #0b0f19;
+  --table-head-color: #94a3b8;
+  --table-border: rgba(51, 65, 85, 0.4);
+  --row-hover: rgba(37, 99, 235, 0.06);
+  --badge-bg: rgba(16, 185, 129, 0.1);
+  --badge-color: #10b981;
+  --badge-border: rgba(16, 185, 129, 0.2);
+  --shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  --overlay: rgba(2, 6, 23, 0.75);
+  --modal-bg: #131b2e;
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background-color: var(--bg);
+  color: var(--text);
+}
+
+/* ============================================================
+   Shared admin shell
+   ============================================================ */
+
+/* ==== Page shell ==== */
+.dashboard-container {
+  display: flex;
+  min-height: 100vh;
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+.main-content {
+  flex: 1;
+  min-width: 0;
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  overflow-y: auto;
+}
+
+/* ==== Sidebar ==== */
+.sidebar {
+  width: 260px;
+  background-color: var(--sidebar-bg);
+  color: var(--nav-color);
+  border-right: 1px solid var(--sidebar-border);
+  display: flex;
+  flex-direction: column;
+  padding: 24px 16px;
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+}
+
+.logo-area {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 32px;
+  padding: 0 4px;
+}
+
+.logo-icon {
+  background-color: var(--brand-primary);
+  color: #ffffff;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.3);
+}
+
+.sidebar-logo-img {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+}
+
+.logo-icon-bg {
+  width: 36px;
+  height: 36px;
+  background: var(--brand-primary);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+
+.brand-name {
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin: 0;
+  color: #ffffff;
+}
+
+.brand-sub {
+  font-size: 0.65rem;
+  color: var(--nav-color);
+  margin: 0;
+  letter-spacing: 0.05em;
+}
+
+.nav-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex-grow: 1;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  color: var(--nav-color);
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.88rem;
+  font-weight: 500;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+
+.nav-item:hover {
+  background: var(--nav-hover-bg);
+  color: var(--nav-hover-color);
+}
+
+.nav-item.active {
+  background: var(--nav-active-bg);
+  color: var(--nav-active-color);
+  font-weight: 600;
+}
+
+.sidebar-footer-container {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 16px;
+  border-top: 1px solid var(--sidebar-border);
+}
+
+.logout-button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: #f87171;
+  font-size: 0.88rem;
+  font-weight: 500;
+  padding: 10px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  width: 100%;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.logout-button:hover {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+
+.sidebar-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+  color: var(--text-faint);
+  padding: 0 4px;
+}
+
+.status-dot-green {
+  width: 8px;
+  height: 8px;
+  background-color: #10b981;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+/* ==== Top header ==== */
+.top-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.breadcrumb {
+  font-size: 0.9rem;
+  color: var(--header-text);
+}
+
+.breadcrumb .muted,
+.breadcrumb .muted span {
+  color: var(--header-muted);
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.breadcrumb-title {
+  color: var(--header-text);
+  font-weight: 600;
+}
+
+.Dash,
+.breadcrumb-candidates {
+  color: var(--heading);
+  font-weight: 700;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.voting-status-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background-color: var(--badge-bg);
+  color: var(--badge-color);
+  border: 1px solid var(--badge-border);
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.badge-open {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background-color: var(--badge-bg);
+  color: var(--badge-color);
+  border: 1px solid var(--badge-border);
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.badge-open .dot {
+  width: 6px;
+  height: 6px;
+  background-color: #10b981;
+  border-radius: 50%;
+}
+
+/* Badges rendered as <button> keep their pill look without default button styling. */
+button.badge-open,
+button.voting-status-badge {
+  font-family: inherit;
+  cursor: pointer;
+  appearance: none;
+}
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--text-muted);
+  background-color: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-secondary:hover {
+  background-color: var(--surface-3);
+  border-color: var(--text-faint);
+}
+
+.system-time {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.user-profile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.user-info {
+  display: flex;
+  flex-direction: column;
+  text-align: right;
+}
+
+.user-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--header-text);
+}
+
+.user-role {
+  font-size: 0.72rem;
+  color: var(--header-muted);
+  font-weight: 500;
+}
+
+.user-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--border);
+}
+
+.avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  object-fit: cover;
+}
+
+/* ==== Generic surfaces shared by admin pages ==== */
+.card {
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: var(--shadow);
+}
+
+.table-card {
+  padding: 20px 24px;
+}
+
+.card h3,
+.card-header-actions h3 {
+  margin: 0 0 16px 0;
+  font-size: 1.05rem;
+  color: var(--heading);
+}
+
+.actions-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.85rem;
+}
+
+.actions-table th {
+  color: var(--table-head-color);
+  font-weight: 600;
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background-color: var(--table-head-bg);
+}
+
+.actions-table td {
+  padding: 12px;
+  border-bottom: 1px solid var(--table-border);
+  color: var(--text);
+}
+
+.actions-table tbody tr:hover td {
+  background-color: var(--row-hover);
+}
+
+.muted-text {
+  color: var(--text-muted);
+}
+
+.no-data-cell {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 20px !important;
+}
+
+/* ============================================================
+   Shared page chrome — screen headers and result banners. These
+   live in the global stylesheet so every view (Admin, Teacher,
+   SSG President) renders identically without per-view redefines.
+   ============================================================ */
+
+.page-header h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--heading);
+  margin: 0 0 4px;
+}
+
+.page-subtext {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  margin: 0 0 24px;
+}
+
+.success-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  border-radius: 8px;
+  color: #047857;
+  padding: 12px 16px;
+  font-size: 0.825rem;
+  margin-bottom: 24px;
+}
+
+.warning-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: #fffbe3;
+  border: 1px solid #fef08a;
+  border-radius: 8px;
+  color: #854d0e;
+  padding: 12px 16px;
+  font-size: 0.825rem;
+  margin-bottom: 24px;
+}
+
+.primary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 8px;
+  background: var(--brand-primary);
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.875rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.primary-button:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.primary-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.sidebar-about {
+  padding: 8px 16px 12px;
+  font-size: 0.65rem;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  opacity: 0.8;
+}
+
+/* Native form controls keep placeholder/lists legible in both themes */
+::placeholder {
+  color: var(--placeholder);
+}
+
+/* ============================================================
+   Responsive admin shell — adapts the shared shell (sidebar,
+   top header, main column) to tablets and phones.
+   ============================================================ */
+
+/* Hamburger toggle — hidden on desktop, shown on phones. */
+.menu-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background-color: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.menu-toggle:hover {
+  background-color: var(--surface-3);
+}
+
+/* Tablets: slim the sidebar + main padding so the widgets stay usable. */
+@media (max-width: 1024px) {
+  .dashboard-container .sidebar {
+    width: 230px;
+  }
+
+  .main-content {
+    padding: 24px;
+  }
+}
+
+/* Phones: sidebar becomes an off-canvas drawer opened by the hamburger. */
+@media (max-width: 767px) {
+  .menu-toggle {
+    display: inline-flex;
+  }
+
+  .dashboard-container .sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 55;
+    width: min(288px, 86vw);
+    height: 100vh;
+    height: 100dvh;
+    transform: translateX(-105%);
+    transition: transform 0.25s ease;
+    overflow-y: auto;
+  }
+
+  .dashboard-container.sidebar-open .sidebar {
+    transform: translateX(0);
+  }
+
+  /* Dimmed backdrop behind the open drawer. */
+  .dashboard-container.sidebar-open::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    background-color: rgba(2, 6, 23, 0.55);
+  }
+
+  html:has(.dashboard-container.sidebar-open),
+  body:has(.dashboard-container.sidebar-open) {
+    overflow: hidden;
+  }
+
+  .main-content {
+    width: 100%;
+    padding: 16px;
+  }
+
+  /* Header wraps onto multiple rows instead of overflowing. */
+  .top-header {
+    flex-wrap: wrap;
+    row-gap: 12px;
+  }
+
+  .header-right,
+  .header-actions {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .breadcrumb {
+    min-width: 0;
+    font-size: 0.85rem;
+  }
+}
+
+/* Small phones: drop the clock + role text to keep the header tidy. */
+@media (max-width: 560px) {
+  .system-time {
+    display: none;
+  }
+
+  .user-role {
+    display: none;
+  }
+}

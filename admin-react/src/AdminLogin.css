@@ -39,15 +39,23 @@
 }
 
 .brand-icon-box {
-  width: 40px;
-  height: 40px;
-  border-radius: 8px;
-  background-color: #2563eb;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background-color: var(--brand-primary);
   color: #ffffff;
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
   box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.3);
+}
+
+.brand-logo-img {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  border-radius: 10px;
 }
 
 .brand-text {
@@ -73,6 +81,18 @@
   margin: 8px 0 0 0;
   font-size: 14px;
   color: #94a3b8;
+}
+
+.welcome-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #ffffff;
+  line-height: 1.2;
+}
+
+.welcome-title + .login-description {
+  margin-top: 4px;
 }
 
 /* Form Controls */
@@ -159,8 +179,8 @@
 }
 
 .form-input:focus {
-  border-color: #2563eb;
-  box-shadow: 0 0 0 1px #2563eb;
+  border-color: var(--brand-primary);
+  box-shadow: 0 0 0 1px var(--brand-primary);
 }
 
 .toggle-password-btn {
@@ -187,7 +207,7 @@
   width: 100%;
   padding: 11px 16px;
   margin-top: 8px;
-  background-color: #2563eb;
+  background-color: var(--brand-primary);
   border: none;
   border-radius: 8px;
   color: #ffffff;
@@ -206,6 +226,34 @@
   transform: scale(0.99);
 }
 
+.submit-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.submit-btn:focus-visible,
+.toggle-password-btn:focus-visible,
+.forgot-link:focus-visible,
+.back-to-login-btn:focus-visible {
+  outline: 2px solid #60a5fa;
+  outline-offset: 2px;
+}
+
+/* Inline spinner for the in-flight submit state so a click is visibly
+ * acknowledged and the user isn't left wondering (or double-clicking). */
+.spinner {
+  display: inline-block;
+  vertical-align: -2px;
+  margin-right: 8px;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* Card Footer */
 .login-footer {
   margin-top: 32px;
@@ -221,4 +269,94 @@
 
 .security-icon {
   color: #10b981;
+}
+
+/* Two-factor code entry */
+.two-factor-hint {
+  margin: 10px 2px 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #94a3b8;
+}
+
+.back-to-login-btn {
+  margin-top: -6px;
+  background: transparent;
+  border: none;
+  color: #60a5fa;
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 2px;
+}
+
+.back-to-login-btn:hover {
+  color: #93c5fd;
+}
+
+.back-to-login-btn:disabled {
+  color: #64748b;
+  cursor: default;
+}
+/* ===== Forgot / reset password screens (reuse login-card) ===== */
+.forgot-back-link {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #60a5fa;
+  font-size: 13px;
+  text-decoration: none;
+  padding: 4px;
+}
+
+.forgot-back-link:hover {
+  color: #93c5fd;
+}
+
+.login-card {
+  position: relative;
+}
+
+.forgot-success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+  color: var(--text, #0f172a);
+}
+
+.forgot-success p {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.forgot-success-hint {
+  font-size: 0.8rem !important;
+  opacity: 0.75;
+}
+
+.forgot-success-hint code {
+  background: rgba(100, 116, 139, 0.12);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+}
+
+.reset-signin-link {
+  display: inline-block;
+  text-align: center;
+  text-decoration: none;
+  padding: 11px 16px;
+  border-radius: 8px;
+}
+
+.forgot-password-hint {
+  margin: 6px 0 0;
+  font-size: 0.78rem;
+  color: #dc2626;
 }
