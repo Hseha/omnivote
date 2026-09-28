@@ -83,9 +83,30 @@ class AdminCandidateController extends Controller
 
         $perPage = max(1, min(100, $request->integer('per_page', 20)));
 
+        // Ordered by ballot hierarchy, not submission order: the national
+        // council from President down, then the provincial slate from Governor
+        // down. `positions.sort_order` already encodes that (10, 20, 30 …), and
+        // it RESTARTS at 10 for each tier, so `tier` has to lead or the slates
+        // would interleave.
+        //
+        // This must be done in SQL rather than in the React table: the list is
+        // paginated, so a client-side sort would only shuffle the current page
+        // and leave the rest in submission order. Candidates with no position
+        // (position_id is nullable) have no place in the hierarchy and are
+        // pushed to the end rather than sorted to the front, because MySQL
+        // orders NULLs first.
         $candidates = (clone $base)
             ->when($request->query('status'), fn ($q, $s) => $q->where('approval_status', $s))
-            ->orderByDesc('created_at')
+            ->leftJoin('positions', 'positions.id', '=', 'candidates.position_id')
+            ->orderByRaw('CASE WHEN positions.id IS NULL THEN 1 ELSE 0 END')
+            ->orderBy('positions.tier')
+            ->orderBy('positions.sort_order')
+            // Within a position, newest submission first (unchanged), with id
+            // as a tiebreaker so rows sharing a created_at cannot shuffle
+            // between pages and show up twice or not at all.
+            ->orderByDesc('candidates.created_at')
+            ->orderBy('candidates.id')
+            ->select('candidates.*')
             ->paginate($perPage);
 
         return response()->json([

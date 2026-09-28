@@ -66,7 +66,7 @@ class AdminDashboardController extends Controller
                 'role' => match (auth()->user()->role) {
                     'admin' => 'System Administrator',
                     'ssg_president' => 'SSG President',
-                    default => 'Teacher',
+                    default => 'SSG Adviser',
                 },
             ],
         ]);

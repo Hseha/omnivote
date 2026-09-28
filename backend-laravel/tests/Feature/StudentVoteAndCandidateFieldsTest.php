@@ -136,6 +136,55 @@ class StudentVoteAndCandidateFieldsTest extends TestCase
             ->assertJsonStructure(['receipt']);
     }
 
+    public function test_a_candidate_cannot_vote_for_themselves(): void
+    {
+        $this->openVoting();
+
+        $runner = $this->makeUser(['name' => 'Ana Santos']);
+        $this->makeCandidateFor($runner, 'ref-ana', 'president');
+
+        $this->actingAs($runner, 'sanctum')
+            ->postJson('/api/vote', ['selections' => ['president' => 'ref-ana']])
+            ->assertStatus(422)
+            ->assertJsonPath('message', "You cannot vote for yourself in position 'president'.");
+
+        $this->assertFalse($runner->fresh()->has_voted);
+    }
+
+    /* On a 12-seat race a candidate would otherwise take a seat of their own
+       party, and could take every one of them. The self-vote check has to
+       reject the whole batch, not just the offending reference. */
+    public function test_a_candidate_cannot_vote_for_themselves_on_a_multi_seat_race(): void
+    {
+        $this->openVoting();
+
+        $runner = $this->makeUser(['name' => 'Ana Santos']);
+        $rival = $this->makeUser(['name' => 'Bea Cruz']);
+        $this->makeCandidateFor($runner, 'ref-mine', 'senator');
+        $this->makeCandidateFor($rival, 'ref-theirs', 'senator');
+
+        $this->actingAs($runner, 'sanctum')
+            ->postJson('/api/vote', ['selections' => ['senator' => ['ref-mine', 'ref-theirs']]])
+            ->assertStatus(422)
+            ->assertJsonPath('message', "You cannot vote for yourself in position 'senator'.");
+
+        $this->assertFalse($runner->fresh()->has_voted);
+    }
+
+    public function test_voting_for_another_candidate_is_still_allowed(): void
+    {
+        $this->openVoting();
+
+        $voter = $this->makeUser(['name' => 'Voter']);
+        $other = $this->makeUser(['name' => 'Ana Santos']);
+        $this->makeCandidateFor($other, 'ref-ana', 'president');
+
+        $this->actingAs($voter, 'sanctum')
+            ->postJson('/api/vote', ['selections' => ['president' => 'ref-ana']])
+            ->assertStatus(201)
+            ->assertJsonStructure(['receipt']);
+    }
+
     public function test_vote_submission_writes_an_anonymous_ledger_and_marks_the_ballot(): void
     {
         $this->openVoting();
@@ -234,6 +283,19 @@ class StudentVoteAndCandidateFieldsTest extends TestCase
     private function asStudent(array $attributes = []): static
     {
         return $this->actingAs($this->makeUser($attributes), 'sanctum');
+    }
+
+    /** An approved candidate row owned by an existing account. */
+    private function makeCandidateFor(User $owner, string $ref, string $positionSlug): Candidate
+    {
+        return Candidate::create([
+            'user_id' => $owner->id,
+            'position_id' => DB::table('positions')->where('slug', $positionSlug)->value('id'),
+            'candidate_ref' => $ref,
+            'approval_status' => 'approved',
+            'election_status' => 'pending',
+            'vote_total' => 0,
+        ]);
     }
 
     /** Configures a live voting window → derived phase voting_open. */

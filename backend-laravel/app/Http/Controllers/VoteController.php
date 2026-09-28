@@ -186,6 +186,12 @@ class VoteController extends Controller
                     ], 422);
                 }
 
+                if ($this->isSelfVote($candidate, $voter)) {
+                    return response()->json([
+                        'message' => "You cannot vote for yourself in position '{$slug}'.",
+                    ], 422);
+                }
+
                 if (! $this->candidateIsInScope($position, $candidate, $voter)) {
                     return response()->json([
                         'message' => "Candidate for position '{$slug}' is not in your electorate.",
@@ -215,6 +221,25 @@ class VoteController extends Controller
         }
 
         return $payload;
+    }
+
+    /**
+     * Whether the voter is the candidate themselves.
+     *
+     * A candidate is a student with a ballot, so they would otherwise be able to
+     * vote for their own seat — and on a multi-seat race (12 Senators) they could
+     * take every one of their party's seats. Compared on `user_id` rather than
+     * name: names are not unique, and `candidate_ref` is generated per candidate,
+     * not an account identity. A candidate row with no owning account can never
+     * be the voter, so a null owner falls through to "not yourself".
+     */
+    private function isSelfVote(Candidate $candidate, ?User $voter): bool
+    {
+        if ($voter === null || $candidate->user_id === null) {
+            return false;
+        }
+
+        return (int) $candidate->user_id === (int) $voter->id;
     }
 
     /**
