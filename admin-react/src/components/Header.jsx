@@ -116,8 +116,8 @@ function roleLabel(role) {
   switch (role) {
     case 'admin':
       return 'System Administrator';
-    case 'teacher':
-      return 'Teacher';
+            case 'teacher':
+              return 'SSG Adviser';
     case 'ssg_president':
       return 'SSG President';
     default:

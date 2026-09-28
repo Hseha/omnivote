@@ -57,7 +57,7 @@ export default function AdminDashboard({ onLogout, activeView = 'dashboard', onN
         role: currentUser.role === 'admin'
           ? 'System Administrator'
           : currentUser.role === 'teacher'
-            ? 'Teacher'
+            ? 'SSG Adviser'
             : currentUser.role === 'ssg_president'
               ? 'SSG President'
               : (currentUser.role || 'Administrator'),
@@ -139,10 +139,10 @@ export default function AdminDashboard({ onLogout, activeView = 'dashboard', onN
     setPhasePrompt(isAdmin ? 'admin' : 'teacher');
   };
 
-  // Short role label for the breadcrumb ("Admin /" vs "Teacher /").
+  // Short role label for the breadcrumb ("Admin /" vs "SSG Adviser /").
   const breadcrumbRole =
     currentUser?.role === 'teacher'
-      ? 'Teacher'
+      ? 'SSG Adviser'
       : currentUser?.role === 'ssg_president'
         ? 'SSG President'
         : 'Admin';
