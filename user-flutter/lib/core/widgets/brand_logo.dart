@@ -1,9 +1,9 @@
-import 'dart:convert';
-
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+
 import '../constants/app_colors.dart';
 import '../theme/app_tokens.dart';
+import '../utils/data_image_cache.dart';
 import '../utils/safe_json.dart';
 
 /// Renders the admin-configured brand logo (Settings → Branding → logoUrl)
@@ -31,23 +31,26 @@ class BrandLogo extends StatelessWidget {
     final url = logoUrl?.trim() ?? '';
 
     if (url.isEmpty) {
-      return _brandBox(
-        context,
-        child: _defaultIcon(context),
-      );
+      return _brandBox(context, child: _defaultIcon(context));
     }
 
     final lower = url.toLowerCase();
+    final pixels = _targetPixels(context);
 
     Widget? child;
     if (lower.startsWith('data:image/')) {
-      child = _dataImage(context, url);
+      child = _dataImage(context, url, pixels);
     } else {
       final renderable = safeHttpImageUrl(url);
       if (renderable != null) {
         child = CachedNetworkImage(
           imageUrl: renderable,
           fit: BoxFit.cover,
+          // The splash logo is 84 logical px wide; decoding the uploaded
+          // (often 1024 px) artwork at full resolution wastes both the one-off
+          // decode and its resident memory for the whole session.
+          memCacheWidth: pixels,
+          memCacheHeight: pixels,
           placeholder: (context, url) => Container(
             color: context.appBackground,
             child: const Center(
@@ -85,29 +88,33 @@ class BrandLogo extends StatelessWidget {
       color: tint,
       width: size,
       height: size,
-      child: Icon(
-        Icons.how_to_vote,
-        size: size * 0.52,
-        color: Colors.white,
-      ),
+      child: Icon(Icons.how_to_vote, size: size * 0.52, color: Colors.white),
     );
   }
 
-  Widget? _dataImage(BuildContext context, String url) {
-    final comma = url.indexOf(',');
-    if (comma < 0) return null;
-    final bytes = url.substring(comma + 1).trim();
-    if (bytes.isEmpty) return null;
-    try {
-      final decoded = base64Decode(bytes);
-      return Image.memory(
-        decoded,
-        fit: BoxFit.cover,
-        gaplessPlayback: true,
-        errorBuilder: (context, error, stackTrace) => _defaultIcon(context),
-      );
-    } catch (_) {
-      return null;
-    }
+  /// Decodes an inline `data:image/*;base64,…` logo (admin Settings →
+  /// Branding), or null on garbage input.
+  ///
+  /// Memoised per URL and decoded at the logo box's real pixel size — see
+  /// [DataImageCache].
+  Widget? _dataImage(BuildContext context, String url, int pixels) {
+    final provider = DataImageCache.providerFor(
+      url,
+      cacheWidth: pixels,
+      cacheHeight: pixels,
+    );
+    if (provider == null) return null;
+    return Image(
+      image: provider,
+      fit: BoxFit.cover,
+      gaplessPlayback: true,
+      errorBuilder: (context, error, stackTrace) => _defaultIcon(context),
+    );
+  }
+
+  /// The logo box edge in device pixels, used as the decode target.
+  int _targetPixels(BuildContext context) {
+    final ratio = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0;
+    return (size * ratio).round();
   }
 }

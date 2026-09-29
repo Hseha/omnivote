@@ -68,6 +68,31 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            // NOTE: no `ndk.abiFilters` on purpose. A release-scoped ABI filter
+            // conflicts with `flutter build apk --split-per-abi` (AGP refuses
+            // "Conflicting configuration ... when splits abi filters are set"),
+            // and splits are the supported way to hand students a small APK.
+        }
+    }
+
+    packaging {
+        resources {
+            // Metadata that is never read at runtime (dependency version
+            // markers, Kotlin module descriptors and debug probes).
+            excludes += setOf(
+                "META-INF/*.kotlin_module",
+                "META-INF/*.version",
+                "META-INF/DEPENDENCIES",
+                "kotlin/**",
+                "DebugProbesKt.bin",
+            )
+        }
+        jniLibs {
+            // Keep native libraries uncompressed inside the APK and load them
+            // straight from it (no extract-on-install copy). This is the AGP
+            // default for minSdk >= 23 and is stated here explicitly so a future
+            // change cannot silently reintroduce the legacy packaging.
+            useLegacyPackaging = false
         }
     }
 }

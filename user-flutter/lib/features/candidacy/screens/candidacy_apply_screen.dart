@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+
 import '../../../core/constants/app_colors.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/error_message.dart';
@@ -53,7 +54,8 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
   }
 
   Future<void> _loadStatus() async {
-    final status = await ref.read(candidacyProvider.notifier).applicationStatus();
+    final status =
+        await ref.read(candidacyProvider.notifier).applicationStatus();
     if (mounted && status != null && status != 'none') {
       setState(() => _applicationStatus = status);
     }
@@ -63,7 +65,9 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
     if (!_formKey.currentState!.validate() || !_certify) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please complete the form and certify your application.'),
+          content: Text(
+            'Please complete the form and certify your application.',
+          ),
           backgroundColor: AppColors.errorRed,
         ),
       );
@@ -137,7 +141,7 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final student = ref.watch(authProvider).student;
+    final student = ref.watch(authProvider.select((state) => state.student));
     final positionsAsync = ref.watch(positionsProvider);
 
     return Scaffold(
@@ -167,14 +171,15 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
                         border: OutlineInputBorder(),
                       ),
                       items: positions
-                          .map((p) => DropdownMenuItem<String>(
-                                value: p.id,
-                                child: Text('${p.label} (${_tierLabel(p)})'),
-                              ))
+                          .map(
+                            (p) => DropdownMenuItem<String>(
+                              value: p.id,
+                              child: Text('${p.label} (${_tierLabel(p)})'),
+                            ),
+                          )
                           .toList(),
                       onChanged: (v) => setState(() => _positionId = v),
-                      validator: (v) =>
-                          v == null ? 'Select a position' : null,
+                      validator: (v) => v == null ? 'Select a position' : null,
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
@@ -222,7 +227,9 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
                     const SizedBox(height: 24),
                     Consumer(
                       builder: (context, ref, child) {
-                        final isSubmitting = ref.watch(candidacyProvider).isSubmitting;
+                        final isSubmitting = ref.watch(
+                          candidacyProvider.select((s) => s.isSubmitting),
+                        );
                         return ElevatedButton(
                           onPressed: isSubmitting ? null : _submit,
                           style: ElevatedButton.styleFrom(
@@ -256,7 +263,9 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
         },
         loading: () => const LoadingIndicator(),
         error: (err, stack) => Center(
-          child: Text(apiErrorMessage(err, fallback: 'Could not load positions.')),
+          child: Text(
+            apiErrorMessage(err, fallback: 'Could not load positions.'),
+          ),
         ),
       ),
     );
@@ -273,9 +282,10 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
         Text(
           'Candidate Photo (optional)',
           style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: context.appTextSecondary),
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: context.appTextSecondary,
+          ),
         ),
         const SizedBox(height: 8),
         Row(
@@ -286,10 +296,7 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
                 width: 88,
                 height: 88,
                 child: hasPhoto
-                    ? Image.memory(
-                        _photoBytes!,
-                        fit: BoxFit.cover,
-                      )
+                    ? Image.memory(_photoBytes!, fit: BoxFit.cover)
                     : Container(
                         color: context.appSurface,
                         child: Icon(
@@ -337,8 +344,7 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
                         padding: const EdgeInsets.symmetric(vertical: 8),
                         child: Text(
                           'Remove photo',
-                          style:
-                              const TextStyle(color: AppColors.errorRed),
+                          style: const TextStyle(color: AppColors.errorRed),
                         ),
                       ),
                     ),
@@ -365,15 +371,19 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label,
-              style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: context.appTextSecondary)),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: context.appTextSecondary,
+            ),
+          ),
           const SizedBox(height: 4),
-          Text(value,
-              style: const TextStyle(
-                  fontSize: 16, fontWeight: FontWeight.w600)),
+          Text(
+            value,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          ),
         ],
       ),
     );

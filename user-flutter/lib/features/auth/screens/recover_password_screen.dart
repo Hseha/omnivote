@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
 import '../../../core/constants/app_colors.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/constants/app_text_styles.dart';
@@ -108,7 +109,9 @@ class _RecoverPasswordScreenState extends ConsumerState<RecoverPasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isLoading = ref.watch(authProvider).isLoading;
+    final isLoading = ref.watch(
+      authProvider.select((state) => state.isLoading),
+    );
     final appText = AppTextStyles.of(context);
 
     return Scaffold(
@@ -172,11 +175,15 @@ class _RecoverPasswordScreenState extends ConsumerState<RecoverPasswordScreen> {
                         obscureText: _obscureCode,
                         decoration: InputDecoration(
                           labelText: 'Activation code',
-                          prefixIcon: const Icon(Icons.confirmation_number_outlined),
+                          prefixIcon: const Icon(
+                            Icons.confirmation_number_outlined,
+                          ),
                           suffixIcon: IconButton(
-                            icon: Icon(_obscureCode
-                                ? Icons.visibility_off_outlined
-                                : Icons.visibility_outlined),
+                            icon: Icon(
+                              _obscureCode
+                                  ? Icons.visibility_off_outlined
+                                  : Icons.visibility_outlined,
+                            ),
                             tooltip: _obscureCode ? 'Show code' : 'Hide code',
                             onPressed: () =>
                                 setState(() => _obscureCode = !_obscureCode),
@@ -195,13 +202,17 @@ class _RecoverPasswordScreenState extends ConsumerState<RecoverPasswordScreen> {
                           labelText: 'New password',
                           prefixIcon: const Icon(Icons.lock_outline),
                           suffixIcon: IconButton(
-                            icon: Icon(_obscurePassword
-                                ? Icons.visibility_off_outlined
-                                : Icons.visibility_outlined),
-                            tooltip:
-                                _obscurePassword ? 'Show password' : 'Hide password',
+                            icon: Icon(
+                              _obscurePassword
+                                  ? Icons.visibility_off_outlined
+                                  : Icons.visibility_outlined,
+                            ),
+                            tooltip: _obscurePassword
+                                ? 'Show password'
+                                : 'Hide password',
                             onPressed: () => setState(
-                                () => _obscurePassword = !_obscurePassword),
+                              () => _obscurePassword = !_obscurePassword,
+                            ),
                           ),
                         ),
                         validator: _validateNewPassword,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_text_styles.dart';
 import '../../../core/theme/app_tokens.dart';
@@ -24,13 +25,15 @@ class CandidatesListScreen extends ConsumerStatefulWidget {
   const CandidatesListScreen({super.key});
 
   @override
-  ConsumerState<CandidatesListScreen> createState() => _CandidatesListScreenState();
+  ConsumerState<CandidatesListScreen> createState() =>
+      _CandidatesListScreenState();
 }
 
 class _CandidatesListScreenState extends ConsumerState<CandidatesListScreen> {
   final TextEditingController _searchController = TextEditingController();
-  final Debouncer _searchDebounce =
-      Debouncer(delay: const Duration(milliseconds: 400));
+  final Debouncer _searchDebounce = Debouncer(
+    delay: const Duration(milliseconds: 400),
+  );
 
   @override
   void dispose() {
@@ -42,16 +45,20 @@ class _CandidatesListScreenState extends ConsumerState<CandidatesListScreen> {
   void _onSearchChanged(String value) {
     _searchDebounce.run(() {
       if (!mounted) return;
-      ref.read(candidatesFilterProvider.notifier).update(
-        (s) => s.copyWith(search: value),
-      );
+      ref
+          .read(candidatesFilterProvider.notifier)
+          .update((s) => s.copyWith(search: value));
     });
   }
 
   void _onTierChanged(PositionTier newTier) {
     ref.read(candidatesFilterProvider.notifier).update(
-      (s) => s.copyWith(tier: newTier, clearDepartment: true, clearParty: true),
-    );
+          (s) => s.copyWith(
+            tier: newTier,
+            clearDepartment: true,
+            clearParty: true,
+          ),
+        );
   }
 
   Widget _buildChips({
@@ -107,11 +114,13 @@ class _CandidatesListScreenState extends ConsumerState<CandidatesListScreen> {
 
     // Provincial races are departmental: the student is pinned to their own
     // department (when known), and only the party filter stays selectable.
-    final studentDepartment =
-        ref.watch(authProvider).student?.department?.trim();
+    final studentDepartment = ref.watch(
+      authProvider.select((state) => state.student?.department?.trim()),
+    );
     final isProvincial = filter.tier == PositionTier.provincial;
-    final hasOwnDepartment =
-        isProvincial && studentDepartment != null && studentDepartment.isNotEmpty;
+    final hasOwnDepartment = isProvincial &&
+        studentDepartment != null &&
+        studentDepartment.isNotEmpty;
     final effectiveDepartment =
         hasOwnDepartment ? studentDepartment : filter.department;
     final isSearching = filter.search.trim().isNotEmpty;
@@ -119,120 +128,131 @@ class _CandidatesListScreenState extends ConsumerState<CandidatesListScreen> {
     return Scaffold(
       backgroundColor: context.appBackground,
       appBar: const TopBar(title: 'Candidates'),
-      body: ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-        children: [
-          // Tier Toggle
-          Center(
-            child: SegmentedButton<PositionTier>(
-              segments: const [
-                ButtonSegment(
-                  value: PositionTier.national,
-                  label: Text('National'),
-                ),
-                ButtonSegment(
-                  value: PositionTier.provincial,
-                  label: Text('Provincial'),
-                ),
-              ],
-              selected: {filter.tier},
-              onSelectionChanged: (newSelection) =>
-                  _onTierChanged(newSelection.first),
-              style: SegmentedButton.styleFrom(
-                selectedBackgroundColor: AppColors.primaryBlue,
-                selectedForegroundColor: Colors.white,
-                side: BorderSide(color: context.appBorder),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          // Department step
-          Text(
-            'Department',
-            style: appText.cardTitle,
-          ),
-          const SizedBox(height: 8),
-          if (hasOwnDepartment)
-            _lockedDepartment(studentDepartment)
-          else
-            departmentsAsync.when(
-              data: (departments) => _buildChips(
-                items: departments,
-                selected: filter.department,
-                onSelect: (dept) {
-                  ref.read(candidatesFilterProvider.notifier).update(
-                    (s) => s.copyWith(
-                      department: dept,
-                      clearParty: true,
+      body: CustomScrollView(
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
+            // Filter chrome. `SliverList.list` rather than a wrapping `Column`
+            // so each child keeps the same full-width, tight cross-axis
+            // constraints the old outer `ListView` gave it.
+            sliver: SliverList.list(
+              children: [
+                // Tier Toggle
+                Center(
+                  child: SegmentedButton<PositionTier>(
+                    segments: const [
+                      ButtonSegment(
+                        value: PositionTier.national,
+                        label: Text('National'),
+                      ),
+                      ButtonSegment(
+                        value: PositionTier.provincial,
+                        label: Text('Provincial'),
+                      ),
+                    ],
+                    selected: {filter.tier},
+                    onSelectionChanged: (newSelection) =>
+                        _onTierChanged(newSelection.first),
+                    style: SegmentedButton.styleFrom(
+                      selectedBackgroundColor: AppColors.primaryBlue,
+                      selectedForegroundColor: Colors.white,
+                      side: BorderSide(color: context.appBorder),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
-                  );
-                },
-              ),
-              loading: () => const Center(child: LoadingIndicator()),
-              error: (err, _) => Text(
-                apiErrorMessage(err, fallback: 'Could not load departments.'),
-                style: appText.secondary,
-              ),
-            ),
-          const SizedBox(height: 24),
+                  ),
+                ),
+                const SizedBox(height: 24),
 
-          // Party step
-          Text(
-            'Party',
-            style: appText.cardTitle,
-          ),
-          const SizedBox(height: 8),
-          partiesAsync.when(
-            data: (parties) => _buildChips(
-              items: parties,
-              selected: filter.party,
-              onSelect: (party) {
-                ref.read(candidatesFilterProvider.notifier).update(
-                  (s) => s.copyWith(party: party),
-                );
-              },
-            ),
-            loading: () => const Center(child: LoadingIndicator()),
-            error: (err, _) => Text(
-              apiErrorMessage(err, fallback: 'Could not load parties.'),
-              style: appText.secondary,
-            ),
-          ),
-          const SizedBox(height: 24),
+                // Department step
+                Text('Department', style: appText.cardTitle),
+                const SizedBox(height: 8),
+                if (hasOwnDepartment)
+                  _lockedDepartment(studentDepartment)
+                else
+                  departmentsAsync.when(
+                    data: (departments) => _buildChips(
+                      items: departments,
+                      selected: filter.department,
+                      onSelect: (dept) {
+                        ref.read(candidatesFilterProvider.notifier).update(
+                              (s) => s.copyWith(
+                                department: dept,
+                                clearParty: true,
+                              ),
+                            );
+                      },
+                    ),
+                    loading: () => const Center(child: LoadingIndicator()),
+                    error: (err, _) => Text(
+                      apiErrorMessage(
+                        err,
+                        fallback: 'Could not load departments.',
+                      ),
+                      style: appText.secondary,
+                    ),
+                  ),
+                const SizedBox(height: 24),
 
-          // Search
-          TextField(
-            controller: _searchController,
-            onChanged: _onSearchChanged,
-            decoration: const InputDecoration(
-              hintText: 'Search candidates by name or slogan...',
-              prefixIcon: Icon(Icons.search),
+                // Party step
+                Text('Party', style: appText.cardTitle),
+                const SizedBox(height: 8),
+                partiesAsync.when(
+                  data: (parties) => _buildChips(
+                    items: parties,
+                    selected: filter.party,
+                    onSelect: (party) {
+                      ref
+                          .read(candidatesFilterProvider.notifier)
+                          .update((s) => s.copyWith(party: party));
+                    },
+                  ),
+                  loading: () => const Center(child: LoadingIndicator()),
+                  error: (err, _) => Text(
+                    apiErrorMessage(err, fallback: 'Could not load parties.'),
+                    style: appText.secondary,
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                // Search
+                TextField(
+                  controller: _searchController,
+                  onChanged: _onSearchChanged,
+                  decoration: const InputDecoration(
+                    hintText: 'Search candidates by name or slogan...',
+                    prefixIcon: Icon(Icons.search),
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                // Header
+                Text(
+                  '${filter.tier == PositionTier.national ? 'National' : 'Provincial'}'
+                  '${effectiveDepartment != null ? ' · $effectiveDepartment' : ''}'
+                  '${filter.party != null ? ' · ${filter.party}' : ''}',
+                  style: appText.pageTitle,
+                ),
+                const SizedBox(height: 16),
+              ],
             ),
           ),
-          const SizedBox(height: 24),
 
-          // Header
-          Text(
-            '${filter.tier == PositionTier.national ? 'National' : 'Provincial'}'
-            '${effectiveDepartment != null ? ' · $effectiveDepartment' : ''}'
-            '${filter.party != null ? ' · ${filter.party}' : ''}',
-            style: appText.pageTitle,
-          ),
-          const SizedBox(height: 16),
-
-          // Ballot-form list grouped by position, top position first.
+          // Ballot-form rows. The form is its own sliver list, so only the rows
+          // on screen are built instead of every position header, candidate row
+          // and spacer up front.
           positionsAsync.when(
             data: (positions) {
               final tierPositions =
                   positions.where((p) => p.tier == filter.tier).toList();
               if (tierPositions.isEmpty) {
-                return const EmptyState(
-                  message: 'No positions available',
-                  subMessage: 'Positions for this tier have not been set up yet.',
+                return const SliverToBoxAdapter(
+                  child: EmptyState(
+                    message: 'No positions available',
+                    subMessage:
+                        'Positions for this tier have not been set up yet.',
+                  ),
                 );
               }
               return candidatesAsync.when(
@@ -241,28 +261,40 @@ class _CandidatesListScreenState extends ConsumerState<CandidatesListScreen> {
                   candidates: candidates,
                   isSearching: isSearching,
                   showEmptySlots: filter.party != null && !isSearching,
-                  emptySlotLabel:
-                      filter.party != null ? 'No candidate from ${filter.party}' : 'No candidates yet',
+                  emptySlotLabel: filter.party != null
+                      ? 'No candidate from ${filter.party}'
+                      : 'No candidates yet',
                   onCandidateTap: (candidate) {
                     context.push('/candidate-profile', extra: candidate);
                   },
                 ),
-                loading: () => const Center(child: LoadingIndicator()),
-                error: (err, _) => Center(
-                  child: Text(
-                    apiErrorMessage(err, fallback: 'Could not load candidates.'),
+                loading: () => const SliverToBoxAdapter(
+                  child: Center(child: LoadingIndicator()),
+                ),
+                error: (err, _) => SliverToBoxAdapter(
+                  child: Center(
+                    child: Text(
+                      apiErrorMessage(
+                        err,
+                        fallback: 'Could not load candidates.',
+                      ),
+                    ),
                   ),
                 ),
               );
             },
-            loading: () => const Center(child: LoadingIndicator()),
-            error: (err, _) => Center(
-              child: Text(
-                apiErrorMessage(err, fallback: 'Could not load positions.'),
+            loading: () => const SliverToBoxAdapter(
+              child: Center(child: LoadingIndicator()),
+            ),
+            error: (err, _) => SliverToBoxAdapter(
+              child: Center(
+                child: Text(
+                  apiErrorMessage(err, fallback: 'Could not load positions.'),
+                ),
               ),
             ),
           ),
-          const SizedBox(height: 24),
+          const SliverToBoxAdapter(child: SizedBox(height: 24)),
         ],
       ),
     );
@@ -306,6 +338,13 @@ class _CandidatesListScreenState extends ConsumerState<CandidatesListScreen> {
 }
 
 /// Groups matching candidates under their position, in tier rank order.
+///
+/// Returns a **sliver** list of the flattened form lines, so the scroll view
+/// only builds the positions and candidates currently on screen. The previous
+/// implementation flattened everything into one `Column` inside the screen's
+/// outer `ListView`, which built a widget for every candidate in the tier (and
+/// laid them all out) on every rebuild — including every keystroke of the
+/// search box, before the 400 ms debounce even fired.
 class _BallotForm extends StatelessWidget {
   final List<Position> positions;
   final List<Candidate> candidates;
@@ -323,41 +362,86 @@ class _BallotForm extends StatelessWidget {
     required this.onCandidateTap,
   });
 
-  @override
-  Widget build(BuildContext context) {
+  /// Flattens the form into one entry per line. Cheap value objects only; the
+  /// widgets for them are built on demand by [SliverList.builder].
+  List<_BallotLine> _lines() {
     final byPosition = <String, List<Candidate>>{};
     for (final candidate in candidates) {
       byPosition.putIfAbsent(candidate.position.id, () => []).add(candidate);
     }
 
-    final children = <Widget>[];
+    final lines = <_BallotLine>[];
     for (final position in positions) {
-      children.add(_PositionHeader(position: position));
-      children.add(const SizedBox(height: 8));
+      lines.add(_HeaderLine(position));
+      lines.add(const _GapLine(8));
 
       final slotCandidates = byPosition[position.id] ?? const <Candidate>[];
       if (slotCandidates.isEmpty) {
         if (showEmptySlots || !isSearching) {
-          children.add(_EmptySlot(message: emptySlotLabel));
+          lines.add(_EmptySlotLine(emptySlotLabel));
         }
       } else {
         for (final candidate in slotCandidates) {
-          children.add(
-            _BallotRow(
-              candidate: candidate,
-              onTap: () => onCandidateTap(candidate),
-            ),
-          );
+          lines.add(_CandidateLine(candidate));
         }
       }
-      children.add(const SizedBox(height: 20));
+      lines.add(const _GapLine(20));
     }
+    return lines;
+  }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: children,
+  @override
+  Widget build(BuildContext context) {
+    final lines = _lines();
+
+    return SliverPadding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      sliver: SliverList.builder(
+        itemCount: lines.length,
+        itemBuilder: (context, index) {
+          final line = lines[index];
+          return switch (line) {
+            _HeaderLine(:final position) => _PositionHeader(position: position),
+            _CandidateLine(:final candidate) => _BallotRow(
+                // Keyed by candidate so a filtered list can never leave a
+                // recycled row pointing at the previous candidate.
+                key: ValueKey(candidate.candidateRef),
+                candidate: candidate,
+                onTap: () => onCandidateTap(candidate),
+              ),
+            _EmptySlotLine(:final message) => _EmptySlot(message: message),
+            _GapLine(:final height) => SizedBox(height: height),
+          };
+        },
+      ),
     );
   }
+}
+
+/// One line of the ballot form. A sealed hierarchy so the item builder is
+/// exhaustive without an `else` fallback.
+sealed class _BallotLine {
+  const _BallotLine();
+}
+
+class _HeaderLine extends _BallotLine {
+  final Position position;
+  const _HeaderLine(this.position);
+}
+
+class _CandidateLine extends _BallotLine {
+  final Candidate candidate;
+  const _CandidateLine(this.candidate);
+}
+
+class _EmptySlotLine extends _BallotLine {
+  final String message;
+  const _EmptySlotLine(this.message);
+}
+
+class _GapLine extends _BallotLine {
+  final double height;
+  const _GapLine(this.height);
 }
 
 /// Section heading for one position, e.g. "Senator · 12 seats".
@@ -405,7 +489,11 @@ class _BallotRow extends StatelessWidget {
   final Candidate candidate;
   final VoidCallback onTap;
 
-  const _BallotRow({required this.candidate, required this.onTap});
+  const _BallotRow({
+    super.key,
+    required this.candidate,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -430,9 +518,8 @@ class _BallotRow extends StatelessWidget {
           child: Row(
             children: [
               CachedAvatar(
-                imageUrl: candidate.photoUrl.isNotEmpty
-                    ? candidate.photoUrl
-                    : null,
+                imageUrl:
+                    candidate.photoUrl.isNotEmpty ? candidate.photoUrl : null,
                 radius: 22,
                 initials: candidate.name,
               ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../../core/theme/app_tokens.dart';
 import '../../../data/models/election_status_model.dart';
 import '../../auth/providers/auth_provider.dart';
@@ -19,8 +20,8 @@ class WelcomeBanner extends ConsumerWidget {
     return 'Good Evening';
   }
 
-  String _phaseLine(ElectionStatus status, bool hasVoted) {
-    switch (status.phase) {
+  String _phaseLine(ElectionPhase phase, bool hasVoted) {
+    switch (phase) {
       case ElectionPhase.registration:
         return 'Registration is open — confirm your eligibility';
       case ElectionPhase.registrationClosed:
@@ -38,20 +39,27 @@ class WelcomeBanner extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final student = ref.watch(authProvider).student;
-    final statusAsync = ref.watch(electionStatusProvider);
-    final brandingAsync = ref.watch(brandingProvider);
+    final student = ref.watch(authProvider.select((state) => state.student));
+
+    // Phase and accent are read as a value-derived record so the banner does
+    // not rebuild on the status poll's loading window (it keeps painting the
+    // last known phase) and only repaints when the phase or the brand colour
+    // actually changes. The previous `switch (statusAsync)` also flipped the
+    // copy to "status unavailable" for the length of every 30 s refetch.
+    final phase = ref.watch(
+      electionStatusProvider.select(
+        (state) => state.valueOrNull?.phase ?? ElectionPhase.unknown,
+      ),
+    );
+    final accent = ref.watch(
+          brandingProvider.select((state) => state.valueOrNull?.primaryColor),
+        ) ??
+        const Color(0xFF2F5EFF);
 
     if (student == null) return const SizedBox.shrink();
 
-    final accent =
-        brandingAsync.value?.primaryColor ?? const Color(0xFF2F5EFF);
     final firstName = student.name.trim().split(' ').first;
-
-    final phaseLine = switch (statusAsync) {
-      AsyncData(:final value) => _phaseLine(value, student.hasVoted),
-      _ => 'Election status unavailable right now',
-    };
+    final phaseLine = _phaseLine(phase, student.hasVoted);
 
     final identityBits = <String>[
       if (student.department?.trim().isNotEmpty ?? false)
@@ -66,10 +74,7 @@ class WelcomeBanner extends ConsumerWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            accent.withValues(alpha: 0.12),
-            context.appSurface,
-          ],
+          colors: [accent.withValues(alpha: 0.12), context.appSurface],
         ),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: accent.withValues(alpha: 0.25)),

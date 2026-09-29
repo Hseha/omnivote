@@ -2,7 +2,10 @@
 # OmniVote — CI/CD.
 #
 #   test   : runs on GitHub-hosted runners. phpunit + React build + Flutter.
-#   deploy : runs only if `test` passed AND the push is to main.
+#   size   : builds the obfuscated arm64 release APK and fails if it grew past
+#            the budget in user-flutter/tool/release_size.sh (students install
+#            this on metered connections — see docs/08_BUILD_RELEASE.md).
+#   deploy : runs only if `test` + `size` passed AND the push is to main.
 #
 # The deploy job runs on a SELF-HOSTED runner installed on the app server, so
 # nothing needs to be exposed publicly (works over Tailscale). See
@@ -67,9 +70,43 @@ jobs:
           flutter analyze
           flutter test
 
+  size:
+    name: Release size budget
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Build the obfuscated release APK and enforce the budget
+        working-directory: user-flutter
+        run: |
+          flutter pub get
+          chmod +x tool/release_size.sh
+          ./tool/release_size.sh build
+
+      - name: Keep the APK (and its symbols) as an artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: omnivote-release-apk-arm64
+          path: |
+            user-flutter/build/app/outputs/flutter-apk/app-release.apk
+            user-flutter/build/symbols/**
+          retention-days: 14
+
   deploy:
     name: Deploy
-    needs: test
+    needs: [test, size]
     if: github.ref == 'refs/heads/main'
     runs-on: self-hosted
     steps:
