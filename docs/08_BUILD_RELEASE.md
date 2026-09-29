@@ -44,6 +44,23 @@ app's AOT code for every architecture, so students on a phone paid ~3× for
 binaries they never execute. Splitting is a pure win for a direct-install
 distribution channel — the same APK simply does not install on the wrong device.
 
+### Signing (before anyone installs it)
+
+`android/app/build.gradle.kts` signs a release **only** when
+`android/keystore.properties` exists (template:
+`android/keystore.properties.example`; the real file is git-ignored). Without
+it the build still succeeds but produces an **unsigned** APK, which Android
+refuses to install:
+`INSTALL_PARSE_FAILED_NO_CERTIFICATES: Failed to collect certificates`. That is
+deliberate (audit 2026-09-13 §4 #1: a debug-signed artifact must never be
+handed out as a release), but it does mean the command above is not a handout
+until the keystore is in place. Verify what you are about to distribute:
+
+```bash
+~/Android/Sdk/build-tools/<version>/apksigner verify --print-certs \
+  build/app/outputs/flutter-apk/app-release.apk
+```
+
 For a Play-Store (or any bundle-based) rollout build an AAB instead:
 
 ```bash
@@ -135,6 +152,11 @@ My Ballot → Results):
   stay under 16 ms build + raster on a low-end device.
 * **Network** — one `GET /election/status` per 30 s in the foreground, **zero**
   while backgrounded, no `GET /api/results` storm while `voting_closed`.
+
+Baselines measured on an obfuscated release build (x86_64 API 36 emulator, idle
+on the login screen): **~68 MB PSS**; artifacts **18.1 MB** (`--target-platform
+android-arm64`) and **19.0 MB** (`--split-per-abi` arm64). Reproduce them on a
+real handset before treating a change as a win — emulators flatter nobody.
 
 ## Pre-release checklist
 
