@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../models/candidate_model.dart';
 import '../models/position_model.dart';
 import '../services/candidate_service.dart';
@@ -60,6 +61,30 @@ class CandidateRepository {
     return all;
   }
 
+  /// Fetches *every* approved candidate in a tier (optionally one party) across
+  /// all pages. The grouped national checklist needs this: a single page would
+  /// silently drop candidates off the end of the ballot as party count grows,
+  /// which reads as "that person is not running" to the voter.
+  Future<List<Candidate>> getAllCandidatesForTier({
+    required String tier,
+    String? party,
+  }) async {
+    final all = <Candidate>[];
+    var page = 1;
+    while (true) {
+      final List<Candidate> batch = await getCandidates(
+        tier: tier,
+        party: party,
+        perPage: 100,
+        page: page,
+      );
+      all.addAll(batch);
+      if (batch.length < 100) break;
+      page++;
+    }
+    return all;
+  }
+
   Future<List<String>> getDepartments() async {
     final response = await _candidateService.getDepartments();
     final List<dynamic> data = response.data['data'] ?? response.data;
@@ -69,9 +94,7 @@ class CandidateRepository {
   Future<List<String>> getParties() async {
     final response = await _candidateService.getParties();
     final List<dynamic> data = response.data['data'] ?? response.data;
-    return data
-        .map((json) => (json['name'] ?? json).toString())
-        .toList();
+    return data.map((json) => (json['name'] ?? json).toString()).toList();
   }
 
   Future<Candidate> getCandidate(String id) async {
