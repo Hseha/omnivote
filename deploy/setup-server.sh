@@ -11,7 +11,7 @@
 # ============================================================================
 set -euo pipefail
 
-PHP_VER="8.3"
+PHP_VER="8.4"
 APP_DIR="/var/www/omnivote"
 WEB_USER="www-data"
 APP_URL="${APP_URL:-https://$(hostname)}"

@@ -26,8 +26,8 @@ Type=oneshot
 User=www-data
 Group=www-data
 
-# Pin php8.3; adjust to the installed PHP 8.x version if different.
-ExecStart=/usr/bin/php8.3 /var/www/omnivote/backend-laravel/artisan omnivote:backup
+# Pin php8.4; adjust to the installed PHP 8.x version if different.
+ExecStart=/usr/bin/php8.4 /var/www/omnivote/backend-laravel/artisan omnivote:backup
 
 StandardOutput=journal
 StandardError=journal

@@ -27,8 +27,8 @@ RestartSec=5s
 TimeoutStopSec=30s
 
 # --max-time so each worker restarts periodically and picks up new code -------
-# (pin php8.3; adjust if you installed a different PHP 8.x version)
-ExecStart=/usr/bin/php8.3 /var/www/omnivote/backend-laravel/artisan queue:work \
+# (pin php8.4; adjust if you installed a different PHP 8.x version)
+ExecStart=/usr/bin/php8.4 /var/www/omnivote/backend-laravel/artisan queue:work \
     --sleep=3 --tries=3 --max-time=3600 --max-jobs=1000
 
 # Kill children too, so jobs are not orphaned on restart
