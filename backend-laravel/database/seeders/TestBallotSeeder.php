@@ -39,6 +39,19 @@ class TestBallotSeeder extends Seeder
         'provincial_press_officer', 'provincial_custodian',
     ];
 
+    /**
+     * Positions that field MORE THAN ONE candidate per party. Senators are the
+     * only multi-seat national race: 12 seats, 12 nominees per party (24 total),
+     * and the voter picks 12. That makes it a real contest rather than a
+     * foregone conclusion — roughly half the field does not win a seat.
+     *
+     * Value = nominees per party. Positions absent from this map get the
+     * default of one candidate per party.
+     */
+    private const NATIONAL_NOMINEES_PER_PARTY = [
+        'senator' => 12,
+    ];
+
     private const FIRST_NAMES = [
         'Jasmine', 'Marco', 'Andrea', 'Paolo', 'Kristine', 'Bryan', 'Erica',
         'Gerald', 'Liza', 'Patrick', 'Nicole', 'Vincent', 'Sarah', 'Dennis',
@@ -57,76 +70,122 @@ class TestBallotSeeder extends Seeder
         'Dizon', 'Rosales', 'Padilla', 'Estrada', 'Malonzo',
     ];
 
-    /** National race → department for each party (mixed across colleges). */
-    private const NATIONAL_SLATE = [
-        'president' => [
-            'ASLE' => 'College of Arts and Sciences',
-            'SVEA' => 'College of Computer Studies',
-        ],
-        'vice_president' => [
-            'ASLE' => 'College of Teacher Education',
-            'SVEA' => 'College of Criminal Justice Education',
-        ],
-        'secretary' => [
-            'ASLE' => 'College of Office Administration',
-            'SVEA' => 'College of Arts and Sciences',
-        ],
-        'treasurer' => [
-            'ASLE' => 'College of Computer Studies',
-            'SVEA' => 'College of Teacher Education',
-        ],
-        'auditor' => [
-            'ASLE' => 'College of Criminal Justice Education',
-            'SVEA' => 'College of Office Administration',
-        ],
-        'press_officer' => [
-            'ASLE' => 'College of Arts and Sciences',
-            'SVEA' => 'College of Computer Studies',
-        ],
-        'senator' => [
-            // ASLE → Senator is the existing real student John Michael (CCS).
-            'ASLE' => 'College of Computer Studies',
-            'SVEA' => 'College of Criminal Justice Education',
-        ],
-        'year_level_representative' => [
-            'ASLE' => 'College of Teacher Education',
-            'SVEA' => 'College of Office Administration',
-        ],
-        'property_custodian' => [
-            'ASLE' => 'College of Criminal Justice Education',
-            'SVEA' => 'College of Arts and Sciences',
-        ],
-    ];
+    /**
+     * National race → college for each party, DERIVED from the catalog instead
+     * of hardcoded names. Positions rotate through `collegeNames()` and the two
+     * party candidates of a race always land on DIFFERENT colleges, so the field
+     * stays mixed across all five colleges no matter how the catalog is renamed.
+     * (year_level_representative is deliberately absent: it is a national seat
+     * keyed by YEAR, not by party-vs-college, so it gets its own loop in run().)
+     */
+    private function nationalSlate(): array
+    {
+        $colleges = DepartmentCatalog::collegeNames();
+        $n = count($colleges);
+        $slate = [];
+        $i = 0;
+
+        foreach (self::NATIONAL_POSITIONS as $positionSlug) {
+            if ($positionSlug === 'year_level_representative') {
+                continue;
+            }
+
+            $slate[$positionSlug] = [
+                'ASLE' => $colleges[$i % $n],
+                'SVEA' => $colleges[($i + 1) % $n],
+            ];
+            $i++;
+        }
+
+        return $slate;
+    }
 
     private array $usedNames = [];
 
+    /**
+     * Canonical college year levels. `Position::valuesMatch()` compares year
+     * scopes as exact strings, so the year-level representative field must
+     * cover every one of these or those students have nobody to vote for.
+     */
+    private const YEAR_LEVELS = ['1', '2', '3', '4'];
+
+    /**
+     * Minimum students per year level.
+     *
+     * A fixed floor, deliberately NOT derived from the current student count:
+     * a "share of the school" target reads its own output, so each run would
+     * see a larger total, raise the bar, and add students forever. A constant
+     * makes re-running a no-op once every year is at or above it.
+     */
+    private const MIN_VOTERS_PER_YEAR = 30;
+
     public function run(): void
     {
-        $studentIdSeq = 101;
+        // Start the id counter above anything already in the table. Restarting
+        // at 101 collides with the student_ids minted by previous runs, and
+        // users.student_id is unique — the insert aborts the whole seed.
+        $maxSeq = (int) (User::query()
+            ->where('student_id', 'like', '2024-01%')
+            ->selectRaw('MAX(CAST(SUBSTRING(student_id, 8) AS UNSIGNED)) AS max_seq')
+            ->value('max_seq') ?? 100);
+
+        $studentIdSeq = max(101, $maxSeq + 1);
         $counters = ['createdStudents' => 0, 'createdCandidates' => 0];
 
-        // ---- National: 2 party candidates per position, mixed colleges ----
-        foreach (self::NATIONAL_SLATE as $positionSlug => $partyDepts) {
+        // ---- National: one candidate per party per position, except senators,
+        // which field a full multi-nominee slate per party ----
+        foreach ($this->nationalSlate() as $positionSlug => $partyDepts) {
+            $target = self::NATIONAL_NOMINEES_PER_PARTY[$positionSlug] ?? 1;
+            $colleges = DepartmentCatalog::collegeNames();
+
             foreach ($partyDepts as $party => $college) {
                 $positionId = DB::table('positions')->where('slug', $positionSlug)->value('id');
                 if ($positionId === null) {
                     continue;
                 }
 
-                // ASLE → Senator is already filed by the real student John
-                // Michael (College of Computer Studies); keep his candidacy.
-                if ($positionSlug === 'senator' && $party === 'ASLE') {
+                if ($target === 1) {
+                    // ASLE → Senator is already filed by the real student John
+                    // Michael (College of Computer Studies); keep his candidacy.
+                    if ($positionSlug === 'senator' && $party === 'ASLE') {
+                        continue;
+                    }
+
+                    $this->createCandidateFor(
+                        $positionId,
+                        $positionSlug,
+                        $party,
+                        $college,
+                        $studentIdSeq,
+                        $counters,
+                    );
+
                     continue;
                 }
 
-                $this->createCandidateFor(
-                    $positionId,
-                    $positionSlug,
-                    $party,
-                    $college,
-                    $studentIdSeq,
-                    $counters,
-                );
+                // Multi-nominee seat: top this party up to its target, spreading
+                // nominees across colleges so no single college monopolises a
+                // party slate. Counts by party (not college) because several
+                // nominees legitimately share a department.
+                $existing = Candidate::query()
+                    ->where('position_id', $positionId)
+                    ->whereRaw('LOWER(party_name) = ?', [mb_strtolower($party)])
+                    ->count();
+
+                for ($i = $existing; $i < $target; $i++) {
+                    $this->createCandidateFor(
+                        $positionId,
+                        $positionSlug,
+                        $party,
+                        $colleges[$i % count($colleges)],
+                        $studentIdSeq,
+                        $counters,
+                        // Presence is decided by the party count above, so skip
+                        // the per-college "already exists" short-circuit that
+                        // would otherwise stop at the first nominee per college.
+                        force: true,
+                    );
+                }
             }
         }
 
@@ -151,6 +210,35 @@ class TestBallotSeeder extends Seeder
             }
         }
 
+        $this->ensureEveryYearLevelHasVoters($studentIdSeq, $counters);
+
+        // ---- Year Level Representative: one nominee per YEAR per party ----
+        // The position is scoped to `year_level`, so the field is a per-year
+        // race, not a per-college one: a 1st-year student votes for the 1st-year
+        // nominee of either party, and never for any other year's nominee.
+        // Filing only one nominee per party (as before) left each year with at
+        // most one party on the ballot and years with no candidate at all.
+        $ylrPositionId = DB::table('positions')->where('slug', 'year_level_representative')->value('id');
+        if ($ylrPositionId !== null) {
+            $colleges = DepartmentCatalog::collegeNames();
+
+            foreach (self::YEAR_LEVELS as $i => $year) {
+                foreach (['ASLE', 'SVEA'] as $partyOffset => $party) {
+                    $this->createCandidateFor(
+                        $ylrPositionId,
+                        'year_level_representative',
+                        $party,
+                        // Rotate colleges so the year-level bench spans the
+                        // colleges; the seat itself is not college-bound.
+                        $colleges[($i * 2 + $partyOffset) % count($colleges)],
+                        $studentIdSeq,
+                        $counters,
+                        yearLevel: $year,
+                    );
+                }
+            }
+        }
+
         // Normalize any pre-existing application's party casing to match the
         // canonical parties table ("asle" → "ASLE") so grouping is consistent.
         Candidate::query()
@@ -163,6 +251,45 @@ class TestBallotSeeder extends Seeder
         );
     }
 
+    /**
+     * Guarantees every year level has enough students to elect its own
+     * representative.
+     *
+     * The year-level representative seat is scoped to `year_level`, so a year
+     * with no students is a seat that can never be contested. Earlier runs
+     * only ever produced years 11/12 — 2 of the 4 levels — leaving the 3rd- and
+     * 4th-year seats permanently uncontested and invisible to a voter.
+     *
+     * This adds plain students (no candidacy attached) rather than re-assigning
+     * the ones already on the ballot. Two reasons: a candidate's year level is
+     * exactly what qualifies them for a year-level seat, so moving one would
+     * silently change the field; and a real school has far more voters than
+     * candidates, so 110 candidates and 0 ordinary students was never a
+     * representative shape to begin with.
+     *
+     * Idempotent — it only tops a year up to a fixed floor, and a re-run
+     * finds every year already at or above it.
+     */
+    private function ensureEveryYearLevelHasVoters(int &$studentIdSeq, array &$counters): void
+    {
+        $years = self::YEAR_LEVELS;
+        $colleges = DepartmentCatalog::collegeNames();
+
+        foreach ($years as $i => $year) {
+            $have = User::where('role', 'student')->where('year_level', $year)->count();
+
+            for ($n = $have; $n < self::MIN_VOTERS_PER_YEAR; $n++) {
+                $this->provisionStudent(
+                    $colleges[$i % count($colleges)],
+                    $studentIdSeq,
+                    $counters,
+                    requireNew: true,
+                    yearLevel: $year,
+                );
+            }
+        }
+    }
+
     private function createCandidateFor(
         int $positionId,
         string $positionSlug,
@@ -170,21 +297,32 @@ class TestBallotSeeder extends Seeder
         string $college,
         int &$studentIdSeq,
         array &$counters,
+        bool $force = false,
+        ?string $yearLevel = null,
     ): void {
         $position = DB::table('positions')->where('id', $positionId)->first();
 
-        // A provincial candidate already exists for this college under this
-        // party → skip (idempotent re-runs). Keyed via the student's college.
-        $existing = Candidate::query()
-            ->where('position_id', $positionId)
-            ->whereRaw('LOWER(party_name) = ?', [mb_strtolower($party)])
-            ->whereHas('user', fn ($q) => $q->where('department', $college))
-            ->exists();
-        if ($existing) {
-            return;
+        // A candidate already exists for this college under this party → skip
+        // (idempotent re-runs). Keyed via the student's college. Multi-nominee
+        // seats call with $force and do their own party-level counting instead.
+        // A year-level seat keys on the year instead of the college, because it
+        // is contested across the whole school.
+        if (! $force) {
+            $existing = Candidate::query()
+                ->where('position_id', $positionId)
+                ->whereRaw('LOWER(party_name) = ?', [mb_strtolower($party)])
+                ->when(
+                    $yearLevel !== null,
+                    fn ($q) => $q->whereHas('user', fn ($u) => $u->where('year_level', $yearLevel)),
+                    fn ($q) => $q->whereHas('user', fn ($u) => $u->where('department', $college)),
+                )
+                ->exists();
+            if ($existing) {
+                return;
+            }
         }
 
-        $user = $this->provisionStudent($college, $studentIdSeq, $counters);
+        $user = $this->provisionStudent($college, $studentIdSeq, $counters, $force, $yearLevel);
 
         if (Candidate::where('user_id', $user->id)->exists()) {
             return;
@@ -211,25 +349,55 @@ class TestBallotSeeder extends Seeder
         $counters['createdCandidates']++;
     }
 
-    private function provisionStudent(string $college, int &$studentIdSeq, array &$counters): User
-    {
+    /**
+     * @param bool $requireNew When true, skip forward to a name that is not
+     *   already taken. Multi-nominee seats call this: the name walk restarts at
+     *   index 0 on every run, so without this it lands on the same already-
+     *   candidated students every time and silently creates nothing.
+     */
+    private function provisionStudent(
+        string $college,
+        int &$studentIdSeq,
+        array &$counters,
+        bool $requireNew = false,
+        ?string $yearLevel = null,
+    ): User {
         $name = $this->nextName();
         $email = $this->usernameFromName($name);
 
         $user = User::where('email', $email)->first() ?? User::where('name', $name)->first();
+
         if ($user !== null) {
-            return $user;
+            if (! $requireNew) {
+                return $user;
+            }
+            // Name taken: keep walking until a genuinely unused one is found.
+            do {
+                $name = $this->nextName();
+                $email = $this->usernameFromName($name);
+                $user = User::where('email', $email)->first()
+                    ?? User::where('name', $name)->first();
+            } while ($user !== null);
+
+            $this->command?->warn(
+                "  Skipped taken name, provisioned {$name} instead."
+            );
         }
 
         $studentId = '2024-01'.str_pad((string) $studentIdSeq++, 3, '0', STR_PAD_LEFT);
+        // Cycle 1st-4th year so every year level has voters. The old 11/12
+        // senior-high pair left 3rd and 4th year with nobody, which meant two
+        // year-level representative seats could never be contested.
+        $yearLevel ??= self::YEAR_LEVELS[($studentIdSeq - 1) % count(self::YEAR_LEVELS)];
+
         $user = User::create([
             'student_id' => $studentId,
             'name' => $name,
             'email' => $email,
             'password' => Hash::make($studentId),
             'role' => 'student',
-            'year_level' => $studentIdSeq % 2 === 0 ? '11' : '12',
-            'block_number' => $studentIdSeq % 2 === 0 ? '1' : '2',
+            'year_level' => $yearLevel,
+            'block_number' => (string) ((((int) $yearLevel - 1) % 2) + 1),
             'department' => $college,
             'course' => $this->pickCourse($college, $studentIdSeq),
             'has_voted' => false,

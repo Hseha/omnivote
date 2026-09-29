@@ -100,7 +100,7 @@ DB_DATABASE=omnivote
 DB_USERNAME=omnivote                 # or root
 DB_PASSWORD=<strong-password>
 
-SESSION_SECURE=true                  # cookies only over HTTPS
+SESSION_SECURE_COOKIE=true           # cookies only over HTTPS
 ```
 
 Then:
@@ -442,7 +442,7 @@ sudo systemctl reload nginx
 | `502 Bad Gateway` from nginx | php-fpm down: `systemctl status php8.3-fpm`; socket must be owned by `www-data` |
 | `Permission denied` on socket | `chown www-data:www-data /run/php/php8.3-fpm.sock && chmod 660` |
 | White page / `500` | storage/`bootstrap/cache` ownership; check `storage/logs/laravel.log` |
-| CSRF mismatch on `/api` | `SESSION_SECURE=true` requires HTTPS; check `APP_URL` scheme |
+| CSRF mismatch on `/api` | `SESSION_SECURE_COOKIE=true` requires HTTPS; check `APP_URL` scheme |
 | Slow during peak voting | raise `pm.max_children` in the pool; watch the slow-query log; tune MySQL `slow_query_log` |
 | New code not picked up | opcache caches per worker: `sudo systemctl restart php8.3-fpm` after deploys |
 

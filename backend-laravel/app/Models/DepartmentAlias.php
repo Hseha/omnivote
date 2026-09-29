@@ -4,22 +4,15 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-class Course extends Model
+class DepartmentAlias extends Model
 {
     protected $fillable = [
         'department_id',
-        'name',
-        'code',
-        'sort_order',
+        'alias',
     ];
 
     public function department()
     {
         return $this->belongsTo(Department::class);
-    }
-
-    public function aliases()
-    {
-        return $this->hasMany(CourseAlias::class);
     }
 }
