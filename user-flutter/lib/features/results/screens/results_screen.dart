@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../../core/constants/app_colors.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/error_message.dart';
@@ -34,7 +35,22 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final statusAsync = ref.watch(electionStatusProvider);
+    // Only the phase drives this screen's structure. Watching the whole
+    // AsyncValue rebuilt the entire results list twice per 30 s status poll
+    // (loading → data), and again whenever an unrelated field of the status
+    // payload changed. The 30 s poll re-runs the provider, which lands in
+    // AsyncLoading with isRefreshing == false — a state `skipLoadingOnRefresh`
+    // does not suppress — so the select reads through to the retained value and
+    // the list keeps painting the last known phase instead of blinking.
+    final phase = ref.watch(
+      electionStatusProvider.select((state) => state.valueOrNull?.phase),
+    );
+    final statusLoading = ref.watch(
+      electionStatusProvider.select((state) => state.isLoading),
+    );
+    final statusError = ref.watch(
+      electionStatusProvider.select((state) => state.error),
+    );
     final resultsAsync = ref.watch(resultsProvider);
 
     // Audits §3 #7 & §2 #8: a stale/offline status must not leave this screen
@@ -48,73 +64,87 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
     return Scaffold(
       backgroundColor: context.appBackground,
       appBar: const TopBar(title: 'Election Results'),
-      body: statusAsync.when(
-        data: (status) {
-          if (status.phase != ElectionPhase.votingClosed) {
-            // Before the polls close there are no per-candidate numbers, but
-            // POST /api/results/verify works at any time, so the receipt
-            // verifier is shown now too.
-            return ListView(
-              padding: const EdgeInsets.all(16),
+      body: phase != null
+          ? _buildForStatus(context, phase, resultsAsync, refreshAll)
+          : _statusPlaceholder(statusLoading, statusError),
+    );
+  }
+
+  /// The phase has not been read yet: spinner, error, or (unreachable
+  /// data-with-no-value) nothing — the same precedence as the old async `when`.
+  Widget _statusPlaceholder(bool loading, Object? error) {
+    if (loading) return const LoadingIndicator();
+    if (error != null) {
+      return Center(
+        child: Text(
+          apiErrorMessage(error, fallback: 'Could not check election status.'),
+        ),
+      );
+    }
+    return const SizedBox.shrink();
+  }
+
+  Widget _buildForStatus(
+    BuildContext context,
+    ElectionPhase phase,
+    AsyncValue<List<ElectionResult>> resultsAsync,
+    Future<void> Function() refreshAll,
+  ) {
+    if (phase != ElectionPhase.votingClosed) {
+      // Before the polls close there are no per-candidate numbers, but
+      // POST /api/results/verify works at any time, so the receipt
+      // verifier is shown now too.
+      return ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          _NotYetPublished(onRefresh: refreshAll),
+          const SizedBox(height: 16),
+          _ReceiptVerifier(
+            controller: _receiptController,
+            onVerify: () {
+              final token = _receiptController.text.trim();
+              if (token.isNotEmpty) setState(() => _verifyToken = token);
+            },
+          ),
+          if (_verifyToken != null) _VerificationResult(token: _verifyToken!),
+        ],
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: refreshAll,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
+        children: [
+          resultsAsync.when(
+            data: (results) => Column(
               children: [
-                _NotYetPublished(onRefresh: refreshAll),
-                const SizedBox(height: 16),
-                _ReceiptVerifier(
-                  controller: _receiptController,
-                  onVerify: () {
-                    final token = _receiptController.text.trim();
-                    if (token.isNotEmpty) setState(() => _verifyToken = token);
-                  },
-                ),
-                if (_verifyToken != null)
-                  _VerificationResult(token: _verifyToken!),
-              ],
-            );
-          }
-          return RefreshIndicator(
-            onRefresh: refreshAll,
-            child: ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.all(16),
-              children: [
-                resultsAsync.when(
-                  data: (results) => Column(
-                    children: [
-                      const _AnnouncementBanner(),
-                      for (final result in results) _buildResultCard(result),
-                    ],
-                  ),
-                  loading: () => const LoadingIndicator(),
-                  error: (err, stack) => Center(
-                    child: Text(
-                      apiErrorMessage(
-                        err,
-                        fallback: 'Results are not available yet or the API is unreachable.',
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                _ReceiptVerifier(
-                  controller: _receiptController,
-                  onVerify: () {
-                    final token = _receiptController.text.trim();
-                    if (token.isNotEmpty) setState(() => _verifyToken = token);
-                  },
-                ),
-                if (_verifyToken != null)
-                  _VerificationResult(token: _verifyToken!),
+                const _AnnouncementBanner(),
+                for (final result in results) _buildResultCard(result),
               ],
             ),
-          );
-        },
-        loading: () => const LoadingIndicator(),
-        error: (err, stack) => Center(
-          child: Text(
-            apiErrorMessage(err, fallback: 'Could not check election status.'),
+            loading: () => const LoadingIndicator(),
+            error: (err, stack) => Center(
+              child: Text(
+                apiErrorMessage(
+                  err,
+                  fallback:
+                      'Results are not available yet or the API is unreachable.',
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
           ),
-        ),
+          const SizedBox(height: 16),
+          _ReceiptVerifier(
+            controller: _receiptController,
+            onVerify: () {
+              final token = _receiptController.text.trim();
+              if (token.isNotEmpty) setState(() => _verifyToken = token);
+            },
+          ),
+          if (_verifyToken != null) _VerificationResult(token: _verifyToken!),
+        ],
       ),
     );
   }
@@ -146,65 +176,74 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
               ),
             ),
             const SizedBox(height: 12),
-            ...result.candidates.map((candidate) => Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              candidate.name,
-                              style: const TextStyle(fontWeight: FontWeight.w600),
-                            ),
+            ...result.candidates.map(
+              (candidate) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            candidate.name,
+                            style: const TextStyle(fontWeight: FontWeight.w600),
                           ),
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (candidate.isTied) ...[
-                                const _ResultChip(
-                                  label: 'TIE',
-                                  bg: Color(0xFFFEF3C7),
-                                  fg: Color(0xFFB45309),
-                                ),
-                                const SizedBox(width: 6),
-                              ] else if (candidate.isElected) ...[
-                                const _ResultChip(
-                                  label: 'WINNER',
-                                  bg: Color(0xFFDCFCE7),
-                                  fg: Color(0xFF166534),
-                                ),
-                                const SizedBox(width: 6),
-                              ],
-                              Text('${candidate.votes} votes',
-                                  style: TextStyle(
-                                      color: context.appTextSecondary, fontSize: 13)),
-                            ],
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(3),
-                        child: LinearProgressIndicator(
-                          value: maxVotes == 0 ? 0 : candidate.votes / maxVotes,
-                          minHeight: 8,
-                          backgroundColor: context.appBorder,
-                          color: candidate.isElected
-                              ? AppColors.successGreen
-                              : candidate.isTied
-                                  ? const Color(0xFFB45309)
-                                  : AppColors.primaryBlue,
                         ),
-                      ),
-                    ],
-                  ),
-                )),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (candidate.isTied) ...[
+                              const _ResultChip(
+                                label: 'TIE',
+                                bg: Color(0xFFFEF3C7),
+                                fg: Color(0xFFB45309),
+                              ),
+                              const SizedBox(width: 6),
+                            ] else if (candidate.isElected) ...[
+                              const _ResultChip(
+                                label: 'WINNER',
+                                bg: Color(0xFFDCFCE7),
+                                fg: Color(0xFF166534),
+                              ),
+                              const SizedBox(width: 6),
+                            ],
+                            Text(
+                              '${candidate.votes} votes',
+                              style: TextStyle(
+                                color: context.appTextSecondary,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    // LinearProgressIndicator takes a borderRadius directly:
+                    // wrapping it in a ClipRRect forced an extra clip layer on
+                    // every row of a screen that is nothing but these bars.
+                    LinearProgressIndicator(
+                      value: maxVotes == 0 ? 0 : candidate.votes / maxVotes,
+                      minHeight: 8,
+                      borderRadius: BorderRadius.circular(3),
+                      backgroundColor: context.appBorder,
+                      color: candidate.isElected
+                          ? AppColors.successGreen
+                          : candidate.isTied
+                              ? const Color(0xFFB45309)
+                              : AppColors.primaryBlue,
+                    ),
+                  ],
+                ),
+              ),
+            ),
             if (result.candidates.isEmpty)
-              Text('No votes recorded for this position yet.',
-                  style: TextStyle(color: context.appTextSecondary)),
+              Text(
+                'No votes recorded for this position yet.',
+                style: TextStyle(color: context.appTextSecondary),
+              ),
           ],
         ),
       ),
@@ -230,11 +269,7 @@ class _ResultChip extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.bold,
-          color: fg,
-        ),
+        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: fg),
       ),
     );
   }
@@ -271,7 +306,11 @@ class _AnnouncementBanner extends ConsumerWidget {
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.campaign, size: 18, color: AppColors.successGreen),
+                    const Icon(
+                      Icons.campaign,
+                      size: 18,
+                      color: AppColors.successGreen,
+                    ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(

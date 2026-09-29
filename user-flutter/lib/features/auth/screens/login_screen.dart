@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_text_styles.dart';
 import '../../../core/theme/app_tokens.dart';
@@ -61,10 +62,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     // the auth listener fires, and `ref` must not be used after that.
     final prefs = ref.read(loginPrefsProvider);
 
-    final success = await ref.read(authProvider.notifier).login(
-          email: email,
-          password: password,
-        );
+    final success = await ref
+        .read(authProvider.notifier)
+        .login(email: email, password: password);
 
     // Persist (or forget) the credentials for the next launch. Only a
     // successful login ever writes them, and unticking the box clears any
@@ -113,10 +113,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isLoading = ref.watch(authProvider).isLoading;
+    final isLoading = ref.watch(
+      authProvider.select((state) => state.isLoading),
+    );
     final appText = AppTextStyles.of(context);
-    final branding =
-        ref.watch(brandingProvider).valueOrNull ?? const Branding();
+    final branding = ref.watch(
+      brandingProvider.select((state) => state.valueOrNull ?? const Branding()),
+    );
 
     return Scaffold(
       backgroundColor: context.appBackground,
@@ -262,10 +265,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               onFieldSubmitted: (_) {
                                 if (!isLoading) _submit();
                               },
-                              validator: (value) => value == null ||
-                                      value.isEmpty
-                                  ? 'Please enter your password'
-                                  : null,
+                              validator: (value) =>
+                                  value == null || value.isEmpty
+                                      ? 'Please enter your password'
+                                      : null,
                             ),
                             const SizedBox(height: 8),
                             Row(
@@ -280,9 +283,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                   onTap: () => setState(
                                     () => _rememberMe = !_rememberMe,
                                   ),
-                                  child: const Text(
-                                    'Remember me',
-                                  ),
+                                  child: const Text('Remember me'),
                                 ),
                               ],
                             ),

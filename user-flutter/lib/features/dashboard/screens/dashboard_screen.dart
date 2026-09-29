@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/top_bar.dart';
 import '../../auth/providers/auth_provider.dart';
@@ -17,7 +18,7 @@ class DashboardScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final student = ref.watch(authProvider).student;
+    final student = ref.watch(authProvider.select((state) => state.student));
 
     if (student == null) {
       return const Scaffold(body: Center(child: Text('Not authenticated')));

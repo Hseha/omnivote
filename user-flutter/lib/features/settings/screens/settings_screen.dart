@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
 import '../../../core/constants/app_colors.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/top_bar.dart';
@@ -19,8 +20,9 @@ class SettingsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final themeMode = ref.watch(themeModeProvider);
-    final branding =
-        ref.watch(brandingProvider).valueOrNull ?? const Branding();
+    final branding = ref.watch(
+      brandingProvider.select((state) => state.valueOrNull ?? const Branding()),
+    );
 
     return Scaffold(
       backgroundColor: context.appBackground,
@@ -28,10 +30,7 @@ class SettingsScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Text(
-            'Appearance',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
+          Text('Appearance', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 12),
           Card(
             child: Padding(
@@ -39,10 +38,7 @@ class SettingsScreen extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Theme',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
+                  Text('Theme', style: Theme.of(context).textTheme.titleMedium),
                   const SizedBox(height: 4),
                   Text(
                     'Match the system, or force the app to light or dark.',
@@ -115,10 +111,7 @@ class SettingsScreen extends ConsumerWidget {
           const SizedBox(height: 12),
           Card(
             child: ListTile(
-              leading: Icon(
-                Icons.info_outline,
-                color: branding.primaryColor,
-              ),
+              leading: Icon(Icons.info_outline, color: branding.primaryColor),
               title: const Text('About'),
               subtitle: Text(
                 branding.siteName.isEmpty

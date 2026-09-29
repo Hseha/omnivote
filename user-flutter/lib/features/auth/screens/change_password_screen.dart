@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../../core/constants/app_colors.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/constants/app_text_styles.dart';
@@ -37,8 +38,12 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
     final password = value ?? '';
     if (password.isEmpty) return 'Please enter a new password';
     if (password.length < 8) return 'Use at least 8 characters';
-    if (!RegExp(r'[A-Za-z]').hasMatch(password)) return 'Include at least one letter';
-    if (!RegExp(r'[0-9]').hasMatch(password)) return 'Include at least one number';
+    if (!RegExp(r'[A-Za-z]').hasMatch(password)) {
+      return 'Include at least one letter';
+    }
+    if (!RegExp(r'[0-9]').hasMatch(password)) {
+      return 'Include at least one number';
+    }
     return null;
   }
 
@@ -63,7 +68,9 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isLoading = ref.watch(authProvider).isLoading;
+    final isLoading = ref.watch(
+      authProvider.select((state) => state.isLoading),
+    );
     final appText = AppTextStyles.of(context);
 
     return PopScope(

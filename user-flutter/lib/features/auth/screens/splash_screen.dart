@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/brand_logo.dart';
 import '../../../data/models/branding_model.dart';
@@ -36,8 +37,9 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final branding =
-        ref.watch(brandingProvider).valueOrNull ?? const Branding();
+    final branding = ref.watch(
+      brandingProvider.select((state) => state.valueOrNull ?? const Branding()),
+    );
 
     return Scaffold(
       backgroundColor: context.appSurface,
@@ -45,7 +47,11 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            BrandLogo(logoUrl: branding.logoUrl, size: 84, tint: branding.primaryColor),
+            BrandLogo(
+              logoUrl: branding.logoUrl,
+              size: 84,
+              tint: branding.primaryColor,
+            ),
             const SizedBox(height: 16),
             Text(
               branding.siteName,

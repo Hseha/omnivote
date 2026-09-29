@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../../core/constants/app_colors.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/cached_avatar.dart';
@@ -17,7 +18,7 @@ class MyProfileScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final student = ref.watch(authProvider).student;
+    final student = ref.watch(authProvider.select((state) => state.student));
     final registrationAsync = ref.watch(registrationDataProvider);
 
     return Scaffold(
@@ -65,7 +66,8 @@ class MyProfileScreen extends ConsumerWidget {
           _InfoRow(
             icon: Icons.how_to_vote_outlined,
             label: 'Vote status',
-            value: student?.hasVoted == true ? 'Already voted' : 'Not yet voted',
+            value:
+                student?.hasVoted == true ? 'Already voted' : 'Not yet voted',
           ),
           _InfoRow(
             icon: Icons.school_outlined,
@@ -138,10 +140,7 @@ class _InfoRow extends StatelessWidget {
             Expanded(
               child: Text(
                 label,
-                style: TextStyle(
-                  color: context.appTextSecondary,
-                  fontSize: 14,
-                ),
+                style: TextStyle(color: context.appTextSecondary, fontSize: 14),
               ),
             ),
             Text(
