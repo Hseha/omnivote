@@ -5,26 +5,20 @@ use Illuminate\Support\Facades\DB;
 
 return new class extends Migration
 {
-    private const DEPARTMENT_SETTING_KEY = 'admin.departments.list';
-
-    private const DEFAULT_DEPARTMENTS = ['CCS', 'CCJE', 'BSOA', 'EDUC', 'PolSci', 'CAS'];
-
+    /**
+     * Legacy (retired) config key. It once held a plain list of department
+     * codes, but nothing reads it — the `departments`/`courses` tables (and
+     * their aliases) are the source of truth now, and the import guard
+     * deliberately never writes it. The key is removed by
+     * `2026_09_30_000001_remove_legacy_department_list_setting`.
+     */
     public function up(): void
     {
-        if (DB::table('election_settings')->where('key', self::DEPARTMENT_SETTING_KEY)->exists()) {
-            return;
-        }
-
-        DB::table('election_settings')->insert([
-            'key' => self::DEPARTMENT_SETTING_KEY,
-            'value' => json_encode(self::DEFAULT_DEPARTMENTS),
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        // No-op: superseded by the catalog tables.
     }
 
     public function down(): void
     {
-        DB::table('election_settings')->where('key', self::DEPARTMENT_SETTING_KEY)->delete();
+        // Nothing to undo.
     }
 };

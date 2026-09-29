@@ -133,6 +133,10 @@ class RegistrarImportController extends Controller
             $course = $courseColumn !== null
                 ? trim((string) ($data[$courseColumn] ?? ''))
                 : '';
+            // A short code ("BSIT") or a full program name both land on the
+            // canonical name; a genuine miss comes back null and is surfaced
+            // as a non-blocking warning below.
+            $resolvedCourse = $this->resolveCourseCanonical($department, $course);
 
             // Row cells must be complete so User Management never shows blank
             // records: every required column must carry a value or the row is
@@ -163,6 +167,20 @@ class RegistrarImportController extends Controller
                 $reviewReasons[] = 'Missing block number in registrar CSV.';
             }
 
+            // An unrecognised course is deliberately NOT a review reason: those
+            // block provisioning (see the $row['_needs_review'] gate), and a
+            // typo in the Course column must never be the reason a student
+            // does not get an account. It is recorded as a warning instead, so
+            // the registrar sees the problem without the import costing anyone
+            // their access.
+            $courseWarning = null;
+            if ($course !== ''
+                && $resolvedCourse === null
+                && $department !== ''
+                && in_array($department, $knownDepartments, true)) {
+                $courseWarning = "Course '{$course}' is not offered by {$department}; stored as typed.";
+            }
+
             $rows[] = [
                 'student_id' => $studentId,
                 'full_name' => $fullName,
@@ -170,10 +188,15 @@ class RegistrarImportController extends Controller
                 'year_level' => $yearLevel,
                 'block_number' => $blockResult['value'],
                 'department' => $department,
-                'course' => $this->resolveCourseSoft($department, $course),
+                'course' => $resolvedCourse ?? ($course !== '' ? $course : null),
                 '_line' => $line,
                 '_needs_review' => $reviewReasons !== [],
-                '_review_reason' => $reviewReasons ? implode(' ', $reviewReasons) : null,
+                // The feed row keeps the warning even on a provisioned row, so
+                // the registrar can trace where the odd course value came from.
+                '_review_reason' => $reviewReasons || $courseWarning
+                    ? implode(' ', array_merge($reviewReasons, array_filter([$courseWarning])))
+                    : null,
+                '_course_unmatched' => $courseWarning !== null,
                 '_unknown_department' => $department !== '' && ! in_array($department, $knownDepartments, true),
             ];
             $line++;
@@ -190,11 +213,12 @@ class RegistrarImportController extends Controller
         $skipped = 0;
         $skippedUnknownDepartment = 0;
         $flaggedForReview = 0;
+        $unmatchedCourses = 0;
         $temporaryCredentials = [];
         $issuedCodes = [];
         $usedEmails = [];
 
-        DB::transaction(function () use ($rows, &$created, &$updated, &$accountsProvisioned, &$skipped, &$skippedUnknownDepartment, &$flaggedForReview, &$rejectedRows, &$temporaryCredentials, &$usedEmails) {
+        DB::transaction(function () use ($rows, &$created, &$updated, &$accountsProvisioned, &$skipped, &$skippedUnknownDepartment, &$flaggedForReview, &$unmatchedCourses, &$rejectedRows, &$temporaryCredentials, &$usedEmails) {
             foreach ($rows as $row) {
                 // The login email is derived from the student's name — it is
                 // never read from the CSV — so a row without a name can never
@@ -239,6 +263,10 @@ class RegistrarImportController extends Controller
                     'full_name' => $row['full_name'],
                     'activation_code' => $activationCode,
                 ];
+
+                if ($row['_course_unmatched'] ?? false) {
+                    $unmatchedCourses++;
+                }
 
                 if ($row['_needs_review']) {
                     $flaggedForReview++;
@@ -322,7 +350,7 @@ class RegistrarImportController extends Controller
             }
         });
 
-        $this->notifyImportSummary($accountsProvisioned, $created, $updated, $flaggedForReview, $skipped, $skippedUnknownDepartment);
+        $this->notifyImportSummary($accountsProvisioned, $created, $updated, $flaggedForReview, $skipped, $skippedUnknownDepartment, $unmatchedCourses);
 
         return response()->json([
             'message' => 'Import completed.',
@@ -339,6 +367,9 @@ class RegistrarImportController extends Controller
                 'skipped_unknown_department' => $skippedUnknownDepartment,
                 'email_conflict_skipped' => 0,
                 'flagged_for_review' => $flaggedForReview,
+                // Accounts were still created for these; the course value was
+                // kept as typed because the college does not offer it.
+                'courses_not_offered' => $unmatchedCourses,
                 'rejected_rows' => $rejectedRows,
             ],
             'temporary_credentials' => $temporaryCredentials,
@@ -351,7 +382,7 @@ class RegistrarImportController extends Controller
     /**
      * Notify panel admins that a registrar import just completed.
      */
-    private function notifyImportSummary(int $provisioned, int $created, int $updated, int $flagged, int $skipped, int $skippedUnknownDepartment): void
+    private function notifyImportSummary(int $provisioned, int $created, int $updated, int $flagged, int $skipped, int $skippedUnknownDepartment, int $unmatchedCourses = 0): void
     {
         Notifier::toAdmins(
             'notifyOnRegistration',
@@ -360,7 +391,8 @@ class RegistrarImportController extends Controller
             'Provisioned '.$provisioned.' account(s); '.$created.' eligibility row(s) created, '
                 .$updated.' updated, '.$flagged.' flagged for review'
                 .($skipped > 0 ? ', '.$skipped.' incomplete row(s) left unprovisioned.' : '.')
-                .($skippedUnknownDepartment > 0 ? ' '.$skippedUnknownDepartment.' row(s) skipped for unknown department.' : ''),
+                .($skippedUnknownDepartment > 0 ? ' '.$skippedUnknownDepartment.' row(s) skipped for unknown department.' : '')
+                .($unmatchedCourses > 0 ? ' '.$unmatchedCourses.' row(s) carry a course that the college does not offer; check the Course values.' : ''),
             '/users',
         );
     }
@@ -375,38 +407,25 @@ class RegistrarImportController extends Controller
      * quietly creating new department values.
      */
     /**
-     * Resolve a CSV course to its canonical program, failing softly.
+     * Resolve a CSV course to its canonical program, or null when unknown.
      *
      * The `courses` table (maintained by the admin Courses manager) is the
-     * single source of truth; the static catalog is only a fallback when the
-     * table is absent. When a full program name matches, the row is stored
-     * with the canonical name. Anything else ("BSIT", a typo) keeps the
-     * registrar's value as-is instead of flagging the row and skipping the
-     * account.
+     * single source of truth, so a full program name is matched against it
+     * first. Short codes ("BSIT") and legacy spellings are then resolved through
+     * the static catalog and re-checked against the table, which is what stops
+     * a code from being attached to a program its college does not offer.
+     *
+     * Returning null (rather than the typed value) is deliberate: the caller
+     * needs to know the course was unrecognised so it can flag the row. The
+     * registrar's value is still stored and still never blocks provisioning.
      */
-    private function resolveCourseSoft(?string $department, string $course): ?string
+    private function resolveCourseCanonical(?string $department, string $course): ?string
     {
         if ($department === '' || $course === '') {
             return null;
         }
 
-        if (! Schema::hasTable('courses')) {
-            $canonical = DepartmentCatalog::resolveCourse($department, $course);
-
-            return $canonical ?? trim($course);
-        }
-
-        $departmentRow = Department::where('name', $department)->first();
-        if ($departmentRow !== null) {
-            $canonical = Course::where('department_id', $departmentRow->id)
-                ->whereRaw('LOWER(name) = ?', [mb_strtolower(trim($course))])
-                ->value('name');
-            if ($canonical !== null) {
-                return $canonical;
-            }
-        }
-
-        return trim($course) !== '' ? trim($course) : null;
+        return DepartmentCatalog::resolveCourse($department, trim($course));
     }
 
     private function knownDepartments(): array

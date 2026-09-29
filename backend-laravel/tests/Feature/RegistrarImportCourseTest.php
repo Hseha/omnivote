@@ -17,10 +17,10 @@ use Tests\TestCase;
 /**
  * Registrar imports record the student's program.
  *
- * The Course column is optional. When present, a full program name resolves to
- * the canonical name from the `courses` table (kept by the admin Courses
- * manager); anything that doesn't exactly match (abbreviations, typos) is
- * stored as-is and NEVER blocks provisioning.
+ * The Course column is optional. A full program name or its short code ("BSIT")
+ * both resolve to the canonical name from the `courses` table, kept by the admin
+ * Courses manager. A genuine miss is stored as typed and NEVER blocks
+ * provisioning, but the row is flagged for review so the registrar can see it.
  */
 class RegistrarImportCourseTest extends TestCase
 {
@@ -71,19 +71,91 @@ class RegistrarImportCourseTest extends TestCase
         $this->assertSame('Bachelor of Science in Information Technology', $feed->course);
     }
 
-    public function test_unmatched_course_imports_anyway_and_is_stored_as_is(): void
+    public function test_course_code_imports_as_the_canonical_program_name(): void
     {
         $res = $this->importWithCourses([
-            ['2024-0002', 'Bailey Santos', '2', 'College of Computer Studies', '1', 'BSIT'],
+            ['2024-0005', 'Rina Bautista', '2', 'College of Computer Studies', '1', 'BSIT'],
         ]);
 
         $res->assertStatus(201)
             ->assertJsonPath('summary.accounts_provisioned', 1)
             ->assertJsonPath('summary.flagged_for_review', 0)
-            ->assertJsonPath('temporary_credentials.0.course', 'BSIT');
+            ->assertJsonPath('temporary_credentials.0.course', 'Bachelor of Science in Information Technology');
 
-        $this->assertSame('BSIT', User::where('student_id', '2024-0002')->value('course'));
-        $this->assertSame('BSIT', RegistrarImport::where('student_id', '2024-0002')->value('course'));
+        $this->assertSame(
+            'Bachelor of Science in Information Technology',
+            User::where('student_id', '2024-0005')->value('course'),
+        );
+    }
+
+    public function test_course_code_is_case_and_spacing_insensitive(): void
+    {
+        $res = $this->importWithCourses([
+            ['2024-0006', 'Owen del Cruz', '1', 'CCS', '2', '  bSiT '],
+        ]);
+
+        $res->assertStatus(201)
+            ->assertJsonPath('summary.flagged_for_review', 0)
+            ->assertJsonPath('temporary_credentials.0.course', 'Bachelor of Science in Information Technology');
+        $this->assertSame(
+            'College of Computer Studies',
+            User::where('student_id', '2024-0006')->value('department'),
+        );
+    }
+
+    public function test_legacy_course_spelling_imports_as_the_canonical_name(): void
+    {
+        $res = $this->importWithCourses([
+            ['2024-0007', 'Mia Lacson', '3', 'College of Computer Studies', '1', 'Information Technology'],
+        ]);
+
+        $res->assertStatus(201)
+            ->assertJsonPath('summary.flagged_for_review', 0)
+            ->assertJsonPath('temporary_credentials.0.course', 'Bachelor of Science in Information Technology');
+    }
+
+    public function test_course_code_from_another_college_is_not_attached(): void
+    {
+        // BSIT belongs to Computer Studies, not Criminology. Storing the full
+        // Information Technology name on a Criminology student would let them
+        // vote in the wrong course-scoped race.
+        $res = $this->importWithCourses([
+            ['2024-0008', 'Noel Ramos', '2', 'College of Criminal Justice Education', '1', 'BSIT'],
+        ]);
+
+        $res->assertStatus(201)
+            ->assertJsonPath('summary.accounts_provisioned', 1)
+            ->assertJsonPath('summary.courses_not_offered', 1)
+            // Not a blocking review: the account is still created.
+            ->assertJsonPath('summary.flagged_for_review', 0);
+
+        $this->assertSame('BSIT', User::where('student_id', '2024-0008')->value('course'));
+    }
+
+    public function test_unmatched_course_still_provisions_the_account_but_is_reported(): void
+    {
+        $res = $this->importWithCourses([
+            ['2024-0002', 'Bailey Santos', '2', 'College of Computer Studies', '1', 'BS Nautical'],
+        ]);
+
+        // The account is created: a bad course must never lock a student out,
+        // which is why this is a warning and not a "flagged for review" row.
+        $res->assertStatus(201)
+            ->assertJsonPath('summary.accounts_provisioned', 1)
+            ->assertJsonPath('summary.flagged_for_review', 0)
+            ->assertJsonPath('summary.skipped_incomplete', 0)
+            // ...but the registrar is told, rather than it landing silently.
+            ->assertJsonPath('summary.courses_not_offered', 1);
+
+        $this->assertSame('BS Nautical', User::where('student_id', '2024-0002')->value('course'));
+
+        $feed = RegistrarImport::where('student_id', '2024-0002')->firstOrFail();
+        $this->assertSame('BS Nautical', $feed->course);
+        $this->assertFalse((bool) $feed->needs_review);
+        $this->assertStringContainsString(
+            "Course 'BS Nautical' is not offered by College of Computer Studies",
+            (string) $feed->review_reason,
+        );
     }
 
     public function test_import_without_course_column_leaves_course_null(): void
@@ -182,6 +254,7 @@ class RegistrarImportCourseTest extends TestCase
             $table->id();
             $table->unsignedBigInteger('department_id');
             $table->string('name');
+            $table->string('code')->nullable();
             $table->unsignedInteger('sort_order')->default(0);
             $table->timestamps();
         });
@@ -191,10 +264,46 @@ class RegistrarImportCourseTest extends TestCase
             DB::table('courses')->insert([
                 'department_id' => $deptId,
                 'name' => $course['name'],
+                'code' => $course['code'],
                 'sort_order' => $i + 1,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
+        }
+
+        Schema::create('department_aliases', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('department_id');
+            $table->string('alias')->unique();
+            $table->timestamps();
+        });
+
+        Schema::create('course_aliases', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('course_id');
+            $table->string('alias')->unique();
+            $table->timestamps();
+        });
+
+        foreach (DepartmentCatalog::departmentAliases() as $alias => $departmentName) {
+            DB::table('department_aliases')->insert([
+                'department_id' => DB::table('departments')->where('name', $departmentName)->value('id'),
+                'alias' => strtolower($alias),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        foreach (DepartmentCatalog::courseAliases() as $collegeCode => $aliases) {
+            $deptId = DB::table('departments')->where('code', $collegeCode)->value('id');
+            foreach ($aliases as $alias => $courseCode) {
+                DB::table('course_aliases')->insert([
+                    'course_id' => DB::table('courses')->where('department_id', $deptId)->where('code', $courseCode)->value('id'),
+                    'alias' => strtolower($alias),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
         }
 
         Schema::create('users', function (Blueprint $table) {

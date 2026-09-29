@@ -335,6 +335,15 @@ export default function StudentRegistry({ onLogout, activeView = 'voters', onNav
                     {summary.updated_eligibility_rows} updated • {summary.duplicates_within_file} duplicates within file •{' '}
                     {summary.skipped_incomplete} incomplete rows (missing values → feed only, no account) •{' '}
                     {summary.skipped_unknown_department} skipped (department not in the current list → feed only, no account)
+                    {(summary.courses_not_offered ?? 0) > 0 && (
+                      <>
+                        {' '}•{' '}
+                        <span className="text-amber-700">
+                          {summary.courses_not_offered} with a course the college doesn&apos;t offer (kept as typed,
+                          account still created)
+                        </span>
+                      </>
+                    )}
                   </span>
                 </div>
               )}
