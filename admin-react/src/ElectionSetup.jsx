@@ -145,15 +145,12 @@ export default function ElectionSetup({ activeView = 'setup', onNavigate, onLogo
       setEditError('Seat count must be a whole number between 1 and 50.');
       return;
     }
-    // A pinned electorate needs the value it is pinned to. Leaving it blank
-    // means "scoped to each voter's own value", which is right for a
-    // year-level seat but meaningless for a department/course seat.
-    const wantsScopeValue = editForm.scope_type !== 'global';
+    // A blank value means "scoped to each voter's OWN value" — the right
+    // semantics for a year-level, per-college or per-course seat, and the only
+    // one that keeps every group able to vote. A literal pins the seat to that
+    // single value and locks every other group out, so it is optional and
+    // never required.
     const scopeValue = editForm.scope_value.trim();
-    if (wantsScopeValue && editForm.scope_type !== 'year_level' && !scopeValue) {
-      setEditError('Enter the value this seat is restricted to, or switch the scope to Global.');
-      return;
-    }
 
     setEditSaving(true);
     setEditError('');
@@ -400,7 +397,9 @@ export default function ElectionSetup({ activeView = 'setup', onNavigate, onLogo
                     ? 'The whole student body may vote and stand in this seat.'
                     : editForm.scope_type === 'year_level'
                       ? 'Students vote for, and are voted for by, their own year level. Leave the value blank.'
-                      : 'Only students in this group may vote. Enter the exact value below.'}
+                      : editForm.scope_type === 'department'
+                        ? 'Each student votes in, and stands for, their own college. Leave the value blank so every college gets its own election.'
+                        : 'Each student votes in, and stands for, their own course. Leave the value blank.'}
                 </p>
               </div>
 
@@ -408,9 +407,7 @@ export default function ElectionSetup({ activeView = 'setup', onNavigate, onLogo
                 <div className="form-group">
                   <label className="form-label">
                     Restricted to
-                    {editForm.scope_type === 'year_level' && (
-                      <span className="form-hint-inline"> (optional)</span>
-                    )}
+                    <span className="form-hint-inline"> (optional)</span>
                   </label>
                   <input
                     type="text"
@@ -419,7 +416,9 @@ export default function ElectionSetup({ activeView = 'setup', onNavigate, onLogo
                     placeholder={
                       editForm.scope_type === 'year_level'
                         ? 'Blank = each voter uses their own year level'
-                        : 'e.g. BSIT or BSBA'
+                        : editForm.scope_type === 'department'
+                          ? 'Blank = each voter uses their own college'
+                          : 'Blank = each voter uses their own course'
                     }
                     value={editForm.scope_value}
                     onChange={(e) => setEditForm((prev) => ({ ...prev, scope_value: e.target.value }))}
