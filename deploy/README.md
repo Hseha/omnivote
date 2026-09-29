@@ -27,37 +27,38 @@ Why this beats `php artisan serve`:
 | Handles the /up health check | only while dev server runs | ✅ real 24/7 probe |
 | Static/binary uploads  | dev server          | ✅ nginx + `client_max_body_size` |
 
-Target: **Ubuntu 24.04 / Debian 12, PHP 8.3** (matching `composer.json`'s `^8.3`).
+Target: **Ubuntu 24.04 / Debian 12, PHP 8.4** (matching `composer.json`'s `^8.4`;
+Laravel 13 requires PHP 8.4+, so 8.3 is no longer sufficient).
 
 ---
 
 ## 1. Install the software
 
 ```bash
-# PHP 8.3 + FPM (FastCGI Process Manager) + the extensions Laravel needs
+# PHP 8.4 + FPM (FastCGI Process Manager) + the extensions Laravel needs
 sudo apt update
 sudo apt install -y \
   nginx \
   mysql-server \
   composer \
-  "php8.3-fpm" \
-  "php8.3-cli" \
-  "php8.3-mysql" \
-  "php8.3-mbstring" "php8.3-xml" "php8.3-curl" "php8.3-zip" \
-  "php8.3-bcmath" "php8.3-intl" "php8.3-gd" "php8.3-opcache"
+  "php8.4-fpm" \
+  "php8.4-cli" \
+  "php8.4-mysql" \
+  "php8.4-mbstring" "php8.4-xml" "php8.4-curl" "php8.4-zip" \
+  "php8.4-bcmath" "php8.4-intl" "php8.4-gd" "php8.4-opcache"
 ```
 
-> If your distro only ships PHP lower than 8.3, add the
+> If your distro only ships PHP lower than 8.4, add the
 > [ondrej/php PPA](https://launchpad.net/~ondrej/+archive/ubuntu/php) first:
 > ```bash
 > sudo add-apt-repository ppa:ondrej/php && sudo apt update
 > ```
-> (This repo's `composer.json` requires `php: ^8.3`, so don't go below it.)
+> (This repo's `composer.json` requires `php: ^8.4`, so don't go below it.)
 
 Verify and enable the three always-on services right away:
 ```bash
-php8.3 -v
-sudo systemctl enable --now php8.3-fpm nginx mysql
+php8.4 -v
+sudo systemctl enable --now php8.4-fpm nginx mysql
 systemctl is-active php8.3-fpm nginx mysql     # all three: active
 ```
 
