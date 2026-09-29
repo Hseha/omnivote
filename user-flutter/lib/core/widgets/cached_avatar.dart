@@ -1,9 +1,8 @@
-import 'dart:convert';
-
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import '../constants/app_colors.dart';
+
 import '../theme/app_tokens.dart';
+import '../utils/data_image_cache.dart';
 import '../utils/safe_json.dart';
 
 /// Renders a remote avatar/photo with disk/memory caching and explicit
@@ -41,22 +40,34 @@ class CachedAvatar extends StatelessWidget {
 
     if (url == null || url.isEmpty) {
       return ClipOval(
-        child: SizedBox(width: size, height: size, child: _fallback(context, size: size)),
+        child: SizedBox(
+          width: size,
+          height: size,
+          child: _fallback(context, size: size),
+        ),
       );
     }
 
     final lower = url.toLowerCase();
+    final pixels = _targetPixels(context, size);
 
     Widget? child;
 
     if (lower.startsWith('data:image/')) {
-      child = _dataImage(context, url, size);
+      child = _dataImage(context, url, size, pixels);
     } else {
       final renderable = _renderableHttpUrl(url);
       if (renderable != null) {
         child = CachedNetworkImage(
           imageUrl: renderable,
           fit: BoxFit.cover,
+          // Decode to the avatar's real size (radius × 2 × device pixel ratio)
+          // instead of the uploaded resolution. A 24 px header avatar used to
+          // pull a 1024 px bitmap into the image cache; on a 3× phone that is
+          // ~12 MB of GPU memory for something drawing 144 px, which is exactly
+          // the kind of pressure that gets a backgrounded app killed.
+          memCacheWidth: pixels,
+          memCacheHeight: pixels,
           placeholder: (context, url) => Container(
             color: context.appBackground,
             child: const Center(
@@ -83,22 +94,36 @@ class CachedAvatar extends StatelessWidget {
 
   /// Decodes a `data:image/png;base64,…` avatar (the admin photo upload) into
   /// an in-memory image, or null on garbage input.
-  Widget? _dataImage(BuildContext context, String url, double size) {
-    final comma = url.indexOf(',');
-    if (comma < 0) return null;
-    final bytes = url.substring(comma + 1).trim();
-    if (bytes.isEmpty) return null;
-    try {
-      final decoded = base64Decode(bytes);
-      return Image.memory(
-        decoded,
-        fit: BoxFit.cover,
-        gaplessPlayback: true,
-        errorBuilder: (context, error, stackTrace) => _fallback(context, size: size),
-      );
-    } catch (_) {
-      return null;
-    }
+  ///
+  /// The base64 payload is decoded **once per URL** (memoised in
+  /// [DataImageCache]) and the bitmap decode is capped at the avatar's real
+  /// pixel size, so a rebuild of the row — let alone a scroll — no longer
+  /// re-decodes a full-resolution image.
+  Widget? _dataImage(
+    BuildContext context,
+    String url,
+    double size,
+    int pixels,
+  ) {
+    final provider = DataImageCache.providerFor(
+      url,
+      cacheWidth: pixels,
+      cacheHeight: pixels,
+    );
+    if (provider == null) return null;
+    return Image(
+      image: provider,
+      fit: BoxFit.cover,
+      gaplessPlayback: true,
+      errorBuilder: (context, error, stackTrace) =>
+          _fallback(context, size: size),
+    );
+  }
+
+  /// The avatar's edge in device pixels, used as the decode target.
+  static int _targetPixels(BuildContext context, double size) {
+    final ratio = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0;
+    return (size * ratio).round();
   }
 
   /// Rewrites a DiceBear SVG URL to its PNG variant so Flutter can decode it;
@@ -120,10 +145,8 @@ class CachedAvatar extends StatelessWidget {
 
   // "Michael Cruz" -> "MC", "Dexter" -> "D"
   static String _initialsOf(String name) {
-    final parts = name
-        .split(RegExp(r'\s+'))
-        .where((p) => p.isNotEmpty)
-        .toList();
+    final parts =
+        name.split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
     if (parts.isEmpty) return '';
     if (parts.length == 1) return parts.first[0];
     return '${parts.first[0]}${parts.last[0]}';
@@ -135,7 +158,9 @@ class CachedAvatar extends StatelessWidget {
       return Container(
         width: size,
         height: size,
-        color: AppColors.primaryBlue,
+        // Theme primary (runtime brand accent; identical to the old fallback
+        // blue under default branding) so initials tiles match the school.
+        color: Theme.of(context).colorScheme.primary,
         alignment: Alignment.center,
         child: Text(
           _initialsOf(text),
@@ -151,7 +176,11 @@ class CachedAvatar extends StatelessWidget {
       width: size,
       height: size,
       color: context.appBackground,
-      child: Icon(fallbackIcon, size: size * 0.6, color: context.appTextSecondary),
+      child: Icon(
+        fallbackIcon,
+        size: size * 0.6,
+        color: context.appTextSecondary,
+      ),
     );
   }
 }

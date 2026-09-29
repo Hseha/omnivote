@@ -83,6 +83,36 @@ void main() {
     expect(container.read(electionStatusProvider).value?.phase,
         ElectionPhase.votingOpen);
   });
+
+  test('refetch keeps prior data instead of dropping to a loading state',
+      () async {
+    final container = ProviderContainer(
+      overrides: [
+        electionStatusServiceProvider.overrideWithValue(
+          _CountingStatusService(payload: {'phase': 'voting_open'}),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await container.read(electionStatusProvider.future);
+    expect(container.read(electionStatusProvider).hasValue, isTrue);
+
+    // Start a second fetch and observe the intermediate state, without
+    // awaiting it — that in-flight window is what the spinner used to render.
+    container.read(electionStatusEpochProvider.notifier).state++;
+    final inflight = container.read(electionStatusProvider);
+
+    expect(inflight.isLoading, isTrue);
+    // The stale-but-usable value survives, so skipLoadingOnRefresh has
+    // something to keep painting.
+    expect(inflight.value?.phase, ElectionPhase.votingOpen);
+
+    await container.read(electionStatusProvider.future);
+    // Re-read: `inflight` is an immutable snapshot of the loading state, not a
+    // live handle, so it can never flip to false on its own.
+    expect(container.read(electionStatusProvider).isLoading, isFalse);
+  });
 }
 
 class _CountingStatusService implements ElectionStatusService {

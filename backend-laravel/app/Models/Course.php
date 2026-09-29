@@ -9,11 +9,17 @@ class Course extends Model
     protected $fillable = [
         'department_id',
         'name',
+        'code',
         'sort_order',
     ];
 
     public function department()
     {
         return $this->belongsTo(Department::class);
+    }
+
+    public function aliases()
+    {
+        return $this->hasMany(CourseAlias::class);
     }
 }

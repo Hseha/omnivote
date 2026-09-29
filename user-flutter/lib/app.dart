@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/routes/app_router.dart';
 import 'core/theme/app_theme.dart';
+import 'core/theme/brand_accent.dart';
 import 'data/services/theme_mode.dart';
 import 'features/auth/providers/auth_provider.dart';
 
@@ -41,13 +42,19 @@ class _OmniVoteAppState extends ConsumerState<OmniVoteApp> {
     });
 
     final themeMode = ref.watch(themeModeProvider);
+    // The school branding accent flows into ColorScheme.primary (and the
+    // button/input roles derived from it) at runtime. With default branding
+    // the accent is the fallback blue, so the themes below are identical to
+    // the static ones. Only `.select()`s the color, so unrelated branding
+    // payload changes don't rebuild the app.
+    final accent = ref.brandAccent();
 
     return MaterialApp.router(
       title: 'OmniVote',
       debugShowCheckedModeBanner: false,
       routerConfig: AppRouter.router,
-      theme: AppTheme.lightTheme,
-      darkTheme: AppTheme.darkTheme,
+      theme: AppTheme.withAccent(AppTheme.lightTheme, accent),
+      darkTheme: AppTheme.withAccent(AppTheme.darkTheme, accent),
       themeMode: themeMode,
     );
   }

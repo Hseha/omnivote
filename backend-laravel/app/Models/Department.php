@@ -16,4 +16,9 @@ class Department extends Model
     {
         return $this->hasMany(Course::class)->orderBy('sort_order');
     }
+
+    public function aliases()
+    {
+        return $this->hasMany(DepartmentAlias::class);
+    }
 }

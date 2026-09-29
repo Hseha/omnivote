@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
+import 'app_shape.dart';
 import 'app_tokens.dart';
 
 /// Central application theme. [lightTheme] is the original OmniVote look;
@@ -26,9 +27,9 @@ class AppTheme {
 
   static CardThemeData _cardThemeFor(AppTokens t) => CardThemeData(
         color: t.surface,
-        elevation: 0,
+        elevation: AppElevation.card,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: AppRadius.mdAll,
           side: BorderSide(color: t.border),
         ),
       );
@@ -42,14 +43,14 @@ class AppTheme {
         titleTextStyle: _pageTitleFor(t),
       );
 
-  static ElevatedButtonThemeData _elevatedButtonTheme() =>
+  static ElevatedButtonThemeData _elevatedButtonTheme([Color? background]) =>
       ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.primaryBlue,
+          backgroundColor: background ?? AppColors.primaryBlue,
           foregroundColor: Colors.white,
           minimumSize: const Size(double.infinity, 48),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: AppRadius.smAll,
           ),
           textStyle: const TextStyle(
             fontSize: 16,
@@ -58,21 +59,22 @@ class AppTheme {
         ),
       );
 
-  static InputDecorationTheme _inputDecorationThemeFor(AppTokens t) =>
+  static InputDecorationTheme _inputDecorationThemeFor(AppTokens t,
+          [Color? focus]) =>
       InputDecorationTheme(
         filled: true,
         fillColor: t.surface,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: AppRadius.smAll,
           borderSide: BorderSide(color: t.border),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: AppRadius.smAll,
           borderSide: BorderSide(color: t.border),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: AppColors.primaryBlue, width: 2),
+          borderRadius: AppRadius.smAll,
+          borderSide: BorderSide(color: focus ?? AppColors.primaryBlue, width: 2),
         ),
         labelStyle: _secondaryFor(t),
       );
@@ -105,15 +107,24 @@ class AppTheme {
       inputDecorationTheme: _inputDecorationThemeFor(tokens),
       dividerColor: tokens.border,
       textTheme: TextTheme(
+        // Display: hero numerals (countdowns, result percentages).
+        displaySmall: _pageTitleFor(tokens).copyWith(fontSize: 32),
+        // Headings: 28-pt screen headers, 24-pt section titles, 22-pt names.
         titleLarge: _pageTitleFor(tokens).copyWith(fontSize: 28),
         headlineSmall: _pageTitleFor(tokens),
+        headlineMedium: _pageTitleFor(tokens).copyWith(fontSize: 22),
+        // Titles: 16-pt card/dialog titles, 14-pt emphasized labels.
         titleMedium: _cardTitleFor(tokens),
+        titleSmall: _cardTitleFor(tokens).copyWith(fontSize: 14),
+        // Body: 14-pt primary reading text, 14-pt secondary text.
         bodyMedium: _body.copyWith(color: tokens.textPrimary),
         bodySmall: _secondaryFor(tokens),
+        // Labels: 14-pt button/emphasis text, 12-pt captions and helper copy.
         labelLarge: _secondary.copyWith(
           fontWeight: FontWeight.w600,
           color: tokens.textPrimary,
         ),
+        labelSmall: _secondaryFor(tokens).copyWith(fontSize: 12),
       ),
     );
   }
@@ -124,4 +135,25 @@ class AppTheme {
   static ThemeData get lightTheme => _build(AppTokens.light);
 
   static ThemeData get darkTheme => _build(AppTokens.dark);
+
+  /// Returns [base] with the school's runtime branding accent flowing into
+  /// every role that defaults to the fallback blue: [ColorScheme.primary],
+  /// the elevated-button background, and the input focus border. Roles that
+  /// already read the accent explicitly (chips, tags, hero gradients) are
+  /// untouched.
+  ///
+  /// With the default/unconfigured branding the accent *is*
+  /// [AppColors.primaryBlue], so the result is pixel-identical to [base] —
+  /// existing screens (including ones owned by other workstreams) render
+  /// exactly as before until a school configures its own color.
+  static ThemeData withAccent(ThemeData base, Color accent) {
+    final tokens = base.extension<AppTokens>();
+    return base.copyWith(
+      colorScheme: base.colorScheme.copyWith(primary: accent),
+      elevatedButtonTheme: _elevatedButtonTheme(accent),
+      inputDecorationTheme: tokens == null
+          ? base.inputDecorationTheme
+          : _inputDecorationThemeFor(tokens, accent),
+    );
+  }
 }

@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../../../core/constants/app_colors.dart';
+
 import '../../../core/constants/app_text_styles.dart';
+import '../../../core/theme/app_shape.dart';
+import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_tokens.dart';
+import '../../../core/widgets/app_button.dart';
+import '../../../core/widgets/app_card.dart';
+import '../../../core/widgets/app_text_field.dart';
 import '../../../core/widgets/brand_logo.dart';
 import '../../../data/models/branding_model.dart';
 import '../../../data/services/login_prefs.dart';
@@ -27,7 +32,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  bool _obscurePassword = true;
   bool _rememberMe = false;
   String? _errorMessage;
 
@@ -61,10 +65,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     // the auth listener fires, and `ref` must not be used after that.
     final prefs = ref.read(loginPrefsProvider);
 
-    final success = await ref.read(authProvider.notifier).login(
-          email: email,
-          password: password,
-        );
+    final success = await ref
+        .read(authProvider.notifier)
+        .login(email: email, password: password);
 
     // Persist (or forget) the credentials for the next launch. Only a
     // successful login ever writes them, and unticking the box clears any
@@ -113,17 +116,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isLoading = ref.watch(authProvider).isLoading;
+    final isLoading = ref.watch(
+      authProvider.select((state) => state.isLoading),
+    );
     final appText = AppTextStyles.of(context);
-    final branding =
-        ref.watch(brandingProvider).valueOrNull ?? const Branding();
+    final scheme = Theme.of(context).colorScheme;
+    final branding = ref.watch(
+      brandingProvider.select((state) => state.valueOrNull ?? const Branding()),
+    );
 
     return Scaffold(
       backgroundColor: context.appBackground,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.lg,
+              vertical: AppSpacing.xl,
+            ),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 420),
               child: Column(
@@ -138,207 +148,168 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       tint: branding.primaryColor,
                     ),
                   ),
-                  const SizedBox(height: 18),
+                  AppSpacing.vMd,
                   Text(
                     branding.siteName,
                     textAlign: TextAlign.center,
-                    style: appText.pageTitle.copyWith(fontSize: 30),
+                    style: appText.displaySmall,
                   ),
-                  const SizedBox(height: 10),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: context.appTagBg,
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(
-                        color: branding.primaryColor.withValues(alpha: 0.25),
+                  AppSpacing.vSm,
+                  Center(
+                    child: Container(
+                      padding: AppMetrics.tagPadding,
+                      decoration: BoxDecoration(
+                        color: context.appTagBg,
+                        borderRadius: AppRadius.xlAll,
+                        border: Border.all(
+                          color: scheme.primary.withValues(alpha: 0.25),
+                        ),
                       ),
+                      child: Text('STUDENT PORTAL', style: appText.tag),
                     ),
-                    child: Text('STUDENT PORTAL', style: appText.tag),
                   ),
-                  const SizedBox(height: 16),
+                  AppSpacing.vMd,
                   Text(
                     'Sign in with your school-issued email or username to '
                     'access your ballot, candidates and results.',
                     textAlign: TextAlign.center,
-                    style: appText.secondary,
+                    style: appText.bodySmall,
                   ),
-                  const SizedBox(height: 24),
+                  AppSpacing.vLg,
 
                   // ---- Credentials card ----
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Form(
-                        key: _formKey,
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            if (_errorMessage != null) ...[
-                              // Inline error banner: friendly and impossible
-                              // to miss; cleared as soon as a field is edited.
-                              Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .errorContainer,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onErrorContainer
-                                        .withValues(alpha: 0.4),
-                                  ),
+                  AppCard(
+                    child: Form(
+                      key: _formKey,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          if (_errorMessage != null) ...[
+                            // Inline error banner: friendly and impossible
+                            // to miss; cleared as soon as a field is edited.
+                            Container(
+                              padding: const EdgeInsets.all(
+                                AppMetrics.rowPaddingV,
+                              ),
+                              decoration: BoxDecoration(
+                                color: scheme.errorContainer,
+                                borderRadius: AppRadius.smAll,
+                                border: Border.all(
+                                  color: scheme.onErrorContainer
+                                      .withValues(alpha: 0.4),
                                 ),
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Icon(
-                                      Icons.error_outline,
-                                      size: 20,
-                                      color: AppColors.errorRed,
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: Text(
-                                        _errorMessage!,
-                                        style: appText.body.copyWith(
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .onErrorContainer,
-                                        ),
+                              ),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Icon(
+                                    Icons.error_outline,
+                                    size: 20,
+                                    color: scheme.error,
+                                  ),
+                                  AppSpacing.hSm,
+                                  Expanded(
+                                    child: Text(
+                                      _errorMessage!,
+                                      style: appText.bodyMedium.copyWith(
+                                        color: scheme.onErrorContainer,
                                       ),
                                     ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 20),
-                            ],
-                            TextFormField(
-                              controller: _emailController,
-                              onChanged: (_) => _clearError(),
-                              decoration: const InputDecoration(
-                                labelText: 'Email / Username',
-                                prefixIcon: Icon(Icons.mail_outline),
-                              ),
-                              keyboardType: TextInputType.text,
-                              textInputAction: TextInputAction.next,
-                              autofillHints: const [AutofillHints.username],
-                              validator: (value) =>
-                                  value == null || value.trim().isEmpty
-                                      ? 'Please enter your email or username'
-                                      : null,
-                            ),
-                            const SizedBox(height: 16),
-                            TextFormField(
-                              controller: _passwordController,
-                              onChanged: (_) => _clearError(),
-                              obscureText: _obscurePassword,
-                              decoration: InputDecoration(
-                                labelText: 'Password',
-                                prefixIcon: const Icon(Icons.lock_outline),
-                                suffixIcon: IconButton(
-                                  icon: Icon(
-                                    _obscurePassword
-                                        ? Icons.visibility_off_outlined
-                                        : Icons.visibility_outlined,
-                                    color: context.appTextSecondary,
                                   ),
-                                  tooltip: _obscurePassword
-                                      ? 'Show password'
-                                      : 'Hide password',
-                                  onPressed: () => setState(
-                                    () => _obscurePassword = !_obscurePassword,
-                                  ),
-                                ),
-                              ),
-                              textInputAction: TextInputAction.done,
-                              autofillHints: const [AutofillHints.password],
-                              onFieldSubmitted: (_) {
-                                if (!isLoading) _submit();
-                              },
-                              validator: (value) => value == null ||
-                                      value.isEmpty
-                                  ? 'Please enter your password'
-                                  : null,
-                            ),
-                            const SizedBox(height: 8),
-                            Row(
-                              children: [
-                                Checkbox(
-                                  value: _rememberMe,
-                                  onChanged: (value) => setState(
-                                    () => _rememberMe = value ?? false,
-                                  ),
-                                ),
-                                GestureDetector(
-                                  onTap: () => setState(
-                                    () => _rememberMe = !_rememberMe,
-                                  ),
-                                  child: const Text(
-                                    'Remember me',
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-                            SizedBox(
-                              height: 52,
-                              child: ElevatedButton(
-                                onPressed: isLoading ? null : _submit,
-                                child: isLoading
-                                    ? const Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          SizedBox(
-                                            height: 18,
-                                            width: 18,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                              color: Colors.white,
-                                            ),
-                                          ),
-                                          SizedBox(width: 12),
-                                          Text('Logging in...'),
-                                        ],
-                                      )
-                                    : const Text('Log In'),
+                                ],
                               ),
                             ),
+                            AppSpacing.vMd,
                           ],
-                        ),
+                          AppTextField(
+                            controller: _emailController,
+                            onChanged: (_) => _clearError(),
+                            label: 'Email / Username',
+                            prefixIcon: const Icon(Icons.mail_outline),
+                            keyboardType: TextInputType.text,
+                            textInputAction: TextInputAction.next,
+                            autofillHints: const [AutofillHints.username],
+                            validator: (value) =>
+                                value == null || value.trim().isEmpty
+                                    ? 'Please enter your email or username'
+                                    : null,
+                          ),
+                          AppTextField.fieldGap,
+                          AppTextField(
+                            controller: _passwordController,
+                            onChanged: (_) => _clearError(),
+                            label: 'Password',
+                            prefixIcon: const Icon(Icons.lock_outline),
+                            obscure: true,
+                            textInputAction: TextInputAction.done,
+                            autofillHints: const [AutofillHints.password],
+                            onSubmitted: (_) {
+                              if (!isLoading) _submit();
+                            },
+                            validator: (value) =>
+                                value == null || value.isEmpty
+                                    ? 'Please enter your password'
+                                    : null,
+                          ),
+                          AppSpacing.vSm,
+                          InkWell(
+                            onTap: () => setState(
+                              () => _rememberMe = !_rememberMe,
+                            ),
+                            borderRadius: AppRadius.smAll,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                vertical: AppSpacing.xs,
+                              ),
+                              child: Row(
+                                children: [
+                                  Checkbox(
+                                    value: _rememberMe,
+                                    onChanged: (value) => setState(
+                                      () => _rememberMe = value ?? false,
+                                    ),
+                                  ),
+                                  const Text('Remember me'),
+                                ],
+                              ),
+                            ),
+                          ),
+                          AppSpacing.vMd,
+                          AppButton.primary(
+                            label:
+                                isLoading ? 'Logging in…' : 'Log In',
+                            onPressed: isLoading ? null : _submit,
+                            isLoading: isLoading,
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  AppSpacing.vMd,
                   Align(
                     alignment: Alignment.center,
-                    child: TextButton.icon(
+                    child: AppButton.text(
+                      label: 'Forgot your password?',
+                      icon: Icons.help_outline,
                       onPressed: isLoading
                           ? null
                           : () => context.push('/recover-password'),
-                      icon: const Icon(Icons.help_outline, size: 18),
-                      label: const Text('Forgot your password?'),
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  AppSpacing.vSm,
                   Text(
                     "Don't have access? Student accounts are created by your "
                     'school registrar — contact the administration office '
                     'if you need one.',
-                    style: appText.secondary.copyWith(fontSize: 13),
+                    style: appText.bodySmall,
                     textAlign: TextAlign.center,
                   ),
                   if (branding.footerText.isNotEmpty) ...[
-                    const SizedBox(height: 24),
+                    AppSpacing.vLg,
                     Text(
                       branding.footerText,
-                      style: appText.secondary.copyWith(fontSize: 12),
+                      style: appText.labelSmall,
                       textAlign: TextAlign.center,
                     ),
                   ],
