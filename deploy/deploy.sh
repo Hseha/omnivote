@@ -11,16 +11,16 @@
 # Overridable via environment:
 #   APP_DIR      repo root on the server   (default /var/www/omnivote)
 #   BRANCH       deploy branch             (default main)
-#   PHP          php binary                (default php8.3)
-#   FPM_SERVICE  php-fpm systemd unit      (default php8.3-fpm)
+#   PHP          php binary                (default php8.4)
+#   FPM_SERVICE  php-fpm systemd unit      (default php8.4-fpm)
 #   RUN_AS       owner of storage/         (default www-data)
 # ============================================================================
 set -euo pipefail
 
 APP_DIR="${APP_DIR:-/var/www/omnivote}"
 BRANCH="${BRANCH:-main}"
-PHP="${PHP:-php8.3}"
-FPM_SERVICE="${FPM_SERVICE:-php8.3-fpm}"
+PHP="${PHP:-php8.4}"
+FPM_SERVICE="${FPM_SERVICE:-php8.4-fpm}"
 RUN_AS="${RUN_AS:-www-data}"
 
 log() { printf '\n==> %s\n' "$1"; }
