@@ -2,14 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_text_styles.dart';
+import '../../../core/theme/app_shape.dart';
+import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/debouncer.dart';
 import '../../../core/utils/error_message.dart';
+import '../../../core/widgets/app_card.dart';
+import '../../../core/widgets/app_chip.dart';
+import '../../../core/widgets/app_text_field.dart';
 import '../../../core/widgets/cached_avatar.dart';
 import '../../../core/widgets/empty_state.dart';
-import '../../../core/widgets/loading_indicator.dart';
+import '../../../core/widgets/error_state.dart';
+import '../../../core/widgets/loading_skeleton.dart';
+import '../../../core/widgets/section_header.dart';
 import '../../../core/widgets/top_bar.dart';
 import '../../../data/models/candidate_model.dart';
 import '../../../data/models/position_model.dart';
@@ -61,45 +67,9 @@ class _CandidatesListScreenState extends ConsumerState<CandidatesListScreen> {
         );
   }
 
-  Widget _buildChips({
-    required List<String> items,
-    required String? selected,
-    required void Function(String) onSelect,
-  }) {
-    if (items.isEmpty) {
-      return const SizedBox.shrink();
-    }
-    return SizedBox(
-      height: 44,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: items.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 8),
-        itemBuilder: (context, index) {
-          final item = items[index];
-          final isSelected = selected == item;
-          return ChoiceChip(
-            label: Text(item),
-            selected: isSelected,
-            onSelected: (_) => onSelect(item),
-            selectedColor: AppColors.primaryBlue.withValues(alpha: 0.1),
-            labelStyle: TextStyle(
-              color:
-                  isSelected ? AppColors.primaryBlue : context.appTextSecondary,
-              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-              fontSize: 14,
-            ),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-              side: BorderSide(
-                color: isSelected ? AppColors.primaryBlue : context.appBorder,
-              ),
-            ),
-            showCheckmark: false,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          );
-        },
-      ),
+  void _onTierLabel(String label) {
+    _onTierChanged(
+      label == 'National' ? PositionTier.national : PositionTier.provincial,
     );
   }
 
@@ -131,48 +101,35 @@ class _CandidatesListScreenState extends ConsumerState<CandidatesListScreen> {
       body: CustomScrollView(
         slivers: [
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.md,
+              AppSpacing.lg,
+              AppSpacing.md,
+              0,
+            ),
             // Filter chrome. `SliverList.list` rather than a wrapping `Column`
             // so each child keeps the same full-width, tight cross-axis
             // constraints the old outer `ListView` gave it.
             sliver: SliverList.list(
               children: [
                 // Tier Toggle
-                Center(
-                  child: SegmentedButton<PositionTier>(
-                    segments: const [
-                      ButtonSegment(
-                        value: PositionTier.national,
-                        label: Text('National'),
-                      ),
-                      ButtonSegment(
-                        value: PositionTier.provincial,
-                        label: Text('Provincial'),
-                      ),
-                    ],
-                    selected: {filter.tier},
-                    onSelectionChanged: (newSelection) =>
-                        _onTierChanged(newSelection.first),
-                    style: SegmentedButton.styleFrom(
-                      selectedBackgroundColor: AppColors.primaryBlue,
-                      selectedForegroundColor: Colors.white,
-                      side: BorderSide(color: context.appBorder),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                  ),
+                AppChipRow(
+                  items: const ['National', 'Provincial'],
+                  selected: filter.tier == PositionTier.national
+                      ? 'National'
+                      : 'Provincial',
+                  onSelect: _onTierLabel,
                 ),
-                const SizedBox(height: 24),
+                AppSpacing.vLg,
 
                 // Department step
-                Text('Department', style: appText.cardTitle),
-                const SizedBox(height: 8),
+                const SectionHeader(title: 'Department'),
+                AppSpacing.vSm,
                 if (hasOwnDepartment)
-                  _lockedDepartment(studentDepartment)
+                  _lockedDepartment(context, studentDepartment)
                 else
                   departmentsAsync.when(
-                    data: (departments) => _buildChips(
+                    data: (departments) => AppChipRow(
                       items: departments,
                       selected: filter.department,
                       onSelect: (dept) {
@@ -184,22 +141,23 @@ class _CandidatesListScreenState extends ConsumerState<CandidatesListScreen> {
                             );
                       },
                     ),
-                    loading: () => const Center(child: LoadingIndicator()),
-                    error: (err, _) => Text(
-                      apiErrorMessage(
+                    loading: () => LoadingSkeleton.lines(count: 1),
+                    error: (err, _) => ErrorState(
+                      message: apiErrorMessage(
                         err,
                         fallback: 'Could not load departments.',
                       ),
-                      style: appText.secondary,
+                      onRetry: () =>
+                          ref.invalidate(departmentsProvider),
                     ),
                   ),
-                const SizedBox(height: 24),
+                AppSpacing.vLg,
 
                 // Party step
-                Text('Party', style: appText.cardTitle),
-                const SizedBox(height: 8),
+                const SectionHeader(title: 'Party'),
+                AppSpacing.vSm,
                 partiesAsync.when(
-                  data: (parties) => _buildChips(
+                  data: (parties) => AppChipRow(
                     items: parties,
                     selected: filter.party,
                     onSelect: (party) {
@@ -208,33 +166,35 @@ class _CandidatesListScreenState extends ConsumerState<CandidatesListScreen> {
                           .update((s) => s.copyWith(party: party));
                     },
                   ),
-                  loading: () => const Center(child: LoadingIndicator()),
-                  error: (err, _) => Text(
-                    apiErrorMessage(err, fallback: 'Could not load parties.'),
-                    style: appText.secondary,
+                  loading: () => LoadingSkeleton.lines(count: 1),
+                  error: (err, _) => ErrorState(
+                    message: apiErrorMessage(
+                      err,
+                      fallback: 'Could not load parties.',
+                    ),
+                    onRetry: () => ref.invalidate(partiesProvider),
                   ),
                 ),
-                const SizedBox(height: 24),
+                AppSpacing.vLg,
 
                 // Search
-                TextField(
+                AppTextField(
                   controller: _searchController,
                   onChanged: _onSearchChanged,
-                  decoration: const InputDecoration(
-                    hintText: 'Search candidates by name or slogan...',
-                    prefixIcon: Icon(Icons.search),
-                  ),
+                  hint: 'Search candidates by name or slogan...',
+                  prefixIcon: const Icon(Icons.search),
+                  textInputAction: TextInputAction.search,
                 ),
-                const SizedBox(height: 24),
+                AppSpacing.vLg,
 
                 // Header
                 Text(
                   '${filter.tier == PositionTier.national ? 'National' : 'Provincial'}'
                   '${effectiveDepartment != null ? ' · $effectiveDepartment' : ''}'
                   '${filter.party != null ? ' · ${filter.party}' : ''}',
-                  style: appText.pageTitle,
+                  style: appText.headlineSmall,
                 ),
-                const SizedBox(height: 16),
+                AppSpacing.vMd,
               ],
             ),
           ),
@@ -268,33 +228,57 @@ class _CandidatesListScreenState extends ConsumerState<CandidatesListScreen> {
                     context.push('/candidate-profile', extra: candidate);
                   },
                 ),
-                loading: () => const SliverToBoxAdapter(
-                  child: Center(child: LoadingIndicator()),
+                loading: () => SliverToBoxAdapter(
+                  child: Padding(
+                    padding: AppSpacing.screenPaddingHorizontal,
+                    child: Column(
+                      children: [
+                        LoadingSkeleton.row(),
+                        AppSpacing.vSm,
+                        LoadingSkeleton.row(),
+                        AppSpacing.vSm,
+                        LoadingSkeleton.row(),
+                      ],
+                    ),
+                  ),
                 ),
                 error: (err, _) => SliverToBoxAdapter(
-                  child: Center(
-                    child: Text(
-                      apiErrorMessage(
-                        err,
-                        fallback: 'Could not load candidates.',
-                      ),
+                  child: ErrorState(
+                    message: apiErrorMessage(
+                      err,
+                      fallback: 'Could not load candidates.',
                     ),
+                    onRetry: () =>
+                        ref.invalidate(filteredCandidatesProvider),
                   ),
                 ),
               );
             },
-            loading: () => const SliverToBoxAdapter(
-              child: Center(child: LoadingIndicator()),
-            ),
-            error: (err, _) => SliverToBoxAdapter(
-              child: Center(
-                child: Text(
-                  apiErrorMessage(err, fallback: 'Could not load positions.'),
+            loading: () => SliverToBoxAdapter(
+              child: Padding(
+                padding: AppSpacing.screenPaddingHorizontal,
+                child: Column(
+                  children: [
+                    LoadingSkeleton.row(),
+                    AppSpacing.vSm,
+                    LoadingSkeleton.row(),
+                    AppSpacing.vSm,
+                    LoadingSkeleton.row(),
+                  ],
                 ),
               ),
             ),
+            error: (err, _) => SliverToBoxAdapter(
+              child: ErrorState(
+                message: apiErrorMessage(
+                  err,
+                  fallback: 'Could not load positions.',
+                ),
+                onRetry: () => ref.invalidate(positionsProvider),
+              ),
+            ),
           ),
-          const SliverToBoxAdapter(child: SizedBox(height: 24)),
+          const SliverToBoxAdapter(child: AppSpacing.vLg),
         ],
       ),
     );
@@ -302,33 +286,33 @@ class _CandidatesListScreenState extends ConsumerState<CandidatesListScreen> {
 
   /// Provincial slate is pinned to the student's own department — shown as a
   /// locked pill instead of an interactive chip row.
-  Widget _lockedDepartment(String department) {
+  Widget _lockedDepartment(BuildContext context, String department) {
+    final scheme = Theme.of(context).colorScheme;
     return Container(
-      height: 44,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      height: AppMetrics.minTapTarget,
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
       decoration: BoxDecoration(
-        color: AppColors.primaryBlue.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.primaryBlue),
+        color: scheme.primary.withValues(alpha: 0.1),
+        borderRadius: AppRadius.xlAll,
+        border: Border.all(color: scheme.primary),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(
+          Icon(
             Icons.lock_outline,
             size: 16,
-            color: AppColors.primaryBlue,
+            color: scheme.primary,
           ),
-          const SizedBox(width: 8),
+          AppSpacing.hSm,
           Flexible(
             child: Text(
               department,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: AppColors.primaryBlue,
-                fontWeight: FontWeight.bold,
-              ),
+              style: AppTextStyles.of(context).titleSmall.copyWith(
+                    color: scheme.primary,
+                  ),
             ),
           ),
         ],
@@ -373,7 +357,7 @@ class _BallotForm extends StatelessWidget {
     final lines = <_BallotLine>[];
     for (final position in positions) {
       lines.add(_HeaderLine(position));
-      lines.add(const _GapLine(8));
+      lines.add(const _GapLine(AppSpacing.sm));
 
       final slotCandidates = byPosition[position.id] ?? const <Candidate>[];
       if (slotCandidates.isEmpty) {
@@ -385,7 +369,7 @@ class _BallotForm extends StatelessWidget {
           lines.add(_CandidateLine(candidate));
         }
       }
-      lines.add(const _GapLine(20));
+      lines.add(const _GapLine(AppSpacing.md));
     }
     return lines;
   }
@@ -456,28 +440,24 @@ class _PositionHeader extends StatelessWidget {
     return Row(
       children: [
         Container(
-          width: 4,
-          height: 16,
+          width: AppSpacing.xs,
+          height: AppSpacing.md,
           decoration: BoxDecoration(
-            color: AppColors.primaryBlue,
-            borderRadius: BorderRadius.circular(2),
+            color: Theme.of(context).colorScheme.primary,
+            borderRadius: AppRadius.smAll,
           ),
         ),
-        const SizedBox(width: 8),
+        AppSpacing.hSm,
         Expanded(
           child: Text(
             position.label,
-            style: appText.cardTitle.copyWith(fontSize: 16),
+            style: appText.titleMedium,
           ),
         ),
         if (position.seatCount > 1)
           Text(
             '${position.seatCount} seats',
-            style: TextStyle(
-              fontSize: 12,
-              color: context.appTextSecondary,
-              fontWeight: FontWeight.w600,
-            ),
+            style: appText.labelSmall,
           ),
       ],
     );
@@ -497,69 +477,58 @@ class _BallotRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final appText = AppTextStyles.of(context);
     final subBits = <String>[
       if (candidate.party?.trim().isNotEmpty ?? false) candidate.party!.trim(),
       if (candidate.gradeLine.trim().isNotEmpty) candidate.gradeLine.trim(),
     ];
 
-    return Card(
-      elevation: 0,
-      margin: const EdgeInsets.only(bottom: 10),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: context.appBorder),
-      ),
-      color: context.appSurface,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+      child: AppCard(
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          child: Row(
-            children: [
-              CachedAvatar(
-                imageUrl:
-                    candidate.photoUrl.isNotEmpty ? candidate.photoUrl : null,
-                radius: 22,
-                initials: candidate.name,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppMetrics.rowPaddingH,
+          vertical: AppMetrics.rowPaddingV,
+        ),
+        child: Row(
+          children: [
+            CachedAvatar(
+              imageUrl:
+                  candidate.photoUrl.isNotEmpty ? candidate.photoUrl : null,
+              radius: AppMetrics.avatarMd,
+              initials: candidate.name,
+            ),
+            AppSpacing.hMd,
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    candidate.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: appText.titleSmall,
+                  ),
+                  if (subBits.isNotEmpty) ...[
+                    AppSpacing.vXs,
                     Text(
-                      candidate.name,
+                      subBits.join(' · '),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 15,
-                        color: context.appTextPrimary,
-                      ),
+                      style: appText.labelSmall,
                     ),
-                    if (subBits.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        subBits.join(' · '),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: context.appTextSecondary,
-                        ),
-                      ),
-                    ],
                   ],
-                ),
+                ],
               ),
-              const Icon(
-                Icons.chevron_right,
-                size: 20,
-                color: AppColors.primaryBlue,
-              ),
-            ],
-          ),
+            ),
+            Icon(
+              Icons.chevron_right,
+              size: 20,
+              color: Theme.of(context).colorScheme.primary,
+              semanticLabel: 'View profile',
+            ),
+          ],
         ),
       ),
     );
@@ -575,34 +544,32 @@ class _EmptySlot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+      child: AppCard(
         color: context.appTagBg,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: context.appBorder),
-      ),
-      child: Row(
-        children: [
-          const Icon(
-            Icons.remove_circle_outline,
-            size: 18,
-            color: AppColors.textSecondary,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              message,
-              style: TextStyle(
-                fontSize: 13,
-                color: context.appTextSecondary,
-                fontStyle: FontStyle.italic,
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppMetrics.rowPaddingH,
+          vertical: AppMetrics.rowPaddingV,
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.remove_circle_outline,
+              size: 18,
+              color: context.appTextSecondary,
+            ),
+            AppSpacing.hSm,
+            Expanded(
+              child: Text(
+                message,
+                style: AppTextStyles.of(context).labelSmall.copyWith(
+                      fontStyle: FontStyle.italic,
+                    ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

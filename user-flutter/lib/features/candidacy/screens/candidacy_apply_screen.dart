@@ -6,9 +6,15 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../../core/constants/app_colors.dart';
+import '../../../core/constants/app_text_styles.dart';
+import '../../../core/theme/app_shape.dart';
+import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/error_message.dart';
-import '../../../core/widgets/loading_indicator.dart';
+import '../../../core/widgets/app_button.dart';
+import '../../../core/widgets/app_text_field.dart';
+import '../../../core/widgets/error_state.dart';
+import '../../../core/widgets/loading_skeleton.dart';
 import '../../../core/widgets/top_bar.dart';
 import '../../../data/models/position_model.dart';
 import '../../auth/providers/auth_provider.dart';
@@ -153,22 +159,22 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
             return _StatusView(status: _applicationStatus!);
           }
           return ListView(
-            padding: const EdgeInsets.all(16),
+            padding: AppSpacing.screenPadding,
             children: [
               Form(
                 key: _formKey,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _readOnlyField('Full Name', student?.name ?? '—'),
-                    _readOnlyField('Email', student?.email ?? '—'),
-                    _readOnlyField('Student ID', student?.studentId ?? '—'),
-                    const SizedBox(height: 16),
+                    _readOnlyField(context, 'Full Name', student?.name ?? '—'),
+                    _readOnlyField(context, 'Email', student?.email ?? '—'),
+                    _readOnlyField(
+                        context, 'Student ID', student?.studentId ?? '—'),
+                    AppSpacing.vMd,
                     DropdownButtonFormField<String>(
                       initialValue: _positionId,
                       decoration: const InputDecoration(
                         labelText: 'Position Running For *',
-                        border: OutlineInputBorder(),
                       ),
                       items: positions
                           .map(
@@ -181,79 +187,57 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
                       onChanged: (v) => setState(() => _positionId = v),
                       validator: (v) => v == null ? 'Select a position' : null,
                     ),
-                    const SizedBox(height: 16),
-                    TextFormField(
+                    AppSpacing.vMd,
+                    AppTextField(
                       controller: _partyController,
-                      decoration: const InputDecoration(
-                        labelText: 'Party / Platform Name',
-                        border: OutlineInputBorder(),
-                      ),
+                      label: 'Party / Platform Name',
                     ),
-                    const SizedBox(height: 16),
-                    TextFormField(
+                    AppTextField.fieldGap,
+                    AppTextField(
                       controller: _sloganController,
-                      decoration: const InputDecoration(
-                        labelText: 'Campaign Slogan',
-                        border: OutlineInputBorder(),
-                      ),
+                      label: 'Campaign Slogan',
                     ),
-                    const SizedBox(height: 16),
+                    AppTextField.fieldGap,
                     _photoSection(),
-                    const SizedBox(height: 16),
-                    TextFormField(
+                    AppTextField.fieldGap,
+                    AppTextField(
                       controller: _platformController,
                       maxLines: 6,
                       maxLength: 5000,
-                      decoration: const InputDecoration(
-                        labelText: 'Campaign Platform / Statement *',
-                        alignLabelWithHint: true,
-                        border: OutlineInputBorder(),
-                      ),
+                      alignLabelWithHint: true,
+                      label: 'Campaign Platform / Statement *',
                       validator: (v) => (v == null || v.trim().isEmpty)
                           ? 'Campaign platform is required'
                           : null,
                     ),
-                    const SizedBox(height: 8),
+                    AppSpacing.vSm,
                     CheckboxListTile(
                       value: _certify,
                       contentPadding: EdgeInsets.zero,
                       onChanged: (v) => setState(() => _certify = v ?? false),
-                      title: const Text(
+                      title: Text(
                         'I certify that everything on this application is true and that I meet the eligibility requirements.',
-                        style: TextStyle(fontSize: 13),
+                        style: AppTextStyles.of(context).bodySmall,
                       ),
                       controlAffinity: ListTileControlAffinity.leading,
                     ),
-                    const SizedBox(height: 24),
+                    AppSpacing.vLg,
                     Consumer(
                       builder: (context, ref, child) {
                         final isSubmitting = ref.watch(
                           candidacyProvider.select((s) => s.isSubmitting),
                         );
-                        return ElevatedButton(
+                        return AppButton.primary(
+                          label: 'Submit Application',
                           onPressed: isSubmitting ? null : _submit,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primaryBlue,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                          ),
-                          child: isSubmitting
-                              ? const SizedBox(
-                                  height: 20,
-                                  width: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : const Text('Submit Application'),
+                          isLoading: isSubmitting,
                         );
                       },
                     ),
-                    const SizedBox(height: 16),
-                    TextButton(
+                    AppSpacing.vMd,
+                    AppButton.text(
+                      label: 'Cancel and go back to Dashboard',
                       onPressed: () => context.go('/dashboard'),
-                      child: const Text('Cancel and go back to Dashboard'),
                     ),
                   ],
                 ),
@@ -261,11 +245,17 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
             ],
           );
         },
-        loading: () => const LoadingIndicator(),
-        error: (err, stack) => Center(
-          child: Text(
-            apiErrorMessage(err, fallback: 'Could not load positions.'),
-          ),
+        loading: () => ListView(
+          padding: AppSpacing.screenPadding,
+          children: [
+            LoadingSkeleton.lines(count: 4),
+            AppSpacing.vMd,
+            LoadingSkeleton.card(height: 48),
+          ],
+        ),
+        error: (err, stack) => ErrorState(
+          message: apiErrorMessage(err, fallback: 'Could not load positions.'),
+          onRetry: () => ref.invalidate(positionsProvider),
         ),
       ),
     );
@@ -275,53 +265,54 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
       p.tier == PositionTier.provincial ? 'Provincial' : 'National';
 
   Widget _photoSection() {
+    final appText = AppTextStyles.of(context);
+    final scheme = Theme.of(context).colorScheme;
     final hasPhoto = _photoBytes != null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           'Candidate Photo (optional)',
-          style: TextStyle(
-            fontSize: 12,
+          style: appText.labelSmall.copyWith(
             fontWeight: FontWeight.w600,
-            color: context.appTextSecondary,
           ),
         ),
-        const SizedBox(height: 8),
+        AppSpacing.vSm,
         Row(
           children: [
             ClipRRect(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: AppRadius.smAll,
               child: SizedBox(
-                width: 88,
-                height: 88,
+                width: AppMetrics.avatarLg * 2,
+                height: AppMetrics.avatarLg * 2,
                 child: hasPhoto
                     ? Image.memory(_photoBytes!, fit: BoxFit.cover)
                     : Container(
                         color: context.appSurface,
                         child: Icon(
                           Icons.person,
-                          size: 44,
+                          size: AppMetrics.avatarLg,
                           color: context.appTextSecondary,
                         ),
                       ),
               ),
             ),
-            const SizedBox(width: 12),
+            AppSpacing.hSm,
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   InkWell(
                     onTap: _pickPhoto,
-                    borderRadius: BorderRadius.circular(6),
+                    borderRadius: AppRadius.smAll,
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        vertical: AppSpacing.sm,
+                      ),
                       child: Text(
                         hasPhoto ? 'Change photo' : 'Choose from gallery',
-                        style: const TextStyle(
-                          color: AppColors.primaryBlue,
-                          fontWeight: FontWeight.w600,
+                        style: appText.titleSmall.copyWith(
+                          color: scheme.primary,
                         ),
                       ),
                     ),
@@ -331,7 +322,7 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
                       _photoName ?? 'photo',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: context.appTextSecondary),
+                      style: appText.bodySmall,
                     ),
                     InkWell(
                       onTap: () => setState(() {
@@ -339,12 +330,16 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
                         _photoName = null;
                         _photoError = null;
                       }),
-                      borderRadius: BorderRadius.circular(6),
+                      borderRadius: AppRadius.smAll,
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                          vertical: AppSpacing.sm,
+                        ),
                         child: Text(
                           'Remove photo',
-                          style: const TextStyle(color: AppColors.errorRed),
+                          style: appText.bodyMedium.copyWith(
+                            color: scheme.error,
+                          ),
                         ),
                       ),
                     ),
@@ -355,34 +350,33 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
           ],
         ),
         if (_photoError != null) ...[
-          const SizedBox(height: 8),
+          AppSpacing.vSm,
           Text(
             _photoError!,
-            style: const TextStyle(color: AppColors.errorRed, fontSize: 12),
+            style: appText.labelSmall.copyWith(color: scheme.error),
           ),
         ],
       ],
     );
   }
 
-  Widget _readOnlyField(String label, String value) {
+  Widget _readOnlyField(BuildContext context, String label, String value) {
+    final appText = AppTextStyles.of(context);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.only(bottom: AppSpacing.md),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             label,
-            style: TextStyle(
-              fontSize: 12,
+            style: appText.labelSmall.copyWith(
               fontWeight: FontWeight.w600,
-              color: context.appTextSecondary,
             ),
           ),
-          const SizedBox(height: 4),
+          AppSpacing.vXs,
           Text(
             value,
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            style: appText.titleMedium,
           ),
         ],
       ),
@@ -397,11 +391,13 @@ class _StatusView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final appText = AppTextStyles.of(context);
+    final scheme = Theme.of(context).colorScheme;
     final color = status == 'approved'
-        ? const Color(0xFF16A34A)
+        ? AppColors.successGreen
         : status == 'rejected'
-            ? AppColors.errorRed
-            : AppColors.primaryBlue;
+            ? scheme.error
+            : scheme.primary;
     final icon = status == 'approved'
         ? Icons.check_circle
         : status == 'rejected'
@@ -410,26 +406,26 @@ class _StatusView extends StatelessWidget {
 
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(32),
+        padding: const EdgeInsets.all(AppSpacing.xl),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(icon, size: 72, color: color),
-            const SizedBox(height: 16),
+            AppSpacing.vMd,
             Text(
               'Application status: ${status.toUpperCase()}',
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              style: appText.headlineMedium,
             ),
-            const SizedBox(height: 8),
+            AppSpacing.vSm,
             Text(
               'If approved, you will appear on the Candidates list once the election committee publishes approvals.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: context.appTextSecondary),
+              style: appText.bodySmall,
             ),
-            const SizedBox(height: 24),
-            ElevatedButton(
+            AppSpacing.vLg,
+            AppButton.primary(
+              label: 'Back to Dashboard',
               onPressed: () => context.go('/dashboard'),
-              child: const Text('Back to Dashboard'),
             ),
           ],
         ),

@@ -1,7 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
-import '../constants/app_colors.dart';
 import '../theme/app_tokens.dart';
 import '../utils/data_image_cache.dart';
 import '../utils/safe_json.dart';
@@ -159,7 +158,9 @@ class CachedAvatar extends StatelessWidget {
       return Container(
         width: size,
         height: size,
-        color: AppColors.primaryBlue,
+        // Theme primary (runtime brand accent; identical to the old fallback
+        // blue under default branding) so initials tiles match the school.
+        color: Theme.of(context).colorScheme.primary,
         alignment: Alignment.center,
         child: Text(
           _initialsOf(text),

@@ -3,9 +3,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/constants/app_colors.dart';
+import '../../../core/constants/app_text_styles.dart';
+import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/error_message.dart';
-import '../../../core/widgets/loading_indicator.dart';
+import '../../../core/widgets/app_button.dart';
+import '../../../core/widgets/app_card.dart';
+import '../../../core/widgets/empty_state.dart';
+import '../../../core/widgets/error_state.dart';
+import '../../../core/widgets/loading_skeleton.dart';
 import '../../../core/widgets/top_bar.dart';
 import '../../../data/models/candidate_model.dart';
 import '../../../data/models/election_status_model.dart';
@@ -78,11 +84,19 @@ class MyBallotScreen extends ConsumerWidget {
 
           return _DraftBallot(selections: selections);
         },
-        loading: () => const LoadingIndicator(),
-        error: (err, stack) => Center(
-          child: Text(
-            apiErrorMessage(err, fallback: 'Could not load your ballot.'),
-          ),
+        loading: () => ListView(
+          padding: AppSpacing.screenPadding,
+          children: [
+            LoadingSkeleton.row(),
+            AppSpacing.vSm,
+            LoadingSkeleton.row(),
+            AppSpacing.vSm,
+            LoadingSkeleton.row(),
+          ],
+        ),
+        error: (err, stack) => ErrorState(
+          message: apiErrorMessage(err, fallback: 'Could not load your ballot.'),
+          onRetry: () => ref.invalidate(myBallotProvider),
         ),
       ),
     );
@@ -135,11 +149,12 @@ class _DraftBallot extends ConsumerWidget {
           // size itself, and the outer list built its entire child array too. A
           // sliver list builds only the rows that are on screen.
           child: CustomScrollView(
-            slivers: _ballotSlivers(positionsAsync, candidatesAsync),
+            slivers: _ballotSlivers(context, ref, positionsAsync, candidatesAsync),
           ),
         ),
         if (!votingOpen)
           _phaseNotice(
+            context,
             phase: phase,
             phaseLabel: phaseLabel,
             error: statusError,
@@ -147,30 +162,14 @@ class _DraftBallot extends ConsumerWidget {
         SafeArea(
           top: false,
           child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: !votingOpen || isSubmitting || selections.isEmpty
-                    ? null
-                    : () => _submit(context, ref),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primaryBlue,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-                icon: isSubmitting
-                    ? const SizedBox(
-                        height: 18,
-                        width: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Icon(Icons.how_to_vote),
-                label: Text(isSubmitting ? 'Submitting...' : 'Submit Ballot'),
-              ),
+            padding: AppSpacing.screenPadding,
+            child: AppButton.primary(
+              label: isSubmitting ? 'Submitting…' : 'Submit Ballot',
+              icon: Icons.how_to_vote,
+              onPressed: !votingOpen || isSubmitting || selections.isEmpty
+                  ? null
+                  : () => _submit(context, ref),
+              isLoading: isSubmitting,
             ),
           ),
         ),
@@ -181,59 +180,84 @@ class _DraftBallot extends ConsumerWidget {
   /// The ballot rows as slivers.
   ///
   /// Branch order mirrors the `when` chain this replaced (loading then error,
-  /// positions then the candidate lookup) so the screen still shows a spinner
+  /// positions then the candidate lookup) so the screen still shows a preview
   /// while positions load and names whichever of the two requests failed.
   List<Widget> _ballotSlivers(
+    BuildContext context,
+    WidgetRef ref,
     AsyncValue<List<Position>> positionsAsync,
     AsyncValue<List<Candidate>> candidatesAsync,
   ) {
     if (positionsAsync.isLoading) {
-      return const [SliverToBoxAdapter(child: LoadingIndicator())];
+      return [
+        SliverPadding(
+          padding: AppSpacing.screenPadding,
+          sliver: SliverList.list(
+            children: [
+              LoadingSkeleton.row(),
+              AppSpacing.vSm,
+              LoadingSkeleton.row(),
+              AppSpacing.vSm,
+              LoadingSkeleton.row(),
+            ],
+          ),
+        ),
+      ];
     }
     if (positionsAsync.hasError) {
       return [
         SliverToBoxAdapter(
-          child: Center(
-            child: Text(
-              apiErrorMessage(
-                positionsAsync.error!,
-                fallback: 'Could not load positions for your ballot.',
-              ),
+          child: ErrorState(
+            message: apiErrorMessage(
+              positionsAsync.error!,
+              fallback: 'Could not load positions for your ballot.',
             ),
+            onRetry: () => ref.invalidate(positionsProvider),
           ),
         ),
       ];
     }
 
     if (selections.isEmpty) {
-      return const [
+      return [
         SliverToBoxAdapter(
-          child: Padding(
-            padding: EdgeInsets.all(24),
-            child: Center(
-              child: Text(
-                'Your ballot is empty. Use Vote Now or the Candidates screen to add selections.',
-                textAlign: TextAlign.center,
-              ),
-            ),
+          child: EmptyState(
+            message: 'Your ballot is empty.',
+            subMessage:
+                'Use Vote Now or the Candidates screen to add selections.',
+            icon: Icons.how_to_vote_outlined,
+            actionLabel: 'Vote Now',
+            onAction: () => context.go('/vote-now'),
           ),
         ),
       ];
     }
 
     if (candidatesAsync.isLoading) {
-      return const [SliverToBoxAdapter(child: LoadingIndicator())];
+      return [
+        SliverPadding(
+          padding: AppSpacing.screenPadding,
+          sliver: SliverList.list(
+            children: [
+              LoadingSkeleton.row(),
+              AppSpacing.vSm,
+              LoadingSkeleton.row(),
+              AppSpacing.vSm,
+              LoadingSkeleton.row(),
+            ],
+          ),
+        ),
+      ];
     }
     if (candidatesAsync.hasError) {
       return [
         SliverToBoxAdapter(
-          child: Center(
-            child: Text(
-              apiErrorMessage(
-                candidatesAsync.error!,
-                fallback: 'Could not load candidates for your ballot.',
-              ),
+          child: ErrorState(
+            message: apiErrorMessage(
+              candidatesAsync.error!,
+              fallback: 'Could not load candidates for your ballot.',
             ),
+            onRetry: () => ref.invalidate(allApprovedCandidatesProvider),
           ),
         ),
       ];
@@ -282,18 +306,22 @@ class _DraftBallot extends ConsumerWidget {
   /// The error branch matches the old async `when` precedence, and while a poll
   /// is in flight the retained phase keeps the notice on screen instead of
   /// blinking it off for the length of every status check.
-  Widget _phaseNotice({
+  Widget _phaseNotice(
+    BuildContext context, {
     required ElectionPhase? phase,
     required String? phaseLabel,
     required Object? error,
   }) {
+    final notice = AppTextStyles.of(context).labelSmall.copyWith(
+          color: Theme.of(context).colorScheme.error,
+        );
     if (error != null) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(horizontal: 16),
+      return Padding(
+        padding: AppSpacing.screenPaddingHorizontal,
         child: Text(
           'Unable to confirm the election phase. Ballot submission is disabled.',
           textAlign: TextAlign.center,
-          style: TextStyle(color: AppColors.errorRed),
+          style: notice,
         ),
       );
     }
@@ -302,13 +330,13 @@ class _DraftBallot extends ConsumerWidget {
       return const SizedBox.shrink();
     }
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: AppSpacing.screenPaddingHorizontal,
       child: Text(
         phaseLabel == null
             ? 'Ballot submission is unavailable until voting opens.'
             : 'Ballot submission is unavailable: $phaseLabel.',
         textAlign: TextAlign.center,
-        style: const TextStyle(color: AppColors.errorRed),
+        style: notice,
       ),
     );
   }
@@ -371,44 +399,35 @@ class _BallotRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final position = byPositionKey[positionSlug];
     final label = position?.label ?? positionSlug;
+    final appText = AppTextStyles.of(context);
 
-    return Card(
-      elevation: 0,
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: context.appBorder),
-      ),
-      color: context.appSurface,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+      child: AppCard(
+        padding: const EdgeInsets.all(AppSpacing.md),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               label,
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 15,
-                color: context.appTextPrimary,
-              ),
+              style: appText.titleSmall,
             ),
-            const SizedBox(height: 8),
+            AppSpacing.vSm,
             ...refs.map(
               (ref) => Padding(
-                padding: const EdgeInsets.only(bottom: 4),
+                padding: const EdgeInsets.only(bottom: AppSpacing.xs),
                 child: Row(
                   children: [
-                    Icon(
+                    const Icon(
                       Icons.check_circle,
                       size: 16,
                       color: AppColors.successGreen,
                     ),
-                    const SizedBox(width: 8),
+                    AppSpacing.hSm,
                     Expanded(
                       child: Text(
                         byRef[ref]?.name ?? 'Candidate',
-                        style: TextStyle(color: context.appTextSecondary),
+                        style: appText.bodySmall,
                       ),
                     ),
                   ],
@@ -429,43 +448,40 @@ class _SubmittedBallot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final appText = AppTextStyles.of(context);
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(32),
+        padding: const EdgeInsets.all(AppSpacing.xl),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.verified, size: 72, color: AppColors.successGreen),
-            const SizedBox(height: 16),
+            const Icon(Icons.verified, size: 72, color: AppColors.successGreen),
+            AppSpacing.vMd,
             Text(
               'Ballot Submitted',
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                color: context.appTextPrimary,
-              ),
+              style: appText.headlineMedium,
             ),
-            const SizedBox(height: 12),
+            AppSpacing.vSm,
             Text(
               'Your digital receipt token (use it on the Results tab to verify your vote was counted — it never reveals your choices):',
               textAlign: TextAlign.center,
-              style: TextStyle(color: context.appTextSecondary),
+              style: appText.bodySmall,
             ),
-            const SizedBox(height: 16),
+            AppSpacing.vMd,
             SelectableText(
               receiptToken.isEmpty ? '(receipt pending)' : receiptToken,
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontFamily: 'monospace',
                 fontWeight: FontWeight.bold,
-                color: context.appTextPrimary,
+                color: appText.bodyMedium.color,
               ),
             ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
+            AppSpacing.vLg,
+            AppButton.primary(
+              label: 'View Results & Verify',
+              icon: Icons.bar_chart,
               onPressed: () => context.go('/results'),
-              icon: const Icon(Icons.bar_chart),
-              label: const Text('View Results & Verify'),
             ),
           ],
         ),

@@ -2,8 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/constants/app_colors.dart';
+import '../../../core/constants/app_text_styles.dart';
+import '../../../core/theme/app_shape.dart';
+import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_tokens.dart';
+import '../../../core/widgets/app_card.dart';
+import '../../../core/widgets/section_header.dart';
 import '../../../core/widgets/top_bar.dart';
 import '../../../data/models/branding_model.dart';
 import '../../../data/services/theme_mode.dart';
@@ -23,71 +27,74 @@ class SettingsScreen extends ConsumerWidget {
     final branding = ref.watch(
       brandingProvider.select((state) => state.valueOrNull ?? const Branding()),
     );
+    final scheme = Theme.of(context).colorScheme;
+    final appText = AppTextStyles.of(context);
 
     return Scaffold(
       backgroundColor: context.appBackground,
       appBar: const TopBar(title: 'Settings'),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: AppSpacing.screenPadding,
         children: [
-          Text('Appearance', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 12),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Theme', style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Match the system, or force the app to light or dark.',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  const SizedBox(height: 16),
-                  SegmentedButton<ThemeMode>(
-                    segments: const [
-                      ButtonSegment(
-                        value: ThemeMode.light,
-                        icon: Icon(Icons.light_mode_outlined),
-                        label: Text('Light'),
-                      ),
-                      ButtonSegment(
-                        value: ThemeMode.system,
-                        icon: Icon(Icons.brightness_auto_outlined),
-                        label: Text('System'),
-                      ),
-                      ButtonSegment(
-                        value: ThemeMode.dark,
-                        icon: Icon(Icons.dark_mode_outlined),
-                        label: Text('Dark'),
-                      ),
-                    ],
-                    selected: {themeMode},
-                    onSelectionChanged: (selection) {
-                      final mode = selection.first;
-                      ref.read(themeModeProvider.notifier).state = mode;
-                      ThemeModeStorage.save(mode);
-                    },
-                    style: SegmentedButton.styleFrom(
-                      selectedBackgroundColor: AppColors.primaryBlue,
-                      selectedForegroundColor: Colors.white,
-                      side: BorderSide(color: context.appBorder),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
+          const SectionHeader(title: 'Appearance'),
+          AppSpacing.vSm,
+          AppCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Theme', style: appText.titleMedium),
+                AppSpacing.vXs,
+                Text(
+                  'Match the system, or force the app to light or dark.',
+                  style: appText.bodySmall,
+                ),
+                AppSpacing.vMd,
+                SegmentedButton<ThemeMode>(
+                  segments: const [
+                    ButtonSegment(
+                      value: ThemeMode.light,
+                      icon: Icon(Icons.light_mode_outlined),
+                      label: Text('Light'),
+                    ),
+                    ButtonSegment(
+                      value: ThemeMode.system,
+                      icon: Icon(Icons.brightness_auto_outlined),
+                      label: Text('System'),
+                    ),
+                    ButtonSegment(
+                      value: ThemeMode.dark,
+                      icon: Icon(Icons.dark_mode_outlined),
+                      label: Text('Dark'),
+                    ),
+                  ],
+                  selected: {themeMode},
+                  onSelectionChanged: (selection) {
+                    final mode = selection.first;
+                    ref.read(themeModeProvider.notifier).state = mode;
+                    ThemeModeStorage.save(mode);
+                  },
+                  style: SegmentedButton.styleFrom(
+                    // Deliberately kept as a segmented control (not chips):
+                    // it is the right affordance for an exclusive mode choice.
+                    // Only the selected color follows the runtime brand accent.
+                    selectedBackgroundColor: scheme.primary,
+                    selectedForegroundColor: Colors.white,
+                    side: BorderSide(color: context.appBorder),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: AppRadius.smAll,
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 16),
-          Card(
+          AppSpacing.vMd,
+          AppCard(
+            padding: EdgeInsets.zero,
             child: ListTile(
-              leading: const Icon(
+              leading: Icon(
                 Icons.help_outline,
-                color: AppColors.primaryBlue,
+                color: scheme.primary,
               ),
               title: const Text('Help & FAQ'),
               subtitle: const Text('Eligibility, voting and account help'),
@@ -95,12 +102,13 @@ class SettingsScreen extends ConsumerWidget {
               onTap: () => context.push('/faq'),
             ),
           ),
-          const SizedBox(height: 12),
-          Card(
+          AppSpacing.vSm,
+          AppCard(
+            padding: EdgeInsets.zero,
             child: ListTile(
-              leading: const Icon(
+              leading: Icon(
                 Icons.account_circle_outlined,
-                color: AppColors.primaryBlue,
+                color: scheme.primary,
               ),
               title: const Text('My Profile'),
               subtitle: const Text('Your details, status and log out'),
@@ -108,8 +116,9 @@ class SettingsScreen extends ConsumerWidget {
               onTap: () => context.push('/profile'),
             ),
           ),
-          const SizedBox(height: 12),
-          Card(
+          AppSpacing.vSm,
+          AppCard(
+            padding: EdgeInsets.zero,
             child: ListTile(
               leading: Icon(Icons.info_outline, color: branding.primaryColor),
               title: const Text('About'),
@@ -129,14 +138,14 @@ class SettingsScreen extends ConsumerWidget {
                     color: branding.primaryColor,
                   ),
                   children: [
-                    const SizedBox(height: 8),
+                    AppSpacing.vSm,
                     Text(
                       branding.headerText.isEmpty
                           ? 'Secure digital voting for student government elections.'
                           : branding.headerText,
                     ),
                     if (branding.footerText.isNotEmpty) ...[
-                      const SizedBox(height: 8),
+                      AppSpacing.vSm,
                       Text(
                         branding.footerText,
                         style: Theme.of(context).textTheme.bodySmall,
