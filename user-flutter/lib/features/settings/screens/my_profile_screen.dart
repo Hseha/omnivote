@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../core/constants/app_colors.dart';
+
+import '../../../core/constants/app_text_styles.dart';
+import '../../../core/theme/app_shape.dart';
+import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_tokens.dart';
+import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/cached_avatar.dart';
 import '../../../core/widgets/top_bar.dart';
 import '../../auth/providers/auth_provider.dart';
@@ -17,46 +21,42 @@ class MyProfileScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final student = ref.watch(authProvider).student;
+    final student = ref.watch(authProvider.select((state) => state.student));
     final registrationAsync = ref.watch(registrationDataProvider);
+    final appText = AppTextStyles.of(context);
+    final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
       backgroundColor: context.appBackground,
       appBar: const TopBar(title: 'My Profile'),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: AppSpacing.screenPadding,
         children: [
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                children: [
-                  CachedAvatar(
-                    imageUrl: student?.avatarUrl,
-                    radius: 44,
-                    fallbackIcon: Icons.person,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    student?.name ?? '—',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: context.appTextPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    student?.email ?? '—',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: context.appTextSecondary),
-                  ),
-                ],
-              ),
+          AppCard(
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            child: Column(
+              children: [
+                CachedAvatar(
+                  imageUrl: student?.avatarUrl,
+                  radius: AppMetrics.avatarLg,
+                  fallbackIcon: Icons.person,
+                ),
+                AppSpacing.vMd,
+                Text(
+                  student?.name ?? '—',
+                  textAlign: TextAlign.center,
+                  style: appText.headlineMedium,
+                ),
+                AppSpacing.vXs,
+                Text(
+                  student?.email ?? '—',
+                  textAlign: TextAlign.center,
+                  style: appText.bodySmall,
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 16),
+          AppSpacing.vMd,
           _InfoRow(
             icon: Icons.badge_outlined,
             label: 'Student ID',
@@ -65,7 +65,8 @@ class MyProfileScreen extends ConsumerWidget {
           _InfoRow(
             icon: Icons.how_to_vote_outlined,
             label: 'Vote status',
-            value: student?.hasVoted == true ? 'Already voted' : 'Not yet voted',
+            value:
+                student?.hasVoted == true ? 'Already voted' : 'Not yet voted',
           ),
           _InfoRow(
             icon: Icons.school_outlined,
@@ -90,23 +91,26 @@ class MyProfileScreen extends ConsumerWidget {
               _ => '—',
             },
           ),
-          const SizedBox(height: 24),
+          AppSpacing.vLg,
           OutlinedButton.icon(
             onPressed: () => ref.read(authProvider.notifier).logout(),
             icon: const Icon(Icons.logout),
             label: const Text('Log Out'),
             style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.errorRed,
-              side: const BorderSide(color: AppColors.errorRed),
+              foregroundColor: scheme.error,
+              side: BorderSide(color: scheme.error),
               padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: AppRadius.smAll,
+              ),
             ),
           ),
-          const SizedBox(height: 8),
+          AppSpacing.vSm,
           Text(
             'Logging out signs you out of this device only. '
             'Voter registration and eligibility are managed by your school registrar.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: context.appTextSecondary, fontSize: 12),
+            style: appText.labelSmall,
           ),
         ],
       ),
@@ -127,31 +131,28 @@ class _InfoRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+    final appText = AppTextStyles.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+      child: AppCard(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md,
+          vertical: AppMetrics.rowPaddingV,
+        ),
         child: Row(
           children: [
-            Icon(icon, size: 20, color: AppColors.primaryBlue),
-            const SizedBox(width: 12),
+            Icon(icon, size: 20, color: Theme.of(context).colorScheme.primary),
+            AppSpacing.hSm,
             Expanded(
               child: Text(
                 label,
-                style: TextStyle(
-                  color: context.appTextSecondary,
-                  fontSize: 14,
-                ),
+                style: appText.bodySmall,
               ),
             ),
             Text(
               value == null || value!.isEmpty ? '—' : value!,
               textAlign: TextAlign.end,
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
-                color: context.appTextPrimary,
-              ),
+              style: appText.labelLarge,
             ),
           ],
         ),

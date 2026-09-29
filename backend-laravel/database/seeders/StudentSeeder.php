@@ -2,8 +2,10 @@
 
 namespace Database\Seeders;
 
+use App\Models\Department;
 use App\Models\RegistrarImport;
 use App\Models\User;
+use App\Support\DepartmentCatalog;
 use Illuminate\Database\Seeder;
 
 /**
@@ -22,8 +24,24 @@ class StudentSeeder extends Seeder
     /** Student ID assigned to the demo account (must stay unique). */
     private const STUDENT_ID = '2024-0075';
 
-    /** Canonical college name — the CCS code resolves here on import. */
-    private const DEPARTMENT = 'College of Computer Studies';
+    /** Department code the demo account belongs to (resolved via the catalog). */
+    private const DEPARTMENT_CODE = 'CCS';
+
+    /**
+     * The CCS catalog entry (name, code, catalog sort order). Read from the
+     * single DepartmentCatalog snapshot so the demo student never drifts from
+     * what the importer/ballot engine resolves for the same code.
+     */
+    private function departmentEntry(): array
+    {
+        foreach (DepartmentCatalog::COLLEGES as $i => $college) {
+            if ($college['code'] === self::DEPARTMENT_CODE) {
+                return $college + ['sort_order' => $i + 1];
+            }
+        }
+
+        throw new \LogicException("Department code ".self::DEPARTMENT_CODE." missing from the catalog.");
+    }
 
     /**
      * Run the database seeds.
@@ -34,13 +52,14 @@ class StudentSeeder extends Seeder
         // Fixed test login, mirroring the import-derived plain handle
         // (john.michael) — kept in sync on re-runs.
         $email = 'john.michael';
+        $department = $this->departmentEntry();
 
         // The import guard never introduces new departments — CCS is part of
         // the seeded catalog, but firstOrCreate keeps this seeder safe on a
         // database where the migration seeder hasn't run.
-        \App\Models\Department::firstOrCreate(
-            ['name' => self::DEPARTMENT],
-            ['code' => 'CCS', 'sort_order' => 3]
+        Department::firstOrCreate(
+            ['name' => $department['name']],
+            ['code' => $department['code'], 'sort_order' => $department['sort_order']]
         );
 
         // 1. Eligibility feed row (what StudentRegistrationRequest validates
@@ -53,7 +72,7 @@ class StudentSeeder extends Seeder
                 'role' => 'student',
                 'year_level' => '1',
                 'block_number' => '1',
-                'department' => self::DEPARTMENT,
+                'department' => $department['name'],
                 'needs_review' => false,
                 'review_reason' => null,
             ]
@@ -81,7 +100,7 @@ class StudentSeeder extends Seeder
             'role' => 'student',
             'year_level' => '1',
             'block_number' => '1',
-            'department' => self::DEPARTMENT,
+            'department' => $department['name'],
             'is_active' => true,
             'has_voted' => false,
             'needs_review' => false,

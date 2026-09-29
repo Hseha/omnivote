@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../core/constants/app_colors.dart';
-import '../../../core/theme/app_tokens.dart';
+
 import '../../../core/constants/app_text_styles.dart';
+import '../../../core/theme/app_spacing.dart';
+import '../../../core/theme/app_tokens.dart';
+import '../../../core/widgets/app_button.dart';
+import '../../../core/widgets/app_card.dart';
+import '../../../core/widgets/app_text_field.dart';
 import '../providers/auth_provider.dart';
 
 /// Forced first-login password rotation for registrar-provisioned accounts.
@@ -37,8 +41,12 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
     final password = value ?? '';
     if (password.isEmpty) return 'Please enter a new password';
     if (password.length < 8) return 'Use at least 8 characters';
-    if (!RegExp(r'[A-Za-z]').hasMatch(password)) return 'Include at least one letter';
-    if (!RegExp(r'[0-9]').hasMatch(password)) return 'Include at least one number';
+    if (!RegExp(r'[A-Za-z]').hasMatch(password)) {
+      return 'Include at least one letter';
+    }
+    if (!RegExp(r'[0-9]').hasMatch(password)) {
+      return 'Include at least one number';
+    }
     return null;
   }
 
@@ -55,7 +63,10 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
       final error =
           ref.read(authProvider).errorMessage ?? 'Could not update password';
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error), backgroundColor: AppColors.errorRed),
+        SnackBar(
+          content: Text(error),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
       );
     }
     // On success the global auth listener in app.dart moves to /dashboard.
@@ -63,8 +74,11 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isLoading = ref.watch(authProvider).isLoading;
+    final isLoading = ref.watch(
+      authProvider.select((state) => state.isLoading),
+    );
     final appText = AppTextStyles.of(context);
+    final scheme = Theme.of(context).colorScheme;
 
     return PopScope(
       // Forced step: no back button out of it.
@@ -73,86 +87,71 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
         backgroundColor: context.appBackground,
         body: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
+            padding: AppSpacing.screenPadding,
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 400),
-              child: Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(32.0),
-                  child: Form(
-                    key: _formKey,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const Icon(
-                          Icons.lock_reset,
-                          size: 48,
-                          color: AppColors.primaryBlue,
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Set a new password',
-                          style: appText.pageTitle,
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Your account was created with a temporary password. '
-                          'Choose a new password to continue.',
-                          style: appText.secondary,
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 32),
-                        TextFormField(
-                          controller: _currentController,
-                          obscureText: true,
-                          decoration: const InputDecoration(
-                            labelText: 'Temporary password',
-                            prefixIcon: Icon(Icons.lock_outline),
-                          ),
-                          validator: (value) => value == null || value.isEmpty
-                              ? 'Please enter your temporary password'
-                              : null,
-                        ),
-                        const SizedBox(height: 20),
-                        TextFormField(
-                          controller: _newController,
-                          obscureText: true,
-                          decoration: const InputDecoration(
-                            labelText: 'New password',
-                            prefixIcon: Icon(Icons.lock_outline),
-                          ),
-                          validator: _validateNewPassword,
-                        ),
-                        const SizedBox(height: 20),
-                        TextFormField(
-                          controller: _confirmController,
-                          obscureText: true,
-                          decoration: const InputDecoration(
-                            labelText: 'Confirm new password',
-                            prefixIcon: Icon(Icons.lock_outline),
-                          ),
-                          validator: (value) => value != _newController.text
-                              ? 'Passwords do not match'
-                              : null,
-                        ),
-                        const SizedBox(height: 32),
-                        ElevatedButton(
-                          onPressed: isLoading ? null : _submit,
-                          child: isLoading
-                              ? const SizedBox(
-                                  height: 20,
-                                  width: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : const Text('Update password'),
-                        ),
-                      ],
-                    ),
+              child: AppCard(
+                padding: const EdgeInsets.all(AppSpacing.xl),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Icon(
+                        Icons.lock_reset,
+                        size: 48,
+                        color: scheme.primary,
+                      ),
+                      AppSpacing.vMd,
+                      Text(
+                        'Set a new password',
+                        style: appText.headlineSmall,
+                        textAlign: TextAlign.center,
+                      ),
+                      AppSpacing.vSm,
+                      Text(
+                        'Your account was created with a temporary password. '
+                        'Choose a new password to continue.',
+                        style: appText.bodySmall,
+                        textAlign: TextAlign.center,
+                      ),
+                      AppSpacing.vLg,
+                      AppTextField(
+                        controller: _currentController,
+                        obscure: true,
+                        label: 'Temporary password',
+                        prefixIcon: const Icon(Icons.lock_outline),
+                        validator: (value) => value == null || value.isEmpty
+                            ? 'Please enter your temporary password'
+                            : null,
+                      ),
+                      AppTextField.fieldGap,
+                      AppTextField(
+                        controller: _newController,
+                        obscure: true,
+                        label: 'New password',
+                        prefixIcon: const Icon(Icons.lock_outline),
+                        validator: _validateNewPassword,
+                      ),
+                      AppTextField.fieldGap,
+                      AppTextField(
+                        controller: _confirmController,
+                        obscure: true,
+                        textInputAction: TextInputAction.done,
+                        label: 'Confirm new password',
+                        prefixIcon: const Icon(Icons.lock_outline),
+                        validator: (value) => value != _newController.text
+                            ? 'Passwords do not match'
+                            : null,
+                      ),
+                      AppSpacing.vLg,
+                      AppButton.primary(
+                        label: 'Update password',
+                        onPressed: isLoading ? null : _submit,
+                        isLoading: isLoading,
+                      ),
+                    ],
                   ),
                 ),
               ),

@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../../../core/constants/app_colors.dart';
-import '../../../core/theme/app_tokens.dart';
+
 import '../../../core/constants/app_text_styles.dart';
+import '../../../core/theme/app_spacing.dart';
+import '../../../core/theme/app_tokens.dart';
+import '../../../core/widgets/app_button.dart';
+import '../../../core/widgets/app_card.dart';
+import '../../../core/widgets/app_text_field.dart';
+import '../../../core/widgets/top_bar.dart';
 import '../providers/auth_provider.dart';
 
 /// Self-service password recovery for a student who cannot sign in.
@@ -33,9 +38,6 @@ class _RecoverPasswordScreenState extends ConsumerState<RecoverPasswordScreen> {
   final _codeController = TextEditingController();
   final _newController = TextEditingController();
   final _confirmController = TextEditingController();
-
-  bool _obscureCode = true;
-  bool _obscurePassword = true;
 
   @override
   void dispose() {
@@ -78,7 +80,10 @@ class _RecoverPasswordScreenState extends ConsumerState<RecoverPasswordScreen> {
       final error = ref.read(authProvider).errorMessage ??
           'Could not reset your password';
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error), backgroundColor: AppColors.errorRed),
+        SnackBar(
+          content: Text(error),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
       );
       return;
     }
@@ -108,138 +113,106 @@ class _RecoverPasswordScreenState extends ConsumerState<RecoverPasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isLoading = ref.watch(authProvider).isLoading;
+    final isLoading = ref.watch(
+      authProvider.select((state) => state.isLoading),
+    );
     final appText = AppTextStyles.of(context);
+    final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
       backgroundColor: context.appBackground,
-      appBar: AppBar(
-        title: const Text('Recover password'),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-      ),
+      appBar: const TopBar(title: 'Recover password'),
       body: Center(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
+          padding: AppSpacing.screenPadding,
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 400),
-            child: Card(
-              child: Padding(
-                padding: const EdgeInsets.all(32.0),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const Icon(
-                        Icons.vpn_key_outlined,
-                        size: 48,
-                        color: AppColors.primaryBlue,
+            child: AppCard(
+              padding: const EdgeInsets.all(AppSpacing.xl),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Icon(
+                      Icons.vpn_key_outlined,
+                      size: 48,
+                      color: scheme.primary,
+                    ),
+                    AppSpacing.vMd,
+                    Text(
+                      'Use your activation code',
+                      style: appText.headlineSmall,
+                      textAlign: TextAlign.center,
+                    ),
+                    AppSpacing.vSm,
+                    Text(
+                      'Enter the student ID and one-time code from the slip '
+                      'the registrar gave you, then choose a new password.',
+                      style: appText.bodySmall,
+                      textAlign: TextAlign.center,
+                    ),
+                    AppSpacing.vLg,
+                    AppTextField(
+                      controller: _studentIdController,
+                      textInputAction: TextInputAction.next,
+                      autocorrect: false,
+                      label: 'Student ID',
+                      prefixIcon: const Icon(Icons.badge_outlined),
+                      validator: (value) =>
+                          (value == null || value.trim().isEmpty)
+                              ? 'Please enter your student ID'
+                              : null,
+                    ),
+                    AppTextField.fieldGap,
+                    AppTextField(
+                      controller: _codeController,
+                      textCapitalization: TextCapitalization.characters,
+                      autocorrect: false,
+                      obscure: true,
+                      toggleLabel: 'code',
+                      label: 'Activation code',
+                      prefixIcon: const Icon(
+                        Icons.confirmation_number_outlined,
                       ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Use your activation code',
-                        style: appText.pageTitle,
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Enter the student ID and one-time code from the slip '
-                        'the registrar gave you, then choose a new password.',
-                        style: appText.secondary,
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 32),
-                      TextFormField(
-                        controller: _studentIdController,
-                        textInputAction: TextInputAction.next,
-                        autocorrect: false,
-                        decoration: const InputDecoration(
-                          labelText: 'Student ID',
-                          prefixIcon: Icon(Icons.badge_outlined),
-                        ),
-                        validator: (value) =>
-                            (value == null || value.trim().isEmpty)
-                                ? 'Please enter your student ID'
-                                : null,
-                      ),
-                      const SizedBox(height: 20),
-                      TextFormField(
-                        controller: _codeController,
-                        textCapitalization: TextCapitalization.characters,
-                        autocorrect: false,
-                        obscureText: _obscureCode,
-                        decoration: InputDecoration(
-                          labelText: 'Activation code',
-                          prefixIcon: const Icon(Icons.confirmation_number_outlined),
-                          suffixIcon: IconButton(
-                            icon: Icon(_obscureCode
-                                ? Icons.visibility_off_outlined
-                                : Icons.visibility_outlined),
-                            tooltip: _obscureCode ? 'Show code' : 'Hide code',
-                            onPressed: () =>
-                                setState(() => _obscureCode = !_obscureCode),
-                          ),
-                        ),
-                        validator: (value) =>
-                            (value == null || value.trim().isEmpty)
-                                ? 'Please enter your activation code'
-                                : null,
-                      ),
-                      const SizedBox(height: 20),
-                      TextFormField(
-                        controller: _newController,
-                        obscureText: _obscurePassword,
-                        decoration: InputDecoration(
-                          labelText: 'New password',
-                          prefixIcon: const Icon(Icons.lock_outline),
-                          suffixIcon: IconButton(
-                            icon: Icon(_obscurePassword
-                                ? Icons.visibility_off_outlined
-                                : Icons.visibility_outlined),
-                            tooltip:
-                                _obscurePassword ? 'Show password' : 'Hide password',
-                            onPressed: () => setState(
-                                () => _obscurePassword = !_obscurePassword),
-                          ),
-                        ),
-                        validator: _validateNewPassword,
-                      ),
-                      const SizedBox(height: 20),
-                      TextFormField(
-                        controller: _confirmController,
-                        obscureText: _obscurePassword,
-                        decoration: const InputDecoration(
-                          labelText: 'Confirm new password',
-                          prefixIcon: Icon(Icons.lock_outline),
-                        ),
-                        validator: (value) => value != _newController.text
-                            ? 'Passwords do not match'
-                            : null,
-                      ),
-                      const SizedBox(height: 32),
-                      ElevatedButton(
-                        onPressed: isLoading ? null : _submit,
-                        child: isLoading
-                            ? const SizedBox(
-                                height: 20,
-                                width: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Text('Reset password'),
-                      ),
-                      const SizedBox(height: 12),
-                      TextButton(
-                        onPressed:
-                            isLoading ? null : () => context.go('/login'),
-                        child: const Text('Back to sign in'),
-                      ),
-                    ],
-                  ),
+                      validator: (value) =>
+                          (value == null || value.trim().isEmpty)
+                              ? 'Please enter your activation code'
+                              : null,
+                    ),
+                    AppTextField.fieldGap,
+                    AppTextField(
+                      controller: _newController,
+                      obscure: true,
+                      label: 'New password',
+                      prefixIcon: const Icon(Icons.lock_outline),
+                      validator: _validateNewPassword,
+                    ),
+                    AppTextField.fieldGap,
+                    AppTextField(
+                      controller: _confirmController,
+                      obscure: true,
+                      textInputAction: TextInputAction.done,
+                      label: 'Confirm new password',
+                      prefixIcon: const Icon(Icons.lock_outline),
+                      validator: (value) => value != _newController.text
+                          ? 'Passwords do not match'
+                          : null,
+                    ),
+                    AppSpacing.vLg,
+                    AppButton.primary(
+                      label: 'Reset password',
+                      onPressed: isLoading ? null : _submit,
+                      isLoading: isLoading,
+                    ),
+                    AppSpacing.vSm,
+                    AppButton.text(
+                      label: 'Back to sign in',
+                      onPressed:
+                          isLoading ? null : () => context.go('/login'),
+                    ),
+                  ],
                 ),
               ),
             ),

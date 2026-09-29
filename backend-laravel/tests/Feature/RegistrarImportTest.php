@@ -352,6 +352,22 @@ class RegistrarImportTest extends TestCase
             array_keys(DepartmentCatalog::COLLEGES)
         ));
 
+        Schema::create('department_aliases', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('department_id');
+            $table->string('alias')->unique();
+            $table->timestamps();
+        });
+
+        foreach (DepartmentCatalog::departmentAliases() as $alias => $departmentName) {
+            DB::table('department_aliases')->insert([
+                'department_id' => DB::table('departments')->where('name', $departmentName)->value('id'),
+                'alias' => strtolower($alias),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
         Schema::create('users', function (Blueprint $table) {
             $table->id();
             $table->string('student_id')->nullable()->unique();

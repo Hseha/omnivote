@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
 import '../../features/auth/providers/auth_provider.dart';
 import '../constants/app_text_styles.dart';
 import '../theme/app_tokens.dart';
@@ -14,10 +15,7 @@ import 'cached_avatar.dart';
 class TopBar extends ConsumerWidget implements PreferredSizeWidget {
   final String title;
 
-  const TopBar({
-    super.key,
-    required this.title,
-  });
+  const TopBar({super.key, required this.title});
 
   @override
   Size get preferredSize => const Size.fromHeight(kToolbarHeight);
@@ -25,11 +23,7 @@ class TopBar extends ConsumerWidget implements PreferredSizeWidget {
   /// Routes each account-menu action. Profile/FAQ/Settings are pushed above
   /// the shell; Candidacy switches to its (pushed) screen; Log Out signs out
   /// and the global auth listener in app.dart redirects to /login.
-  void _handleAccountAction(
-    BuildContext context,
-    WidgetRef ref,
-    String value,
-  ) {
+  void _handleAccountAction(BuildContext context, WidgetRef ref, String value) {
     switch (value) {
       case 'profile':
         context.push('/profile');
@@ -49,7 +43,10 @@ class TopBar extends ConsumerWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final student = ref.watch(authProvider).student;
+    // Only the signed-in student decides what this bar paints. Watching the
+    // whole AuthState rebuilt the AppBar of *every* screen on unrelated changes
+    // (the login form's isLoading, a failed login's errorMessage, …).
+    final student = ref.watch(authProvider.select((state) => state.student));
     final canPop = Navigator.of(context).canPop();
     final appText = AppTextStyles.of(context);
 
@@ -65,10 +62,7 @@ class TopBar extends ConsumerWidget implements PreferredSizeWidget {
               onPressed: () => context.pop(),
             )
           : null,
-      title: Text(
-        title,
-        style: appText.pageTitle.copyWith(fontSize: 18),
-      ),
+      title: Text(title, style: appText.pageTitle.copyWith(fontSize: 18)),
       centerTitle: false,
       actions: [
         if (student != null) ...[
@@ -82,24 +76,39 @@ class TopBar extends ConsumerWidget implements PreferredSizeWidget {
             itemBuilder: (context) => [
               const PopupMenuItem(
                 value: 'profile',
-                child: _MenuLabel(icon: Icons.account_circle_outlined, label: 'My Profile'),
+                child: _MenuLabel(
+                  icon: Icons.account_circle_outlined,
+                  label: 'My Profile',
+                ),
               ),
               const PopupMenuItem(
                 value: 'candidacy',
-                child: _MenuLabel(icon: Icons.how_to_reg, label: 'Apply for Candidacy'),
+                child: _MenuLabel(
+                  icon: Icons.how_to_reg,
+                  label: 'Apply for Candidacy',
+                ),
               ),
               const PopupMenuItem(
                 value: 'faq',
-                child: _MenuLabel(icon: Icons.help_outline, label: 'Help & FAQ'),
+                child: _MenuLabel(
+                  icon: Icons.help_outline,
+                  label: 'Help & FAQ',
+                ),
               ),
               const PopupMenuItem(
                 value: 'settings',
-                child: _MenuLabel(icon: Icons.settings_outlined, label: 'Settings'),
+                child: _MenuLabel(
+                  icon: Icons.settings_outlined,
+                  label: 'Settings',
+                ),
               ),
               if (kDebugMode)
                 const PopupMenuItem(
                   value: 'api-settings',
-                  child: _MenuLabel(icon: Icons.dns_outlined, label: 'API Settings (dev)'),
+                  child: _MenuLabel(
+                    icon: Icons.dns_outlined,
+                    label: 'API Settings (dev)',
+                  ),
                 ),
               const PopupMenuDivider(),
               const PopupMenuItem(
@@ -107,20 +116,14 @@ class TopBar extends ConsumerWidget implements PreferredSizeWidget {
                 child: _MenuLabel(icon: Icons.logout, label: 'Log Out'),
               ),
             ],
-            child: CachedAvatar(
-              imageUrl: student.avatarUrl,
-              radius: 18,
-            ),
+            child: CachedAvatar(imageUrl: student.avatarUrl, radius: 18),
           ),
           const SizedBox(width: 16),
         ],
       ],
       bottom: PreferredSize(
         preferredSize: const Size.fromHeight(1),
-        child: Container(
-          color: context.appBorder,
-          height: 1,
-        ),
+        child: Container(color: context.appBorder, height: 1),
       ),
     );
   }

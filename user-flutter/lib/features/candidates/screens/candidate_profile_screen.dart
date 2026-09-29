@@ -2,9 +2,15 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/constants/app_text_styles.dart';
+import '../../../core/theme/app_shape.dart';
+import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/safe_json.dart';
+import '../../../core/widgets/app_button.dart';
+import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/cached_avatar.dart';
+import '../../../core/widgets/section_header.dart';
 import '../../../core/widgets/top_bar.dart';
 import '../../../data/models/candidate_model.dart';
 import '../widgets/platform_points_list.dart';
@@ -20,6 +26,7 @@ class CandidateProfileScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final String firstName = candidate.name.split(' ').first;
+    final appText = AppTextStyles.of(context);
 
     return Scaffold(
       backgroundColor: context.appBackground,
@@ -31,102 +38,70 @@ class CandidateProfileScreen extends StatelessWidget {
             // Hero Area
             Container(
               color: context.appSurface,
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.all(AppSpacing.lg),
               child: Column(
                 children: [
                   CachedAvatar(
                     imageUrl: candidate.photoUrl,
-                    radius: 64,
+                    radius: AppMetrics.avatarXl,
                   ),
-                  const SizedBox(height: 20),
+                  AppSpacing.vMd,
                   // Position Tag
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    padding: AppMetrics.tagPadding,
                     decoration: BoxDecoration(
                       color: context.appTagBg,
-                      borderRadius: BorderRadius.circular(4),
+                      borderRadius: AppRadius.smAll,
                     ),
                     child: Text(
                       candidate.position.label.toUpperCase(),
-                      style: TextStyle(
-                        color: context.appTagFg,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 11,
-                        letterSpacing: 0.8,
-                      ),
+                      style: appText.tag.copyWith(letterSpacing: 0.8),
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  AppSpacing.vSm,
                   Text(
                     candidate.name,
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                      color: context.appTextPrimary,
-                    ),
+                    style: appText.titleLarge,
                   ),
-                  const SizedBox(height: 4),
-                  if (candidate.gradeLine.trim().isNotEmpty)
+                  if (candidate.gradeLine.trim().isNotEmpty) ...[
+                    AppSpacing.vXs,
                     Text(
                       candidate.gradeLine,
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: context.appTextSecondary,
-                      ),
+                      style: appText.subtitle,
                     ),
-                  const SizedBox(height: 16),
-                  if (candidate.slogan.trim().isNotEmpty)
+                  ],
+                  if (candidate.slogan.trim().isNotEmpty) ...[
+                    AppSpacing.vMd,
                     Text(
                       '"${candidate.slogan}"',
                       textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 16,
+                      style: appText.subtitle.copyWith(
                         fontStyle: FontStyle.italic,
-                        color: context.appTextSecondary,
                       ),
                     ),
-                  const SizedBox(height: 32),
+                  ],
+                  AppSpacing.vXl,
                   Row(
                     children: [
                       Expanded(
-                        child: ElevatedButton(
+                        child: AppButton.primary(
+                          label: 'Vote for $firstName',
                           onPressed: () {
                             // Route to the guided Vote Now flow, preselected at
                             // this candidate's position (audit §2 #2).
-                            context.go('/vote-now', extra: candidate.position.id);
+                            context.go(
+                              '/vote-now',
+                              extra: candidate.position.id,
+                            );
                           },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primaryBlue,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                          child: Text(
-                            'Vote for $firstName',
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
                         ),
                       ),
-                      const SizedBox(width: 12),
+                      AppSpacing.hSm,
                       Expanded(
-                        child: OutlinedButton(
+                        child: AppButton.secondary(
+                          label: 'Back to Candidates',
                           onPressed: () => context.pop(),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: AppColors.primaryBlue,
-                            side: const BorderSide(color: AppColors.primaryBlue),
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                          child: const Text(
-                            'Back to Candidates',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
                         ),
                       ),
                     ],
@@ -136,7 +111,7 @@ class CandidateProfileScreen extends StatelessWidget {
             ),
 
             Padding(
-              padding: const EdgeInsets.all(16),
+              padding: AppSpacing.screenPadding,
               child: Column(
                 children: [
                   // 1. Campaign Platform
@@ -163,9 +138,12 @@ class CandidateProfileScreen extends StatelessWidget {
                             height: 200,
                             width: double.infinity,
                             decoration: BoxDecoration(
+                              // Media backdrop: near-black in both themes so
+                              // thumbnails and the play glyph read the same.
                               color: AppColors.navyDark,
-                              borderRadius: BorderRadius.circular(8),
-                              image: safeHttpImageUrl(candidate.photoUrl) != null
+                              borderRadius: AppRadius.smAll,
+                              image: safeHttpImageUrl(candidate.photoUrl) !=
+                                      null
                                   ? DecorationImage(
                                       image: CachedNetworkImageProvider(
                                         candidate.photoUrl,
@@ -183,16 +161,14 @@ class CandidateProfileScreen extends StatelessWidget {
                                 Icons.play_circle_fill,
                                 color: Colors.white,
                                 size: 64,
+                                semanticLabel: 'Play campaign video',
                               ),
                             ),
                           ),
-                          const SizedBox(height: 12),
+                          AppSpacing.vSm,
                           Text(
                             "Listen to ${candidate.name}'s 2-minute pitch to voters",
-                            style: TextStyle(
-                              color: context.appTextSecondary,
-                              fontSize: 14,
-                            ),
+                            style: appText.bodySmall,
                           ),
                         ],
                       ),
@@ -217,29 +193,16 @@ class CandidateProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildSectionCard(BuildContext context, {required String title, required Widget child}) {
-    return Card(
-      elevation: 0,
-      margin: const EdgeInsets.only(bottom: 16),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: context.appBorder),
-      ),
-      color: context.appSurface,
-      child: Padding(
-        padding: const EdgeInsets.all(20),
+  Widget _buildSectionCard(BuildContext context,
+      {required String title, required Widget child}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.md),
+      child: AppCard(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: context.appTextPrimary,
-              ),
-            ),
-            const SizedBox(height: 16),
+            SectionHeader(title: title),
+            AppSpacing.vMd,
             child,
           ],
         ),

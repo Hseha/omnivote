@@ -3,7 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/api_constants.dart';
+import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_tokens.dart';
+import '../../../core/widgets/app_button.dart';
+import '../../../core/widgets/app_text_field.dart';
 import '../../../core/widgets/top_bar.dart';
 import '../../../data/services/api_config.dart';
 
@@ -93,27 +96,28 @@ class _ApiSettingsScreenState extends ConsumerState<ApiSettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final current = ref.read(apiBaseUrlProvider) ?? ApiConstants.baseUrl;
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       backgroundColor: context.appBackground,
       appBar: const TopBar(title: 'API Settings'),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: AppSpacing.screenPadding,
         children: [
           Text(
             'Currently pointing at:',
             style: Theme.of(context).textTheme.labelLarge,
           ),
-          const SizedBox(height: 8),
+          AppSpacing.vSm,
           SelectableText(
             current,
             style: Theme.of(context).textTheme.bodyMedium,
           ),
-          const SizedBox(height: 24),
+          AppSpacing.vLg,
           Text('Quick presets', style: Theme.of(context).textTheme.labelLarge),
-          const SizedBox(height: 8),
+          AppSpacing.vSm,
           Wrap(
-            spacing: 8,
-            runSpacing: 8,
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.sm,
             children: [
               ActionChip(
                 label: const Text('Deployed (debian tailnet)'),
@@ -135,51 +139,44 @@ class _ApiSettingsScreenState extends ConsumerState<ApiSettingsScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 24),
-          TextField(
+          AppSpacing.vLg,
+          AppTextField(
             controller: _urlController,
-            decoration: const InputDecoration(
-              labelText: 'API base URL',
-              hintText: 'https://.../api',
-              border: OutlineInputBorder(),
-            ),
+            label: 'API base URL',
+            hint: 'https://.../api',
             keyboardType: TextInputType.url,
+            autocorrect: false,
           ),
-          const SizedBox(height: 24),
+          AppSpacing.vLg,
           Row(
             children: [
               Expanded(
-                child: OutlinedButton.icon(
+                child: AppButton.secondary(
+                  label: 'Test connection',
+                  icon: Icons.network_check,
                   onPressed: _checking ? null : _testConnection,
-                  icon: _checking
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.network_check),
-                  label: const Text('Test connection'),
+                  isLoading: _checking,
                 ),
               ),
-              const SizedBox(width: 12),
+              AppSpacing.hSm,
               Expanded(
-                child: ElevatedButton.icon(
+                child: AppButton.primary(
+                  label: 'Save',
+                  icon: Icons.save,
                   onPressed: _save,
-                  icon: const Icon(Icons.save),
-                  label: const Text('Save'),
                 ),
               ),
             ],
           ),
           if (_checkResult != null) ...[
-            const SizedBox(height: 16),
+            AppSpacing.vMd,
             Row(
               children: [
                 Icon(
                   _checkOk ? Icons.check_circle : Icons.error,
-                  color: _checkOk ? Colors.green : AppColors.errorRed,
+                  color: _checkOk ? AppColors.successGreen : scheme.error,
                 ),
-                const SizedBox(width: 8),
+                AppSpacing.hSm,
                 Expanded(
                   child: Text(
                     _checkResult!,
@@ -189,7 +186,7 @@ class _ApiSettingsScreenState extends ConsumerState<ApiSettingsScreen> {
               ],
             ),
           ],
-          const SizedBox(height: 24),
+          AppSpacing.vLg,
           Text(
             'Switch to the deployed URL after the backend is live, or to a'
             ' local URL while developing. The change takes effect immediately.',

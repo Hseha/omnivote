@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import '../../../core/theme/app_tokens.dart';
+import '../../../core/constants/app_text_styles.dart';
+import '../../../core/theme/app_spacing.dart';
 
 class PlatformPointsList extends StatelessWidget {
   final List<String> points;
@@ -13,30 +14,27 @@ class PlatformPointsList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final appText = AppTextStyles.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: points.asMap().entries.map((entry) {
         int idx = entry.key + 1;
         String point = entry.value;
         return Padding(
-          padding: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.only(bottom: AppSpacing.sm),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 isNumbered ? '$idx. ' : '• ',
-                style: TextStyle(
-                  color: context.appTextSecondary,
+                style: appText.bodySmall.copyWith(
                   fontWeight: FontWeight.bold,
                 ),
               ),
               Expanded(
                 child: Text(
                   point,
-                  style: TextStyle(
-                    color: context.appTextPrimary,
-                    fontSize: 14,
-                  ),
+                  style: appText.bodyMedium,
                 ),
               ),
             ],
