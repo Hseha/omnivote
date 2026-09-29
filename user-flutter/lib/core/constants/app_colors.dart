@@ -16,4 +16,11 @@ class AppColors {
   static const Color tagBlueText = Color(0xFF2563EB);
 
   static const Color errorRed = Color(0xFFEF4444);
+
+  /// Result-verdict chips. Self-contained light bg + dark fg pairs that read
+  /// on both themes (they carry their own background, unlike text roles).
+  static const Color resultWinnerBg = Color(0xFFDCFCE7);
+  static const Color resultWinnerFg = Color(0xFF166534);
+  static const Color resultTieBg = Color(0xFFFEF3C7);
+  static const Color resultTieFg = Color(0xFFB45309);
 }

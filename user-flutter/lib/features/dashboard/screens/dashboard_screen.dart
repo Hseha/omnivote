@@ -1,18 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/top_bar.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../providers/announcements_provider.dart';
 import '../providers/election_status_provider.dart';
-import '../widgets/announcements_card.dart';
-import '../widgets/welcome_banner.dart';
+import '../widgets/announcements_carousel.dart';
+import '../widgets/ballot_progress_tile.dart';
+import '../widgets/phase_hero_card.dart';
+import '../widgets/quick_actions_grid.dart';
 
-/// Dashboard: a welcome banner (greeting + phase + department/course) and the
-/// published announcements. Registration details live in My Profile; the
-/// other screens (Vote Now, Candidates, My Ballot, Results) are one tap away
-/// in the bottom navigation, so this tab stays compact and scroll-free.
+/// Dashboard: a phase-aware hero (greeting + stepper + countdown/CTA), ballot
+/// progress, a quick-action grid (which now hosts the eligibility FAQ) and the
+/// published announcements as a scrollable row. Registration details and the
+/// other screens (Vote Now, Candidates, My Ballot, Results) are still one tap
+/// away in the bottom navigation, so this tab stays compact and scroll-free.
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
 
@@ -36,12 +40,16 @@ class DashboardScreen extends ConsumerWidget {
         },
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(16.0),
+          padding: AppSpacing.screenPadding,
           children: const [
-            WelcomeBanner(),
-            SizedBox(height: 20),
-            AnnouncementsCard(),
-            SizedBox(height: 24),
+            PhaseHeroCard(),
+            AppSpacing.vMd,
+            BallotProgressTile(),
+            AppSpacing.vMd,
+            QuickActionsGrid(),
+            AppSpacing.vLg,
+            AnnouncementsCarousel(),
+            AppSpacing.vSm,
           ],
         ),
       ),
