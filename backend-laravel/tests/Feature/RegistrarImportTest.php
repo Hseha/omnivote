@@ -150,6 +150,69 @@ class RegistrarImportTest extends TestCase
         $this->assertTrue(Hash::check('2024-0001', $user->password), 'existing password stays untouched');
     }
 
+    public function test_fresh_import_returns_the_activation_code_for_each_new_row(): void
+    {
+        $this->makeUser(['role' => 'teacher', 'department' => 'BSIT']);
+
+        $response = $this->import($this->csv([
+            ['2024-0001', 'Ana Flores', '1', 'BSIT', 'Block 1'],
+            ['2024-0002', 'Bryan Cruz', '1', 'BSIT', 'Block 2'],
+        ]));
+
+        $response->assertStatus(201)
+            ->assertJsonPath('summary.activation_codes_issued', 2)
+            ->assertJsonPath('summary.activation_codes_preserved', 0);
+
+        // The codes must actually reach the registrar. They are generated inside
+        // the import transaction, and a closure that does not capture the array by
+        // reference returns an empty list instead — which is what used to happen
+        // here, leaving every new student without the code they need to register.
+        $codes = $response->json('activation_codes');
+        $this->assertCount(2, $codes);
+
+        foreach ($codes as $entry) {
+            $this->assertMatchesRegularExpression('/^[A-Z2-9]{8}$/', $entry['activation_code']);
+
+            $row = RegistrarImport::where('student_id', $entry['student_id'])->firstOrFail();
+            $this->assertTrue(
+                Hash::check($entry['activation_code'], $row->activation_code_hash),
+                'the returned code must be the one stored (hashed) against that row'
+            );
+        }
+    }
+
+    public function test_reimport_preserves_existing_activation_codes(): void
+    {
+        $this->makeUser(['role' => 'teacher', 'department' => 'BSIT']);
+
+        $first = $this->import($this->csv([
+            ['2024-0001', 'Ana Flores', '1', 'BSIT', 'Block 1'],
+        ]));
+        $first->assertStatus(201)->assertJsonPath('summary.activation_codes_issued', 1);
+
+        $code = $first->json('activation_codes.0.activation_code');
+        $hashBefore = RegistrarImport::where('student_id', '2024-0001')->firstOrFail()->activation_code_hash;
+
+        // A routine re-import — this one only refreshes the name — must not
+        // invalidate the code the student is already holding. Replacing a code is
+        // an explicit act (the single/bulk re-issue endpoints).
+        $second = $this->import($this->csv([
+            ['2024-0001', 'Ana Flores Updated', '1', 'BSIT', 'Block 1'],
+        ]));
+
+        $second->assertStatus(201)
+            ->assertJsonPath('summary.activation_codes_issued', 0)
+            ->assertJsonPath('summary.activation_codes_preserved', 1)
+            ->assertJsonCount(0, 'activation_codes');
+
+        $row = RegistrarImport::where('student_id', '2024-0001')->firstOrFail();
+
+        $this->assertSame($hashBefore, $row->activation_code_hash, 'the stored code must survive a re-import');
+        $this->assertTrue(Hash::check($code, $row->activation_code_hash), 'the code handed out first must still work');
+        $this->assertSame('Ana Flores Updated', $row->full_name, 'the rest of the row still updates');
+    }
+
+
     public function test_same_name_for_two_different_ids_gets_suffixed_logins(): void
     {
         $this->makeUser(['role' => 'teacher', 'department' => 'BSIT']);

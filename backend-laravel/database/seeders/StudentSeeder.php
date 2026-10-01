@@ -48,6 +48,18 @@ class StudentSeeder extends Seeder
      */
     public function run(): void
     {
+        // This seeder creates a *voter*: a fixed student ID with its own
+        // registrar_imports eligibility row and a password equal to that ID
+        // (above). On a live database it would hand a working ballot to whoever
+        // knows the ID, so it refuses to run there. Deployments only ever run
+        // `migrate --force` (deploy/deploy.sh does not pass --seed); this exists
+        // for the operator who types the flag by hand on the wrong host.
+        if (app()->environment('production')) {
+            $this->command?->warn('StudentSeeder skipped: it provisions a demo voter ('.self::STUDENT_ID.') and must not run in production.');
+
+            return;
+        }
+
         $fullName = 'John Michael';
         // Fixed test login, mirroring the import-derived plain handle
         // (john.michael) — kept in sync on re-runs.

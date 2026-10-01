@@ -34,7 +34,16 @@ return [
 
     'lifetime' => (int) env('SESSION_LIFETIME', 120),
 
-    'expire_on_close' => env('SESSION_EXPIRE_ON_CLOSE', false),
+    // Boolean env hardening (applies to the flags below in this file):
+    // Env::get() already normalises bare true/false/empty/null, but a quoted
+    // value such as  SESSION_SECURE_COOKIE="false"  comes back as the *string*
+    // "false" — which is truthy — and so does any off/no/yes-style spelling we
+    // do not map. For a vote platform a silently-ignored "false" means a
+    // secure-cookie assertion can pass while the cookie is not secure.
+    // FILTER_VALIDATE_BOOL maps true/1/on/yes and false/0/off/no, and
+    // FILTER_NULL_ON_FAILURE turns anything unrecognisable into null, which
+    // then falls through to the default below — always the safe one.
+    'expire_on_close' => filter_var(env('SESSION_EXPIRE_ON_CLOSE', false), FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? false,
 
     /*
     |--------------------------------------------------------------------------
@@ -47,7 +56,7 @@ return [
     |
     */
 
-    'encrypt' => env('SESSION_ENCRYPT', false),
+    'encrypt' => filter_var(env('SESSION_ENCRYPT', false), FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? false,
 
     /*
     |--------------------------------------------------------------------------
@@ -169,7 +178,9 @@ return [
     |
     */
 
-    'secure' => env('SESSION_SECURE_COOKIE'),
+    // null (i.e. unset or unparseable) means "auto-detect from the request
+    // scheme" — that default is deliberately preserved, not changed to false.
+    'secure' => filter_var(env('SESSION_SECURE_COOKIE'), FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE),
 
     /*
     |--------------------------------------------------------------------------
@@ -182,7 +193,7 @@ return [
     |
     */
 
-    'http_only' => env('SESSION_HTTP_ONLY', true),
+    'http_only' => filter_var(env('SESSION_HTTP_ONLY', true), FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? true,
 
     /*
     |--------------------------------------------------------------------------
@@ -212,7 +223,7 @@ return [
     |
     */
 
-    'partitioned' => env('SESSION_PARTITIONED_COOKIE', false),
+    'partitioned' => filter_var(env('SESSION_PARTITIONED_COOKIE', false), FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? false,
 
     /*
     |--------------------------------------------------------------------------

@@ -18,6 +18,10 @@
         </include>
     </source>
     <php>
+        <!-- TEST-ONLY KEY. Never use outside the test suite. The suite runs
+             on an isolated in-memory SQLite database; this key encrypts
+             nothing that leaves the process. -->
+        <env name="APP_KEY" value="base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="/>
         <env name="APP_ENV" value="testing"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>

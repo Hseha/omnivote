@@ -216,9 +216,16 @@ class RegistrarImportController extends Controller
         $unmatchedCourses = 0;
         $temporaryCredentials = [];
         $issuedCodes = [];
+        // Rows this import updated but deliberately did NOT re-code (see step 1).
+        $codesPreserved = 0;
         $usedEmails = [];
 
-        DB::transaction(function () use ($rows, &$created, &$updated, &$accountsProvisioned, &$skipped, &$skippedUnknownDepartment, &$flaggedForReview, &$unmatchedCourses, &$rejectedRows, &$temporaryCredentials, &$usedEmails) {
+        // NOTE: every variable the closure writes must be listed by reference
+        // below. A closure gets no access to the enclosing scope in PHP, so a
+        // missing `&$name` silently throws the writes away — which is exactly how
+        // `activation_codes` came back empty to every registrar while the codes
+        // were still being generated and hashed in the database.
+        DB::transaction(function () use ($rows, &$created, &$updated, &$accountsProvisioned, &$skipped, &$skippedUnknownDepartment, &$flaggedForReview, &$unmatchedCourses, &$rejectedRows, &$temporaryCredentials, &$issuedCodes, &$codesPreserved, &$usedEmails) {
             foreach ($rows as $row) {
                 // The login email is derived from the student's name — it is
                 // never read from the CSV — so a row without a name can never
@@ -251,18 +258,33 @@ class RegistrarImportController extends Controller
                     $created++;
                 }
 
-                // Issue a registrar activation / recovery code (assessment
-                // M-3 + M-5). The plaintext is handed to the admin ONCE in
-                // `activation_codes` below and only a bcrypt hash is stored, so
+                // Issue a registrar activation / recovery code (assessment M-3 +
+                // M-5) — for a row THIS import created, and only for such a row.
+                //
+                // A code is a one-time secret the registrar hands to a student, so
+                // replacing one silently invalidates the sheet already in that
+                // student's hands. Every row used to be re-coded on every import:
+                // a routine re-import (one new student, a refreshed year level)
+                // invalidated every code in the file, and nothing said so. Rows
+                // that already exist keep their code, and the count is reported in
+                // `activation_codes_preserved` below. Replacing a code stays an
+                // explicit action:
+                //   POST /api/admin/registrar/imports/{import}/issue-code   (one row)
+                //   POST /api/admin/registrar/imports/issue-codes           (bulk —
+                //   also the way to code rows that have none, or spent one)
+                // The plaintext is still handed to the admin ONCE, in
+                // `activation_codes` below, and only a bcrypt hash is stored, so
                 // possession of the database does not let anyone activate or
-                // reset a student account. Re-importing a row re-issues, which
-                // is how an administrator invalidates a leaked code sheet.
-                $activationCode = RegistrarCode::issue($importRow);
-                $issuedCodes[] = [
-                    'student_id' => $row['student_id'],
-                    'full_name' => $row['full_name'],
-                    'activation_code' => $activationCode,
-                ];
+                // reset a student account.
+                if ($importRow->wasRecentlyCreated) {
+                    $issuedCodes[] = [
+                        'student_id' => $row['student_id'],
+                        'full_name' => $row['full_name'],
+                        'activation_code' => RegistrarCode::issue($importRow),
+                    ];
+                } else {
+                    $codesPreserved++;
+                }
 
                 if ($row['_course_unmatched'] ?? false) {
                     $unmatchedCourses++;
@@ -353,7 +375,10 @@ class RegistrarImportController extends Controller
         $this->notifyImportSummary($accountsProvisioned, $created, $updated, $flaggedForReview, $skipped, $skippedUnknownDepartment, $unmatchedCourses);
 
         return response()->json([
-            'message' => 'Import completed.',
+            'message' => $codesPreserved > 0
+                ? 'Import completed. Activation codes were issued only for the rows this import added; the '
+                    .$codesPreserved.' existing code(s) were left unchanged — re-issue deliberately if a sheet leaked.'
+                : 'Import completed.',
             'summary' => [
                 'total_records' => count($rows),
                 'created_eligibility_rows' => $created,
@@ -371,10 +396,17 @@ class RegistrarImportController extends Controller
                 // kept as typed because the college does not offer it.
                 'courses_not_offered' => $unmatchedCourses,
                 'rejected_rows' => $rejectedRows,
+                // Codes issued for the rows this import created; the plaintext
+                // values are in `activation_codes` below. Codes on rows that
+                // already existed are deliberately left alone, so a re-import can
+                // never invalidate a sheet that is already in a student's hands.
+                'activation_codes_issued' => count($issuedCodes),
+                'activation_codes_preserved' => $codesPreserved,
             ],
             'temporary_credentials' => $temporaryCredentials,
             // Registrar-issued activation / account-recovery codes. Plaintext,
-            // shown once, never stored (assessment M-3 / M-5).
+            // shown once, never stored (assessment M-3 / M-5) — and now only the
+            // newly added rows appear here.
             'activation_codes' => $issuedCodes,
         ], 201);
     }
