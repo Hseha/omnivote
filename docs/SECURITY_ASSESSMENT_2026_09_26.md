@@ -529,6 +529,21 @@ Plus `LoginBackoffRecoveryTest` and `SelfRegistrationActivationCodeTest` for M-3
 | 3 | **Registrar CSV re-import reissues codes** | Re-importing a CSV regenerates activation codes for *every* row, silently invalidating codes already handed to students. Codes should be issued only for newly inserted rows, with explicit bulk/single reissue actions. | `RegistrarImportController` |
 | 4 | **`loginBackoffEnabled` is write-only** | Present in the settings allow-list but never read by the backoff logic. Wire it or remove it. | `config` / `User.php` |
 
+**Item 3 was closed on 2026-09-30.** The import now issues a code only for a row it
+actually created (`wasRecentlyCreated`) and reports what it left untouched as
+`summary.activation_codes_preserved`, so a routine re-import — one new student, a
+refreshed year level — can no longer invalidate a code sheet a student is holding.
+Replacement stays explicit: `POST /api/admin/registrar/imports/{import}/issue-code`
+(one row) and `POST /api/admin/registrar/imports/issue-codes` (bulk, `only_missing`
+supported). Covered by `RegistrarImportTest::test_reimport_preserves_existing_activation_codes`.
+
+Verifying it surfaced a second, unreported defect, also fixed: the import closure
+never captured `$issuedCodes` by reference, so codes were generated and hashed but
+the endpoint returned an empty `activation_codes` list — registrars were never
+shown the codes they are supposed to hand out. Covered by
+`RegistrarImportTest::test_fresh_import_returns_the_activation_code_for_each_new_row`
+(the test fails if either half regresses).
+
 ---
 
 ## 7. Cleanup & residue disclosure
