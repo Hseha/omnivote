@@ -6,7 +6,18 @@ import 'core/theme/brand_accent.dart';
 import 'data/services/theme_mode.dart';
 import 'features/auth/providers/auth_provider.dart';
 
-// Entrypoint is lib/main.dart; this file only defines the root widget tree.
+// The app is split across three files rather than the usual single
+// `main.dart`:
+//
+//   lib/main.dart                  - entrypoint; `main()` that Flutter's
+//                                    tooling requires, plus the pre-first-frame
+//                                    storage reads (API base URL, theme mode).
+//   lib/app.dart (this file)       - the root widget tree, `OmniVoteApp`, and
+//                                    the Riverpod overrides it is handed.
+//   lib/core/routes/app_router.dart - routing table and route-level guards.
+//
+// `main.dart` is thin on purpose: anything that must be known before the first
+// frame is awaited there, while this file stays a plain widget.
 
 class OmniVoteApp extends ConsumerStatefulWidget {
   const OmniVoteApp({super.key});

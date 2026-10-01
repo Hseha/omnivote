@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { CheckCircle2, KeyRound, Lock, Eye, EyeOff } from 'lucide-react';
 import api from './lib/api';
 import { useBranding } from './lib/branding';
+import { passwordProblem } from './lib/passwordRules';
 import './AdminLogin.css';
 
 /*
@@ -19,6 +20,11 @@ export default function ResetPassword({ token, email, onCompleted }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState(false);
+
+  // Convenience feedback only — the API still validates and has the final say.
+  const passwordIssue = password ? passwordProblem(password) : null;
+  const confirmIssue =
+    confirm && confirm !== password ? 'Passwords do not match yet.' : null;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -100,6 +106,9 @@ export default function ResetPassword({ token, email, onCompleted }) {
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
+              {passwordIssue && (
+                <p className="forgot-password-hint">{passwordIssue}</p>
+              )}
             </div>
 
             <div className="form-group">
@@ -124,12 +133,12 @@ export default function ResetPassword({ token, email, onCompleted }) {
                   {showConfirm ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
-              {confirm && password !== confirm && (
-                <p className="forgot-password-hint">Passwords do not match yet.</p>
+              {confirmIssue && (
+                <p className="forgot-password-hint">{confirmIssue}</p>
               )}
             </div>
 
-            <button type="submit" className="submit-btn" disabled={loading || password.length < 8 || password !== confirm}>
+            <button type="submit" className="submit-btn" disabled={loading || Boolean(passwordIssue) || Boolean(confirmIssue)}>
               {loading ? 'Saving...' : 'Save New Password'}
             </button>
           </form>
