@@ -18,6 +18,10 @@
 /public/fonts-manifest.dev.json
 /public/hot
 /public/storage
+# React admin console build output (admin-react/vite.config.js -> outDir).
+# Must stay ignored: git clean -fd respects this, so a deploy's git reset/clean
+# cannot delete the live console. Never commit hashed build artifacts.
+/public/admin
 /storage/*.key
 /storage/pail
 /vendor
