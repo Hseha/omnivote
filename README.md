@@ -30,7 +30,9 @@ stays beside the scripts it describes.
 # 1. API → http://127.0.0.1:8000  (the React proxy and Flutter dev builds expect this port)
 cd backend-laravel
 composer install && cp -n .env.example .env && php artisan key:generate
-php artisan migrate:fresh --seed     # seeded admin password: admin123 / password
+php artisan migrate:fresh --seed     # catalog + the three panel logins
+#   Panel-login passwords are never committed: the seeder prints a generated one
+#   per account (copy it now), or set SEED_DEV_PASSWORD to choose your own.
 php artisan serve --host=127.0.0.1 --port=8000   # or ./serve-dev.sh
 
 # 2. Console → http://localhost:5173  (proxies /api and /sanctum to 127.0.0.1:8000)
