@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import AdminLogin from './AdminLogin';
 import ForgotPassword from './ForgotPassword';
 import ResetPassword from './ResetPassword';
-import AdminDashboard from './Admindashboard';
+import AdminDashboard from './AdminDashboard';
 import Candidates from './Candidates';
 import Announcements from './Announcements';
 import StudentRegistry from './StudentRegistry';
