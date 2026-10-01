@@ -42,7 +42,11 @@ jobs:
 
       - name: Backend tests
         working-directory: backend-laravel
-        run: php -d extension=pdo_sqlite.so vendor/bin/phpunit
+        # pdo_sqlite is enabled by the `extensions:` list above — no
+        # `-d extension=pdo_sqlite.so` here. tests/bootstrap.php aborts the run
+        # with a clear message if the extension is ever missing, so a broken
+        # provisioning step fails loudly instead of quietly skipping work.
+        run: vendor/bin/phpunit
 
       - name: Set up Node
         uses: actions/setup-node@v4

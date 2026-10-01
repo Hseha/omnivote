@@ -20,7 +20,12 @@ return [
 
     'stateful' => explode(',', env('SANCTUM_STATEFUL_DOMAINS', sprintf(
         '%s%s',
-        'localhost,localhost:3000,localhost:5173,127.0.0.1,127.0.0.1:8000,::1,debian.tail7e9e1e.ts.net',
+        // Development defaults only. Do NOT add a deployment host here: this
+        // fallback is compiled into the code and silently breaks the admin
+        // cookie on every other machine (login returns 200, then every
+        // subsequent request 401s). Set SANCTUM_STATEFUL_DOMAINS per host in
+        // the environment instead — see backend-laravel/.env.example.
+        'localhost,localhost:3000,localhost:5173,127.0.0.1,127.0.0.1:8000,::1',
         Sanctum::currentApplicationUrlWithPort(),
         // Sanctum::currentRequestHost(),
     ))),

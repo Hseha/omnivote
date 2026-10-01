@@ -4,5 +4,5 @@
 # in-memory test database and any sqlite tooling work without sudo editing
 # /etc/php/php.ini.
 export PHP_INI_SCAN_DIR="${PHP_INI_SCAN_DIR:-$HOME/.config/php}"
-cd /home/Michael/omnivote/backend-laravel
+cd "$(dirname "$0")"
 php artisan serve --host=0.0.0.0 --port=8000

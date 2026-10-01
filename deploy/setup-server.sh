@@ -105,14 +105,26 @@ cat <<EOF
  DONE.  php artisan serve is NOT needed — nginx + php-fpm serve the app 24/7.
 
  Next steps (manual, in deploy/README.md):
-  1. Point APP_URL / .env at $APP_URL  (APP_ENV=production, APP_DEBUG=false)
-  2. Set FRONTEND_URL=http://localhost:5173  (or your React dev URL)
-  3. Set SANCTUM_STATEFUL_DOMAINS=localhost,localhost:5173,127.0.0.1
-  4. php artisan key:generate  &&  php artisan migrate --force
-  5. Set real DB creds (omnivote / the password you chose above) in .env
-  6. Set up HTTPS (Let's Encrypt or self-signed) — see README §SSL
-  7. systemctl enable --now omnivote-worker   (Laravel queue worker)
-  8. sudo -u www-data php artisan config:cache && route:cache
-  9. Verify:  curl -k https://$APP_URL/up
+  1. cp backend-laravel/.env.example backend-laravel/.env, then edit it:
+     APP_ENV=production, APP_DEBUG=false, APP_URL=https://$APP_URL,
+     DB_USERNAME/DB_PASSWORD (omnivote / the password printed above),
+     SESSION_SECURE_COOKIE=true.  The example file documents every key.
+  2. cd backend-laravel && php artisan key:generate
+  3. sudo -u www-data php artisan migrate --force
+  4. sudo -u www-data php artisan security:assert-production-config
+     (the same gate deploy/deploy.sh runs — it must pass before going live)
+  5. Build the admin console:  cd admin-react && npm ci && npm run build
+     nginx serves /admin/ from admin-react/dist; nothing in this script builds
+     it, so until you do, /admin/ is a 404.
+  6. sudo -u www-data php artisan config:cache && php artisan route:cache
+  7. systemctl enable --now omnivote-worker.service
+  8. systemctl enable --now omnivote-backup.timer   (encrypted daily backups)
+  9. Set up HTTPS (Let's Encrypt or self-signed) — see README §SSL
+ 10. Verify:  curl -k https://$APP_URL/up
+
+ Steps 3-8 are exactly what deploy/deploy.sh does; once .env exists (steps 1-2)
+ you can run it as www-data instead of doing them by hand, and every later
+ release is then deployed the same way. (Do not put backticks in this heredoc:
+ it is unquoted so that \$APP_URL expands, and backticks would be executed.)
 ================================================================================
 EOF
