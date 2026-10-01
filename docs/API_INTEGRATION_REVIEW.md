@@ -300,13 +300,25 @@ The database schema (14 migrations) is consistent with the API contracts and fro
 
 ### A. ⚠️ No Seeded Student Account
 
-The `UserSeeder` (`database/data/users.json`) only seeds two accounts:
-- `admin@omnivote.test` / `admin123` (role: admin)
-- `teacher@omnivote.test` / `teacher123` (role: teacher)
+The `UserSeeder` (`database/data/users.json`) seeds three panel accounts:
+- `admin@omnivote.test` (role: admin)
+- `teacher@omnivote.test` (role: teacher)
+- `president@omnivote.test` (role: ssg_president)
+
+> **Updated 2026-09-30.** No passwords are committed any more. An earlier revision of this
+> document listed `admin123` / `teacher123` / `OmniVote-Ssg-2026!`; those values were in the
+> repository (and remain in git history), so treat them as burned and rotate any environment
+> seeded from them. Each account now gets a generated password, printed once by
+> `php artisan db:seed`, or one supplied through `SEED_DEV_PASSWORD` — and both demo seeders
+> refuse to run when the application environment is `production`.
 
 There is **no student account** seeded. The `StudentRegistrationRequest` requires `student_id` to already exist in the `registrar_imports` table (`Rule::exists('registrar_imports', 'student_id')`), so self-registration only works after a CSV import has been performed. The mobile login flow (`POST /api/auth/login`) has no `role: student` user to authenticate against out of the box.
 
 - **Recommendation:** Add a student seed entry to `users.json` or create a dedicated seeder.
+
+- **Status now:** `StudentSeeder` covers this — it provisions `john.michael` (student ID `2024-0075`,
+  temporary password equal to the student ID, `must_change_password`) along with its
+  `registrar_imports` eligibility row, and it skips production for the same reason `UserSeeder` does.
 
 ### B. ⚠️ Flutter Base URL Default Mismatch
 

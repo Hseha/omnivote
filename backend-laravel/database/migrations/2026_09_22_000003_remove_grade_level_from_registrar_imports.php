@@ -26,7 +26,12 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('registrar_imports', function (Blueprint $table) {
-            $table->string('grade_level');
+            // NULLABLE on purpose: re-adding a NOT NULL column with no default
+            // fails outright on a populated table, which is precisely the state
+            // of the database during an emergency rollback. Making it nullable
+            // keeps `migrate:rollback` executable under pressure; the column is
+            // unused downstream, so no backfill is possible or needed.
+            $table->string('grade_level')->nullable();
         });
     }
 };

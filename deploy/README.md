@@ -27,38 +27,39 @@ Why this beats `php artisan serve`:
 | Handles the /up health check | only while dev server runs | ✅ real 24/7 probe |
 | Static/binary uploads  | dev server          | ✅ nginx + `client_max_body_size` |
 
-Target: **Ubuntu 24.04 / Debian 12, PHP 8.3** (matching `composer.json`'s `^8.3`).
+Target: **Ubuntu 24.04 / Debian 12, PHP 8.4** (matching `composer.json`'s `^8.4`;
+Laravel 13 requires PHP 8.4+, so 8.3 is no longer sufficient).
 
 ---
 
 ## 1. Install the software
 
 ```bash
-# PHP 8.3 + FPM (FastCGI Process Manager) + the extensions Laravel needs
+# PHP 8.4 + FPM (FastCGI Process Manager) + the extensions Laravel needs
 sudo apt update
 sudo apt install -y \
   nginx \
   mysql-server \
   composer \
-  "php8.3-fpm" \
-  "php8.3-cli" \
-  "php8.3-mysql" \
-  "php8.3-mbstring" "php8.3-xml" "php8.3-curl" "php8.3-zip" \
-  "php8.3-bcmath" "php8.3-intl" "php8.3-gd" "php8.3-opcache"
+  "php8.4-fpm" \
+  "php8.4-cli" \
+  "php8.4-mysql" \
+  "php8.4-mbstring" "php8.4-xml" "php8.4-curl" "php8.4-zip" \
+  "php8.4-bcmath" "php8.4-intl" "php8.4-gd" "php8.4-opcache"
 ```
 
-> If your distro only ships PHP lower than 8.3, add the
+> If your distro only ships PHP lower than 8.4, add the
 > [ondrej/php PPA](https://launchpad.net/~ondrej/+archive/ubuntu/php) first:
 > ```bash
 > sudo add-apt-repository ppa:ondrej/php && sudo apt update
 > ```
-> (This repo's `composer.json` requires `php: ^8.3`, so don't go below it.)
+> (This repo's `composer.json` requires `php: ^8.4`, so don't go below it.)
 
 Verify and enable the three always-on services right away:
 ```bash
-php8.3 -v
-sudo systemctl enable --now php8.3-fpm nginx mysql
-systemctl is-active php8.3-fpm nginx mysql     # all three: active
+php8.4 -v
+sudo systemctl enable --now php8.4-fpm nginx mysql
+systemctl is-active php8.4-fpm nginx mysql     # all three: active
 ```
 
 ---
@@ -105,8 +106,8 @@ SESSION_SECURE_COOKIE=true           # cookies only over HTTPS
 
 Then:
 ```bash
-sudo -u www-data php8.3 artisan key:generate          # fresh APP_KEY on the server
-sudo -u www-data php8.3 artisan migrate --force
+sudo -u www-data php8.4 artisan key:generate          # fresh APP_KEY on the server
+sudo -u www-data php8.4 artisan migrate --force
 ```
 
 > **Important:** never commit the real `.env`. The one in the repo is a local
@@ -158,20 +159,20 @@ systemctl list-timers omnivote-backup.timer
 sudo cp nginx-omnivote.conf /etc/nginx/sites-available/omnivote
 sudo ln -sf /etc/nginx/sites-available/omnivote /etc/nginx/sites-enabled/omnivote
 sudo rm -f /etc/nginx/sites-enabled/default
-sudo cp php-fpm-pool.conf /etc/php/8.3/fpm/pool.d/omnivote.conf
+sudo cp php-fpm-pool.conf /etc/php/8.4/fpm/pool.d/omnivote.conf
 sudo cp omnivote-worker.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo nginx -t && sudo systemctl reload nginx
-sudo systemctl restart php8.3-fpm
+sudo systemctl restart php8.4-fpm
 sudo systemctl enable --now omnivote-worker
 
 # 3) clear + rebuild caches with the production env
-sudo -u www-data php8.3 artisan config:clear
-sudo -u www-data php8.3 artisan config:cache
-sudo systemctl restart php8.3-fpm
+sudo -u www-data php8.4 artisan config:clear
+sudo -u www-data php8.4 artisan config:cache
+sudo systemctl restart php8.4-fpm
 
 # 4) verify
-systemctl is-active nginx php8.3-fpm mysql omnivote-worker omnivote-backup.timer
+systemctl is-active nginx php8.4-fpm mysql omnivote-worker omnivote-backup.timer
 curl -k https://debian.tail7e9e1e.ts.net/up
 curl -k https://debian.tail7e9e1e.ts.net/api/election/status
 ```
@@ -199,7 +200,7 @@ What it does:
 - `root /var/www/omnivote/backend-laravel/public` — the only folder nginx can
   see; `.env`, `.git`, `vendor/src` stay unreachable.
 - `try_files ... /index.php` sends every request to Laravel's front controller.
-- `location ~ \.php$` → `fastcgi_pass unix:/run/php/php8.3-fpm.sock` (the php-fpm socket).
+- `location ~ \.php$` → `fastcgi_pass unix:/run/php/php8.4-fpm.sock` (the php-fpm socket).
 - Dotfiles are denied, uploads capped at 25 MB (registrar CSV import).
 
 ---
@@ -207,12 +208,12 @@ What it does:
 ## 5. php-fpm — FastCGI process manager
 
 On Ubuntu, the install already created the pool **`www`** (socket
-`/run/php/php8.3-fpm.sock`) and the `php8.3-fpm.service` unit. Tune it with
+`/run/php/php8.4-fpm.sock`) and the `php8.4-fpm.service` unit. Tune it with
 `deploy/php-fpm-pool.conf` (dynamic workers, slow-query log), then:
 
 ```bash
-sudo cp deploy/php-fpm-pool.conf /etc/php/8.3/fpm/pool.d/omnivote.conf
-sudo systemctl restart php8.3-fpm
+sudo cp deploy/php-fpm-pool.conf /etc/php/8.4/fpm/pool.d/omnivote.conf
+sudo systemctl restart php8.4-fpm
 ```
 
 Why php-fpm is the right "24/7" piece: a pool of PHP workers stays warm at all
@@ -222,7 +223,7 @@ service, it restarts itself after crashes and after every reboot.
 
 Sanity check the socket:
 ```bash
-ls -l /run/php/php8.3-fpm.sock          # must be owned by www-data
+ls -l /run/php/php8.4-fpm.sock          # must be owned by www-data
 ```
 ---
 
@@ -241,7 +242,7 @@ journalctl -u omnivote-worker -f
 
 On every deploy, restart it gracefully:
 ```bash
-sudo -u www-data php8.3 artisan queue:restart
+sudo -u www-data php8.4 artisan queue:restart
 ```
 
 ---
@@ -266,7 +267,7 @@ journalctl -u omnivote-backup -n 20
 
 Run one on demand (e.g. right before polls close):
 ```bash
-sudo -u www-data php8.3 artisan omnivote:backup
+sudo -u www-data php8.4 artisan omnivote:backup
 ```
 
 ---
@@ -316,8 +317,8 @@ Optional: ensure nothing listens on port 8000 anymore (`sudo ss -tlnp | grep 800
 curl https://debian.tail7e9e1e.ts.net/up
 
 # services that must never die
-systemctl is-enabled php8.3-fpm nginx mysql omnivote-worker
-systemctl is-active   php8.3-fpm nginx mysql omnivote-worker
+systemctl is-enabled php8.4-fpm nginx mysql omnivote-worker
+systemctl is-active   php8.4-fpm nginx mysql omnivote-worker
 
 # API smoke test
 curl -i -k https://debian.tail7e9e1e.ts.net/sanctum/csrf-cookie
@@ -326,7 +327,7 @@ curl -i -k https://debian.tail7e9e1e.ts.net/api/election/status
 
 Kill-test it — that's the whole point of 24/7:
 ```bash
-sudo systemctl restart php8.3-fpm        # dev deploys / crashes
+sudo systemctl restart php8.4-fpm        # dev deploys / crashes
 sudo reboot                              # everything comes back by itself
 ```
 
@@ -339,10 +340,10 @@ cd /var/www/omnivote
 sudo -u www-data git pull --ff-only
 cd backend-laravel
 sudo -u www-data composer install --no-dev --optimize-autoloader
-sudo -u www-data php8.3 artisan migrate --force
-sudo -u www-data php8.3 artisan queue:restart
+sudo -u www-data php8.4 artisan migrate --force
+sudo -u www-data php8.4 artisan queue:restart
 # opcache caches bytecode per worker process -> recycle FPM workers on deploys
-sudo systemctl restart php8.3-fpm
+sudo systemctl restart php8.4-fpm
 sudo systemctl reload nginx
 ```
 
@@ -362,14 +363,14 @@ git push origin main
             ├─ composer install --no-dev
             ├─ php artisan migrate --force
             ├─ config:cache / route:cache / view:cache
-            └─ systemctl restart php8.3-fpm
+            └─ systemctl restart php8.4-fpm
 ```
 
 ### One-time: install the self-hosted runner (on the app server)
 
 A self-hosted runner makes an **outbound** connection to GitHub, so the server
 stays private (no inbound SSH or open ports needed — works fine over Tailscale).
-The deploy script calls `sudo systemctl restart php8.3-fpm`, so the account
+The deploy script calls `sudo systemctl restart php8.4-fpm`, so the account
 running the runner needs passwordless sudo for that command.
 
 1. On GitHub: **Settings → Actions → Runners → New self-hosted runner**, copy
@@ -385,7 +386,7 @@ running the runner needs passwordless sudo for that command.
    ```
 3. Give the runner account sudo for the two privileged commands:
    ```bash
-   echo "$USER ALL=(root) NOPASSWD: /usr/bin/systemctl restart php8.3-fpm, /usr/bin/chown" \
+   echo "$USER ALL=(root) NOPASSWD: /usr/bin/systemctl restart php8.4-fpm, /usr/bin/chown" \
      | sudo tee /etc/sudoers.d/omnivote-runner
    sudo chmod 440 /etc/sudoers.d/omnivote-runner
    ```
@@ -429,7 +430,7 @@ After changing these values, clear Laravel's cached config:
 cd /var/www/omnivote/backend-laravel
 sudo -u www-data php artisan config:clear
 sudo -u www-data php artisan config:cache
-sudo systemctl restart php8.3-fpm
+sudo systemctl restart php8.4-fpm
 sudo systemctl reload nginx
 ```
 
@@ -439,12 +440,12 @@ sudo systemctl reload nginx
 
 | Symptom | Cause / fix |
 |---|---|
-| `502 Bad Gateway` from nginx | php-fpm down: `systemctl status php8.3-fpm`; socket must be owned by `www-data` |
-| `Permission denied` on socket | `chown www-data:www-data /run/php/php8.3-fpm.sock && chmod 660` |
+| `502 Bad Gateway` from nginx | php-fpm down: `systemctl status php8.4-fpm`; socket must be owned by `www-data` |
+| `Permission denied` on socket | `chown www-data:www-data /run/php/php8.4-fpm.sock && chmod 660` |
 | White page / `500` | storage/`bootstrap/cache` ownership; check `storage/logs/laravel.log` |
 | CSRF mismatch on `/api` | `SESSION_SECURE_COOKIE=true` requires HTTPS; check `APP_URL` scheme |
 | Slow during peak voting | raise `pm.max_children` in the pool; watch the slow-query log; tune MySQL `slow_query_log` |
-| New code not picked up | opcache caches per worker: `sudo systemctl restart php8.3-fpm` after deploys |
+| New code not picked up | opcache caches per worker: `sudo systemctl restart php8.4-fpm` after deploys |
 
 ---
 
