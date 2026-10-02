@@ -428,6 +428,10 @@ environment credentials.
    - `DEPLOY_HOST`: server Tailscale DNS name (for example,
      `debian.tail7e9e1e.ts.net`)
    - `DEPLOY_KNOWN_HOSTS`: verified SSH host-key line for that DNS name
+4. Add the repository Actions variable `PRODUCTION_DEPLOY_ENABLED` with value
+   `false` (or leave it unset) until the server-side SSH key, helper, and
+   sudoers setup is complete. The deploy job will remain skipped while it is
+   false.
 
 ### One-time: prepare restricted SSH deployment access
 
@@ -491,15 +495,16 @@ The deploy script does `git reset --hard origin/main`, which **discards any
 server-local tracked edits**. Confirm the checkout is a clean mirror first;
 the untracked production `.env` survives.
 
-### First deploy
+### Enable deployment
 
-1. Confirm the `production` environment variables and private-key secret are
-   set, the OIDC credential is restricted to the subject above, the tailnet
-   policy allows only SSH to this server, and the server-side forced command
-   and sudoers rule pass review.
-2. Merge the workflow to `main`. Watch **Actions**: `test` and `size` must pass
-   before the ephemeral hosted deploy job starts. Verify the run log and
-   `/up`, `/admin/`, and `/api/election/status` after deployment.
+Once the `production` environment variables and private-key secret are set, the
+OIDC credential is restricted to the subject above, the tailnet policy allows
+only SSH to this server, and the server-side forced command, permission helper,
+and sudoers rule are installed and verified, set the repository Actions
+variable `PRODUCTION_DEPLOY_ENABLED` to `true`. Then run the workflow manually
+on `main` to verify the first deploy. Subsequent pushes to `main` will deploy
+automatically after `test` and `size` pass. Verify `/up`, `/admin/`, and
+`/api/election/status` after the first deploy.
 
 ---
 
