@@ -30,9 +30,17 @@ class AssertProductionConfig extends Command
         $environment = (string) config('app.env');
 
         if ($environment !== 'production') {
-            $this->warn("APP_ENV is '{$environment}', not 'production' — production config checks skipped.");
+            $this->error("APP_ENV is '{$environment}', not 'production'.");
 
-            return self::SUCCESS;
+            if ($this->option('check')) {
+                $this->warn('--check given: reporting only, exiting 0.');
+
+                return self::SUCCESS;
+            }
+
+            $this->error('Refusing to deploy without APP_ENV=production.');
+
+            return self::FAILURE;
         }
 
         $problems = ProductionConfigGuard::problems();
