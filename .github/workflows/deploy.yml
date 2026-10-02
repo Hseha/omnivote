@@ -6,10 +6,12 @@
 #            the budget in user-flutter/tool/release_size.sh (students install
 #            this on metered connections — see docs/08_BUILD_RELEASE.md).
 #   deploy : runs only if `test` + `size` passed AND the push is to main.
+#            Uses an ephemeral GitHub-hosted runner with Tailscale OIDC and SSH;
+#            no persistent GitHub runner is installed on the production server.
 #
-# The deploy job runs on a SELF-HOSTED runner installed on the app server, so
-# nothing needs to be exposed publicly (works over Tailscale). See
-# deploy/README.md -> "Continuous deployment" for the one-time runner setup.
+# The deploy job joins the tailnet temporarily and invokes the server's
+# restricted SSH deploy command. See deploy/README.md -> "Continuous
+# deployment" for the one-time setup.
 # ============================================================================
 name: CI/CD
 
@@ -117,18 +119,41 @@ jobs:
     name: Deploy
     needs: [test, size]
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-    runs-on: [self-hosted, linux, x64, omnivote-production]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     environment: production
+    permissions:
+      id-token: write
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
+      - name: Connect to the production tailnet
+        uses: tailscale/github-action@v4
         with:
-          node-version: '20'
+          oauth-client-id: ${{ vars.TS_OAUTH_CLIENT_ID }}
+          audience: ${{ vars.TS_AUDIENCE }}
+          tags: tag:omnivote-ci
+          ping: ${{ vars.DEPLOY_HOST }}
 
-      - name: Run server deploy script
+      - name: Invoke the restricted server deploy command
         env:
-          APP_DIR: /var/www/omnivote
-          BRANCH: main
-        run: bash deploy/deploy.sh
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_KNOWN_HOSTS: ${{ vars.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+        run: |
+          set -Eeuo pipefail
+          : "${DEPLOY_HOST:?Set DEPLOY_HOST in the production environment}"
+          : "${DEPLOY_KNOWN_HOSTS:?Set the verified SSH host key in the production environment}"
+          : "${DEPLOY_SSH_PRIVATE_KEY:?Set DEPLOY_SSH_PRIVATE_KEY in the production environment}"
+
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_PRIVATE_KEY" > "$HOME/.ssh/omnivote_deploy"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/omnivote_deploy" "$HOME/.ssh/known_hosts"
+
+          ssh \
+            -i "$HOME/.ssh/omnivote_deploy" \
+            -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            -o ConnectTimeout=15 \
+            "omnivote-deploy@${DEPLOY_HOST}"
