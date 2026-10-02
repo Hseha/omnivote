@@ -17,7 +17,7 @@ stays beside the scripts it describes.
 
 | Path | What it is | Stack |
 |---|---|---|
-| `backend-laravel/` | REST API, session auth, role/permission + phase enforcement. **Authoritative** for every rule. | PHP ^8.3, Laravel ^13.17, Sanctum ^4 (cookie sessions), google2fa, MySQL/MariaDB |
+| `backend-laravel/` | REST API, session auth, role/permission + phase enforcement. **Authoritative** for every rule. | PHP ^8.4.1, Laravel ^13.17, Sanctum ^4 (cookie sessions), google2fa, MySQL/MariaDB |
 | `admin-react/` | Committee / registrar / auditor console (SPA). | React 19 + Vite 8, plain JS (no TS, no router lib) |
 | `user-flutter/` | Student app (Android APK; web build also works). | Flutter, Dart ^3.13, Riverpod |
 | `deploy/` | VPS bring-up, nginx/PHP-FPM/systemd units, hardened config, backup tooling. | Bash, nginx, systemd, MariaDB |
@@ -201,5 +201,4 @@ runner on the app server, so nothing is exposed publicly. APK build steps:
 - `docs/PR_GUIDE.md` for branch and PR conventions.
 - Secrets stay out of git: `.env*`, `*.jks`, `*.keystore`, `keystore.properties` are ignored
   on purpose.
-
 

@@ -12,17 +12,12 @@
 #   APP_DIR      repo root on the server   (default /var/www/omnivote)
 #   BRANCH       deploy branch             (default main)
 #   PHP          php binary                (default php8.4)
-#   FPM_SERVICE  php-fpm systemd unit      (default php8.4-fpm)
-#   RUN_AS       owner of storage/         (default www-data)
 # ============================================================================
 set -euo pipefail
 
 APP_DIR="${APP_DIR:-/var/www/omnivote}"
 BRANCH="${BRANCH:-main}"
 PHP="${PHP:-php8.4}"
-FPM_SERVICE="${FPM_SERVICE:-php8.4-fpm}"
-RUN_AS="${RUN_AS:-www-data}"
-
 log() { printf '\n==> %s\n' "$1"; }
 
 # --- 1. Preflight: read-only, and deliberately FIRST -------------------------
@@ -36,7 +31,7 @@ if [ ! -d "$APP_DIR/.git" ]; then
 fi
 cd "$APP_DIR" || exit 1
 
-for tool in git "$PHP" npm; do
+for tool in git "$PHP" composer npm; do
   if ! command -v "$tool" >/dev/null 2>&1; then
     echo "ERROR: '$tool' is not on PATH, so this deploy cannot finish. Nothing has been changed." >&2
     echo "       The previous release is still live." >&2
@@ -44,19 +39,32 @@ for tool in git "$PHP" npm; do
   fi
 done
 
+for unit in omnivote-worker.service omnivote-backup.timer php8.4-fpm.service; do
+  if ! /bin/systemctl cat "$unit" >/dev/null 2>&1; then
+    echo "ERROR: required systemd unit '$unit' is not installed. Nothing has been changed." >&2
+    echo "       Install the worker/backup units and PHP-FPM before deploying." >&2
+    exit 1
+  fi
+done
+
+check_sudo() {
+ if ! sudo -n -l "$@" >/dev/null 2>&1; then
+   echo "ERROR: passwordless sudo is not configured for: $*" >&2
+   echo "       Nothing has been changed. See deploy/README.md for the runner sudoers setup." >&2
+   exit 1
+ fi
+}
+check_sudo /bin/chown -R omnivote-deploy:www-data \
+ "$APP_DIR/backend-laravel/storage" "$APP_DIR/backend-laravel/bootstrap/cache"
+check_sudo /bin/systemctl restart omnivote-worker.service
+check_sudo /bin/systemctl restart php8.4-fpm
+check_sudo /bin/systemctl enable --now omnivote-backup.timer
+
 # The reset keeps .env (it is untracked), but the release is unusable without it.
 if [ ! -f backend-laravel/.env ]; then
   echo "ERROR: backend-laravel/.env is missing in $APP_DIR — nothing has been changed." >&2
   echo "       It must define APP_KEY, DB_* and SESSION_SECURE_COOKIE. See backend-laravel/.env.example" >&2
   exit 1
-fi
-
-# Warning only: a sudoers rule that grants specific binaries, not /bin/true, must
-# not block an otherwise valid deploy. If it is genuinely wrong, the chown and
-# systemctl calls below fail, and this warning tells you why they did.
-if ! sudo -n /bin/true >/dev/null 2>&1; then
-  echo "WARNING: 'sudo -n /bin/true' failed; the permission and restart steps may fail." >&2
-  echo "         See deploy/README.md for the sudoers rule deploy.sh expects." >&2
 fi
 
 # --- 2. Safety gate, before the checkout is moved ----------------------------
@@ -95,11 +103,9 @@ log "Now at $(git rev-parse --short HEAD) (was $PREVIOUS_HEAD)"
 #   (cd backend-laravel && composer install --no-dev && php artisan config:cache)
 
 # --- Build the React admin console ------------------------------------------
-# The console is a separate Vite SPA and is NOT served by the API vhost: that
-# vhost is deliberately JSON-only behind `default-src 'none'`, so the console
-# needs its own host (see deploy/README.md). What is missing without this step
-# is the build itself — nothing on the server ever produced admin-react/dist,
-# so the console was never deployed at all.
+# Vite writes the console into Laravel's public/admin directory. nginx serves
+# it at /admin/ on the same origin as /api/, which keeps Sanctum cookie auth
+# same-origin and avoids separate CORS or stateful-domain configuration.
 #
 # Ordered before composer/migrate on purpose: this is the cheapest step to fail
 # and the only one that needs no database. Aborting here leaves the checkout
@@ -150,23 +156,24 @@ log "Fixing storage permissions"
 # sudoers rule on the server grants specific binaries literally (Cmnd_Alias in
 # deploy/README.md), and `sudo chown ...` would not match such a rule — the
 # deploy would then stop here asking for a password CI cannot type.
-sudo /bin/chown -R "$RUN_AS":"$RUN_AS" storage bootstrap/cache
+sudo /bin/chown -R omnivote-deploy:www-data "$APP_DIR/backend-laravel/storage" "$APP_DIR/backend-laravel/bootstrap/cache"
+chmod -R g+rwX storage bootstrap/cache
+find storage bootstrap/cache -type d -exec chmod g+s {} +
 
 log "Restarting queue worker + php-fpm"
-# queue:restart only asks a worker to stop after its current job. It does not
-# start one, and it does not reload the code a supervisor-less unit keeps running:
-# a worker that died earlier, or one still executing the previous release, is only
-# fixed by restarting the unit. Kept best-effort (|| true) so a host without the
-# unit installed still completes the deploy.
-"$PHP" artisan queue:restart || true
-sudo /bin/systemctl restart omnivote-worker.service || true
-sudo /bin/systemctl restart "$FPM_SERVICE"
+# Signal the running worker to finish its current job, then restart its systemd
+# unit so a dead or stale worker is started with the new release. These services
+# are deployment prerequisites; fail rather than claim success when either is
+# missing or cannot be restarted.
+"$PHP" artisan queue:restart
+sudo /bin/systemctl restart omnivote-worker.service
+sudo /bin/systemctl restart php8.4-fpm
 
 # The encrypted backup is a timer-activated unit, and nothing outside
 # deploy/README.md ever enables it: a rebuilt or reimaged server therefore stops
 # taking election backups silently, days later. Idempotent, so it is safe to run
-# on every deploy — this is the only place that guarantees the timer is on.
+# on every deploy. Treat a missing or disabled timer as a deploy failure.
 log "Ensuring the backup timer is enabled"
-sudo /bin/systemctl enable --now omnivote-backup.timer || true
+sudo /bin/systemctl enable --now omnivote-backup.timer
 
 log "Deployed $(git rev-parse --short HEAD) on $BRANCH"

@@ -27,8 +27,8 @@ Why this beats `php artisan serve`:
 | Handles the /up health check | only while dev server runs | ✅ real 24/7 probe |
 | Static/binary uploads  | dev server          | ✅ nginx + `client_max_body_size` |
 
-Target: **Ubuntu 24.04 / Debian 12, PHP 8.4** (matching `composer.json`'s `^8.4`;
-Laravel 13 requires PHP 8.4+, so 8.3 is no longer sufficient).
+Target: **Ubuntu 24.04 / Debian 12, PHP 8.4.1+** (matching `composer.json`;
+the locked Symfony dependencies require PHP 8.4.1 or newer).
 
 ---
 
@@ -48,12 +48,12 @@ sudo apt install -y \
   "php8.4-bcmath" "php8.4-intl" "php8.4-gd" "php8.4-opcache"
 ```
 
-> If your distro only ships PHP lower than 8.4, add the
+> If your distro only ships PHP lower than 8.4.1, add the
 > [ondrej/php PPA](https://launchpad.net/~ondrej/+archive/ubuntu/php) first:
 > ```bash
 > sudo add-apt-repository ppa:ondrej/php && sudo apt update
 > ```
-> (This repo's `composer.json` requires `php: ^8.4`, so don't go below it.)
+> (This repo's `composer.json` requires `php: ^8.4.1`, so don't go below it.)
 
 Verify and enable the three always-on services right away:
 ```bash
@@ -68,17 +68,36 @@ systemctl is-active php8.4-fpm nginx mysql     # all three: active
 
 ```bash
 sudo mkdir -p /var/www/omnivote
-sudo chown www-data:www-data /var/www/omnivote
+getent passwd omnivote-deploy >/dev/null || sudo useradd --system --create-home --shell /bin/bash omnivote-deploy
+sudo usermod -a -G www-data omnivote-deploy
+sudo chown omnivote-deploy:www-data /var/www/omnivote
+sudo chmod 2775 /var/www/omnivote
 cd /var/www/omnivote
-sudo -u www-data git clone <your-repo-url> .   # or copy backend-laravel/ in
+sudo -u omnivote-deploy git clone <your-repo-url> .   # or copy backend-laravel/ in
 cd backend-laravel
-sudo -u www-data composer install --no-dev --optimize-autoloader
+sudo -u omnivote-deploy composer install --no-dev --optimize-autoloader
 ```
 
-Permissions Laravel needs at runtime (logs, cached config, uploaded CSVs):
+Make Laravel's runtime directories writable by both the deploy account and
+PHP-FPM, which runs as `www-data`:
 ```bash
-sudo chown -R www-data:www-data /var/www/omnivote/backend-laravel/storage \
-                                 /var/www/omnivote/backend-laravel/bootstrap/cache
+sudo chown -R omnivote-deploy:www-data storage bootstrap/cache
+sudo chmod -R g+rwX storage bootstrap/cache
+sudo find storage bootstrap/cache -type d -exec chmod g+s {} +
+```
+
+Create the production `.env` as `omnivote-deploy` and restrict it to the deploy
+account and the PHP-FPM group:
+```bash
+sudo -u omnivote-deploy cp .env.example .env
+sudo chmod 640 .env
+```
+
+`omnivote-deploy` owns the release checkout; `www-data` can read the app and
+write only Laravel's runtime directories. `deploy.sh` maintains shared group
+write access on `storage/` and `bootstrap/cache/`.
+Re-running `setup-server.sh` preserves an existing database user's password
+unless you explicitly provide `MYSQL_DB_PASS` to rotate it.
 ---
 
 ## 3. Configure `.env` for production
@@ -91,8 +110,11 @@ APP_ENV=production
 APP_DEBUG=false
 APP_URL=https://debian.tail7e9e1e.ts.net     # Tailscale hostname (HTTPS)
 
-FRONTEND_URL=http://localhost:5173            # React dev server (Sanctum cookie origin)
-SANCTUM_STATEFUL_DOMAINS=localhost,localhost:5173,127.0.0.1
+# Same-origin /admin and /api: leave both unset in production.
+# config/app.php falls FRONTEND_URL back to APP_URL and Sanctum adds APP_URL.
+# Set these only for a genuinely separate frontend origin.
+# FRONTEND_URL=https://admin.example.edu
+# SANCTUM_STATEFUL_DOMAINS=omnivote.example.edu,admin.example.edu
 
 DB_CONNECTION=mysql
 DB_HOST=127.0.0.1
@@ -106,8 +128,8 @@ SESSION_SECURE_COOKIE=true           # cookies only over HTTPS
 
 Then:
 ```bash
-sudo -u www-data php8.4 artisan key:generate          # fresh APP_KEY on the server
-sudo -u www-data php8.4 artisan migrate --force
+sudo -u omnivote-deploy php8.4 artisan key:generate   # fresh APP_KEY on the server
+sudo -u omnivote-deploy php8.4 artisan migrate --force
 ```
 
 > **Important:** never commit the real `.env`. The one in the repo is a local
@@ -123,8 +145,8 @@ keys. Edit the server copy to match the right-hand column:
 | `APP_ENV` | `local` | `production` |
 | `APP_DEBUG` | `true` | `false` |
 | `APP_URL` | `http://127.0.0.1:8000` | `https://debian.tail7e9e1e.ts.net` |
-| `FRONTEND_URL` | *(unset)* | `http://localhost:5173` |
-| `SANCTUM_STATEFUL_DOMAINS` | *(unset)* | `debian.tail7e9e1e.ts.net,localhost,localhost:5173,127.0.0.1` |
+| `FRONTEND_URL` | *(unset)* | *(unset; falls back to `APP_URL` for same-origin admin)* |
+| `SANCTUM_STATEFUL_DOMAINS` | *(unset)* | *(unset; config includes `APP_URL` and local development hosts)* |
 | `SESSION_SECURE_COOKIE` | *(unset → false)* | `true` |
 | `SANCTUM_TOKEN_EXPIRATION` | *(unset → 43200)* | `43200` (default already 30 days) |
 | `DB_DATABASE` | `omnivote_local` | `omnivote` |
@@ -143,6 +165,11 @@ Notes:
   as the database name.
 - `TRUSTED_PROXIES` is not needed: `bootstrap/app.php` already trusts
   `127.0.0.1`, which is what nginx/php-fpm use on-loopback.
+- The console is served at `/admin/` on the same origin as `/api/`. Keep
+  `FRONTEND_URL` and `SANCTUM_STATEFUL_DOMAINS` unset for this default layout;
+  setting them to localhost in production breaks cookie authentication. For a
+  split-origin frontend, add its exact HTTPS origin/host to the respective
+  environment settings and CORS allow-list.
 
 ### 3b. Go-sequence (run on the host, with sudo where shown)
 
@@ -167,8 +194,8 @@ sudo systemctl restart php8.4-fpm
 sudo systemctl enable --now omnivote-worker
 
 # 3) clear + rebuild caches with the production env
-sudo -u www-data php8.4 artisan config:clear
-sudo -u www-data php8.4 artisan config:cache
+sudo -u omnivote-deploy php8.4 artisan config:clear
+sudo -u omnivote-deploy php8.4 artisan config:cache
 sudo systemctl restart php8.4-fpm
 
 # 4) verify
@@ -242,7 +269,7 @@ journalctl -u omnivote-worker -f
 
 On every deploy, restart it gracefully:
 ```bash
-sudo -u www-data php8.4 artisan queue:restart
+sudo -u omnivote-deploy php8.4 artisan queue:restart
 ```
 
 ---
@@ -337,11 +364,11 @@ sudo reboot                              # everything comes back by itself
 
 ```bash
 cd /var/www/omnivote
-sudo -u www-data git pull --ff-only
+sudo -u omnivote-deploy git pull --ff-only
 cd backend-laravel
-sudo -u www-data composer install --no-dev --optimize-autoloader
-sudo -u www-data php8.4 artisan migrate --force
-sudo -u www-data php8.4 artisan queue:restart
+sudo -u omnivote-deploy composer install --no-dev --optimize-autoloader
+sudo -u omnivote-deploy php8.4 artisan migrate --force
+sudo -u omnivote-deploy php8.4 artisan queue:restart
 # opcache caches bytecode per worker process -> recycle FPM workers on deploys
 sudo systemctl restart php8.4-fpm
 sudo systemctl reload nginx
@@ -370,27 +397,41 @@ git push origin main
 
 A self-hosted runner makes an **outbound** connection to GitHub, so the server
 stays private (no inbound SSH or open ports needed — works fine over Tailscale).
-The deploy script calls `sudo systemctl restart php8.4-fpm`, so the account
-running the runner needs passwordless sudo for that command.
+Use a **repository-level runner** on the app server and give it the
+`omnivote-production` label. The deploy job requires that label and uses the
+GitHub `production` environment, which is restricted to the `main` branch.
 
-1. On GitHub: **Settings → Actions → Runners → New self-hosted runner**, copy
-   the token and the follow-up commands for Linux x64.
-2. On the server, run those commands (approx.):
+1. On GitHub: **Settings → Environments → New environment**, create
+   `production`, and allow deployments from the `main` branch only. Then open
+   **Settings → Actions → Runners → New self-hosted runner** and select Linux
+   x64. Keep the registration token private and use it promptly; it expires.
+2. On the app server, run GitHub's download/configure commands as
+   `omnivote-deploy` (created by `setup-server.sh`), adding the required label:
    ```bash
    mkdir -p ~/actions-runner && cd ~/actions-runner
    curl -o actions-runner.tar.gz -L https://github.com/actions/runner/releases/latest/download/actions-runner-linux-x64.tar.gz
    tar xzf actions-runner.tar.gz
    ./config.sh --url https://github.com/<owner>/<repo> --token <TOKEN> \
-               --name omnivote-server --labels self-hosted --unattended
+               --name omnivote-production --labels omnivote-production --unattended
    sudo ./svc.sh install && sudo ./svc.sh start
    ```
-3. Give the runner account sudo for the two privileged commands:
+   GitHub supplies the standard `self-hosted`, `linux`, and `x64` labels
+   automatically. The deploy job runs `actions/setup-node` to provide Node 20.
+   This account owns and can update `/var/www/omnivote`; keep the production
+   `.env` untracked with mode `640`.
+3. Give the runner account passwordless sudo only for the privileged operations
+   used by `deploy.sh` (use the same absolute command paths):
    ```bash
-   echo "$USER ALL=(root) NOPASSWD: /usr/bin/systemctl restart php8.4-fpm, /usr/bin/chown" \
+   printf '%s\n' "$USER ALL=(root) NOPASSWD: /bin/chown -R omnivote-deploy:www-data /var/www/omnivote/backend-laravel/storage /var/www/omnivote/backend-laravel/bootstrap/cache, /bin/systemctl restart omnivote-worker.service, /bin/systemctl restart php8.4-fpm, /bin/systemctl enable --now omnivote-backup.timer" \
      | sudo tee /etc/sudoers.d/omnivote-runner
    sudo chmod 440 /etc/sudoers.d/omnivote-runner
+   sudo visudo -cf /etc/sudoers.d/omnivote-runner
    ```
-4. Verify it shows **Idle** under Settings → Actions → Runners.
+   Install the worker and backup units before the first deploy (see the steps
+   above); deploy now fails explicitly if either unit is unavailable.
+4. Verify the runner is **Idle** with the `omnivote-production` label under
+   **Settings → Actions → Runners**. Confirm `production` allows `main` under
+   **Settings → Environments**.
 
 ### One-time: make the server repo a clean mirror
 
@@ -404,11 +445,6 @@ server-only edits are moved into the repo or stashed first.
    on `main` for CI/CD to have anything to run).
 2. Push a trivial commit to `main` and watch **Actions** — `test` must pass,
    then `deploy` runs on the runner.
-
-If you can already SSH to the server from the internet, you can skip the
-self-hosted runner: replace the `deploy` job's `runs-on: self-hosted` with
-`runs-on: ubuntu-latest` and add an `appleboy/ssh-action` step that runs
-`bash /var/www/omnivote/deploy/deploy.sh` (store the key as a GitHub secret).
 
 ---
 
@@ -428,8 +464,8 @@ After changing these values, clear Laravel's cached config:
 
 ```bash
 cd /var/www/omnivote/backend-laravel
-sudo -u www-data php artisan config:clear
-sudo -u www-data php artisan config:cache
+sudo -u omnivote-deploy php artisan config:clear
+sudo -u omnivote-deploy php artisan config:cache
 sudo systemctl restart php8.4-fpm
 sudo systemctl reload nginx
 ```
