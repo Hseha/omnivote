@@ -54,8 +54,12 @@ check_sudo() {
    exit 1
  fi
 }
-check_sudo /bin/chown -R omnivote-deploy:www-data \
- "$APP_DIR/backend-laravel/storage" "$APP_DIR/backend-laravel/bootstrap/cache"
+PERMISSION_HELPER=/usr/local/sbin/omnivote-deploy-permissions
+if [ ! -x "$PERMISSION_HELPER" ]; then
+  echo "ERROR: required root-owned permission helper is missing: $PERMISSION_HELPER" >&2
+  exit 1
+fi
+check_sudo "$PERMISSION_HELPER"
 check_sudo /bin/systemctl restart omnivote-worker.service
 check_sudo /bin/systemctl restart php8.4-fpm
 check_sudo /bin/systemctl enable --now omnivote-backup.timer
@@ -152,13 +156,9 @@ log "Rebuilding caches (config/route/view)"
 "$PHP" artisan view:cache
 
 log "Fixing storage permissions"
-# Absolute binary paths, deliberately, for every command run through sudo: the
-# sudoers rule on the server grants specific binaries literally (Cmnd_Alias in
-# deploy/README.md), and `sudo chown ...` would not match such a rule — the
-# deploy would then stop here asking for a password CI cannot type.
-sudo /bin/chown -R omnivote-deploy:www-data "$APP_DIR/backend-laravel/storage" "$APP_DIR/backend-laravel/bootstrap/cache"
-chmod -R g+rwX storage bootstrap/cache
-find storage bootstrap/cache -type d -exec chmod g+s {} +
+# The root-owned helper deliberately excludes storage/app/backups, whose
+# www-data ownership and restrictive mode must survive every deploy.
+sudo "$PERMISSION_HELPER"
 
 log "Restarting queue worker + php-fpm"
 # Signal the running worker to finish its current job, then restart its systemd
