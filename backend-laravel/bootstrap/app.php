@@ -62,9 +62,9 @@ return Application::configure(basePath: dirname(__DIR__))
             // `withMiddleware()` runs during bootstrap *before* the config
             // repository is bound, so TrustedHosts::patterns() (which reads
             // config('app.url') et al) would fatal here and take the whole
-            // application down. TrustHosts::at() accepts `array|callable` and
-            // invokes the callable inside handle(), where config exists.
-            ->trustHosts(at: [TrustedHosts::class, 'patterns'], subdomains: false)
+            // application down. Pass a closure because Laravel treats an array
+            // callable as a list of literal host patterns.
+            ->trustHosts(at: fn (): array => TrustedHosts::patterns(), subdomains: false)
             // There is no named `login` route (the console is a React SPA), so
             // the framework's guard-redirect default would hit an undefined
             // route and 500. API sessions are always JSON: forcing a null
