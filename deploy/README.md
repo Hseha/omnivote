@@ -385,7 +385,8 @@ git push origin main
    │
    ├─ test  (GitHub-hosted): phpunit + npm lint/build + flutter analyze/test
    │        └─ fails → deploy never runs
-   └─ deploy (self-hosted runner on the app server) → deploy/deploy.sh
+   └─ deploy (temporary GitHub-hosted runner → Tailscale → restricted SSH)
+            → deploy/deploy.sh on the app server
             ├─ git fetch && git reset --hard origin/main
             ├─ composer install --no-dev
             ├─ php artisan migrate --force
@@ -393,58 +394,112 @@ git push origin main
             └─ systemctl restart php8.4-fpm
 ```
 
-### One-time: install the self-hosted runner (on the app server)
+Do **not** install a persistent GitHub Actions runner on this production server.
+This repository is public, so an unsafe workflow change could execute code on a
+persistent production runner. The deploy job instead uses a disposable hosted
+runner, joins the tailnet with GitHub OIDC, and connects over SSH. It runs only
+after CI succeeds on `main`; pull-request jobs do not receive production
+environment credentials.
 
-A self-hosted runner makes an **outbound** connection to GitHub, so the server
-stays private (no inbound SSH or open ports needed — works fine over Tailscale).
-Use a **repository-level runner** on the app server and give it the
-`omnivote-production` label. The deploy job requires that label and uses the
-GitHub `production` environment, which is restricted to the `main` branch.
+### One-time: configure GitHub and Tailscale
 
-1. On GitHub: **Settings → Environments → New environment**, create
-   `production`, and allow deployments from the `main` branch only. Then open
-   **Settings → Actions → Runners → New self-hosted runner** and select Linux
-   x64. Keep the registration token private and use it promptly; it expires.
-2. On the app server, run GitHub's download/configure commands as
-   `omnivote-deploy` (created by `setup-server.sh`), adding the required label:
+1. In GitHub **Settings → Environments**, create `production` and restrict
+   deployments to the `main` branch. Protect `main` so changes are reviewed
+   before merging.
+2. In the Tailscale admin console, create an OpenID Connect trust credential
+   for GitHub Actions:
+   - Issuer: `https://token.actions.githubusercontent.com`
+   - Subject: `repo:Hseha/omnivote:environment:production`
+   - Tag: `tag:omnivote-ci`
+   - Scope: `auth_keys` only
+
+   Record its client ID and audience; these are identifiers, not secrets. Add
+   `tag:omnivote-ci` to your tailnet policy and authorize it to reach only the
+   production server's SSH port (TCP 22). Tag the server as
+   `tag:omnivote-server` or use its exact Tailscale IP as the destination.
+   Review existing grants/ACL rules as well: a broader existing rule can
+   override the intended narrow access. See Tailscale's
+   [GitHub Action](https://tailscale.com/kb/1276/github-action) and
+   [workload identity federation](https://tailscale.com/kb/1581/workload-identity-federation)
+   documentation.
+3. In the GitHub `production` environment, add these variables:
+   - `TS_OAUTH_CLIENT_ID`: client ID from the Tailscale credential
+   - `TS_AUDIENCE`: audience from the Tailscale credential
+   - `DEPLOY_HOST`: server Tailscale DNS name (for example,
+     `debian.tail7e9e1e.ts.net`)
+   - `DEPLOY_KNOWN_HOSTS`: verified SSH host-key line for that DNS name
+
+### One-time: prepare restricted SSH deployment access
+
+Do these steps on the server only after checking the existing account and
+checkout ownership. Do not rerun `setup-server.sh` on the live production
+server just to create a deploy account; that script also changes server
+configuration.
+
+1. Confirm `omnivote-deploy` exists, can write the `/var/www/omnivote` checkout,
+   and belongs to `www-data`. The checkout must contain the production
+   `backend-laravel/.env` with mode `640`. Preserve the existing backup
+   directory's `www-data` access.
+2. Generate a dedicated Ed25519 SSH key on a trusted admin computer (not in the
+   public repository). Store the **private** key as the `DEPLOY_SSH_PRIVATE_KEY`
+   secret in the GitHub `production` environment. Do not paste it into chat or
+   commit it. Install only the public key for `omnivote-deploy`, with a
+   forced-command restriction:
    ```bash
-   mkdir -p ~/actions-runner && cd ~/actions-runner
-   curl -o actions-runner.tar.gz -L https://github.com/actions/runner/releases/latest/download/actions-runner-linux-x64.tar.gz
-   tar xzf actions-runner.tar.gz
-   ./config.sh --url https://github.com/<owner>/<repo> --token <TOKEN> \
-               --name omnivote-production --labels omnivote-production --unattended
-   sudo ./svc.sh install && sudo ./svc.sh start
+   sudo install -d -o omnivote-deploy -g omnivote-deploy -m 700 \
+     /home/omnivote-deploy/.ssh
+   sudoedit /home/omnivote-deploy/.ssh/authorized_keys
    ```
-   GitHub supplies the standard `self-hosted`, `linux`, and `x64` labels
-   automatically. The deploy job runs `actions/setup-node` to provide Node 20.
-   This account owns and can update `/var/www/omnivote`; keep the production
-   `.env` untracked with mode `640`.
-3. Give the runner account passwordless sudo only for the privileged operations
-   used by `deploy.sh` (use the same absolute command paths):
-   ```bash
-   printf '%s\n' "$USER ALL=(root) NOPASSWD: /bin/chown -R omnivote-deploy:www-data /var/www/omnivote/backend-laravel/storage /var/www/omnivote/backend-laravel/bootstrap/cache, /bin/systemctl restart omnivote-worker.service, /bin/systemctl restart php8.4-fpm, /bin/systemctl enable --now omnivote-backup.timer" \
-     | sudo tee /etc/sudoers.d/omnivote-runner
-   sudo chmod 440 /etc/sudoers.d/omnivote-runner
-   sudo visudo -cf /etc/sudoers.d/omnivote-runner
-   ```
-   Install the worker and backup units before the first deploy (see the steps
-   above); deploy now fails explicitly if either unit is unavailable.
-4. Verify the runner is **Idle** with the `omnivote-production` label under
-   **Settings → Actions → Runners**. Confirm `production` allows `main` under
-   **Settings → Environments**.
 
-### One-time: make the server repo a clean mirror
+   Put one line in `authorized_keys`, prefixing the generated public key:
+   `restrict,command="/usr/local/sbin/omnivote-deploy" ssh-ed25519 ...`.
+   Set the file owner to `omnivote-deploy` and mode to `600`. Install this
+   root-owned wrapper at `/usr/local/sbin/omnivote-deploy`:
+   ```bash
+   #!/bin/sh
+   set -eu
+   exec /bin/bash /var/www/omnivote/deploy/deploy.sh
+   ```
+
+   Install it as root-owned and executable (`root:root`, mode `755`). The SSH
+   key cannot request a shell or forward ports; every connection runs only the
+   deploy script.
+3. Give `omnivote-deploy` passwordless sudo only for the exact operations
+   `deploy.sh` needs. First install its root-owned permission helper from the
+   reviewed `main` checkout:
+   ```bash
+   sudo install -o root -g root -m 0755 \
+     /var/www/omnivote/deploy/fix-runtime-permissions.sh \
+     /usr/local/sbin/omnivote-deploy-permissions
+   sudo stat -c '%U:%G %a %n' /usr/local/sbin/omnivote-deploy-permissions
+   ```
+   It preserves `storage/app/backups` as `www-data:www-data` mode `2700`, and
+   refuses to run if that directory is missing or has different permissions.
+   Then create `/etc/sudoers.d/omnivote-deploy` with:
+   ```sudoers
+   omnivote-deploy ALL=(root) NOPASSWD: /usr/local/sbin/omnivote-deploy-permissions, /bin/systemctl restart omnivote-worker.service, /bin/systemctl restart php8.4-fpm, /bin/systemctl enable --now omnivote-backup.timer
+   ```
+   Validate it with `sudo visudo -cf /etc/sudoers.d/omnivote-deploy`; keep
+   mode `440`. Do not grant general passwordless sudo.
+4. Verify the SSH host key out of band before adding its known-hosts line to
+   `DEPLOY_KNOWN_HOSTS`. Compare the server's Ed25519 host-key fingerprint
+   (`sudo ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`) with the key
+   obtained over the trusted tailnet connection. Do not trust an unverified
+   `ssh-keyscan` result.
 
 The deploy script does `git reset --hard origin/main`, which **discards any
-server-local edits** (your `.env` is untracked, so it survives). Make sure any
-server-only edits are moved into the repo or stashed first.
+server-local tracked edits**. Confirm the checkout is a clean mirror first;
+the untracked production `.env` survives.
 
 ### First deploy
 
-1. Commit + push this updated code (the workflow and `deploy/deploy.sh` must be
-   on `main` for CI/CD to have anything to run).
-2. Push a trivial commit to `main` and watch **Actions** — `test` must pass,
-   then `deploy` runs on the runner.
+1. Confirm the `production` environment variables and private-key secret are
+   set, the OIDC credential is restricted to the subject above, the tailnet
+   policy allows only SSH to this server, and the server-side forced command
+   and sudoers rule pass review.
+2. Merge the workflow to `main`. Watch **Actions**: `test` and `size` must pass
+   before the ephemeral hosted deploy job starts. Verify the run log and
+   `/up`, `/admin/`, and `/api/election/status` after deployment.
 
 ---
 
