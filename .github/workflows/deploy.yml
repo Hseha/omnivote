@@ -105,16 +105,6 @@ jobs:
           chmod +x tool/release_size.sh
           ./tool/release_size.sh build
 
-      - name: Keep the APK (and its symbols) as an artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: omnivote-release-apk-arm64
-          path: |
-            user-flutter/build/app/outputs/flutter-apk/app-release.apk
-            user-flutter/build/symbols/**
-          retention-days: 14
-
   deploy:
     name: Deploy
     needs: [test, size]
