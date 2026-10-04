@@ -70,6 +70,11 @@ jobs:
           ref: ${{ steps.source.outputs.head_sha }}
           fetch-depth: 0
 
+      - name: Set up Android SDK tools
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platforms;android-35 build-tools;35.0.0
+
       - name: Download APKs from the smoke-tested run
         uses: actions/download-artifact@v4
         with:
