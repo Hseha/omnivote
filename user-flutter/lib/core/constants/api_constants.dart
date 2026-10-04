@@ -1,6 +1,6 @@
 class ApiConstants {
-  // Production default targets the Tailscale server over HTTPS; override with
-  // --dart-define=API_BASE_URL=https://... for local dev on an emulator
+  // Production default targets the public API-only Tailscale Funnel over
+  // HTTPS. Override with --dart-define=API_BASE_URL=... for local development
   // (e.g. http://10.0.2.2:8000/api on the Android emulator).
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',

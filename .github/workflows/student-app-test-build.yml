@@ -1,0 +1,187 @@
+name: Student app test build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: student-app-test-build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Test and build signed APKs
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Install dependencies
+        working-directory: user-flutter
+        run: flutter pub get
+
+      - name: Analyze
+        working-directory: user-flutter
+        run: flutter analyze
+
+      - name: Test
+        working-directory: user-flutter
+        run: flutter test
+
+      - name: Validate public API and signing inputs
+        env:
+          API_BASE_URL: ${{ vars.PRODUCTION_API_BASE_URL }}
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
+          SYMBOLS_PASSPHRASE: ${{ secrets.RELEASE_SYMBOLS_ARCHIVE_PASSPHRASE }}
+        run: |
+          set -Eeuo pipefail
+          : "${API_BASE_URL:?Set PRODUCTION_API_BASE_URL in the production environment}"
+          : "${KEYSTORE_BASE64:?Set the Android release signing secrets in the production environment}"
+          : "${STORE_PASSWORD:?Set the Android release signing secrets in the production environment}"
+          : "${KEY_ALIAS:?Set the Android release signing secrets in the production environment}"
+          : "${KEY_PASSWORD:?Set the Android release signing secrets in the production environment}"
+          : "${SYMBOLS_PASSPHRASE:?Set RELEASE_SYMBOLS_ARCHIVE_PASSPHRASE in the production environment}"
+
+          case "$API_BASE_URL" in
+            https://*/api) ;;
+            *)
+              echo "PRODUCTION_API_BASE_URL must be an HTTPS URL ending in /api." >&2
+              exit 1
+              ;;
+          esac
+
+          curl --fail --silent --show-error --max-time 20 \
+            --output /dev/null \
+            "$API_BASE_URL/election/status"
+
+      - name: Configure release signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode \
+            > "$RUNNER_TEMP/omnivote-release.jks"
+          chmod 600 "$RUNNER_TEMP/omnivote-release.jks"
+          KEYSTORE_PATH="$RUNNER_TEMP/omnivote-release.jks" \
+          STORE_PASSWORD="$STORE_PASSWORD" \
+          KEY_ALIAS="$KEY_ALIAS" \
+          KEY_PASSWORD="$KEY_PASSWORD" \
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          def escape(value):
+              value = value.replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r")
+              return "".join("\\" + char if char in " =:#!\t" else char for char in value)
+
+          properties = {
+              "storeFile": os.environ["KEYSTORE_PATH"],
+              "storePassword": os.environ["STORE_PASSWORD"],
+              "keyAlias": os.environ["KEY_ALIAS"],
+              "keyPassword": os.environ["KEY_PASSWORD"],
+          }
+          path = Path("user-flutter/android/keystore.properties")
+          path.write_text(
+              "".join(f"{key}={escape(value)}\n" for key, value in properties.items()),
+              encoding="utf-8",
+          )
+          path.chmod(0o600)
+          PY
+          chmod 600 user-flutter/android/keystore.properties
+          keytool -list -keystore "$RUNNER_TEMP/omnivote-release.jks" \
+            -storepass "$STORE_PASSWORD" -alias "$KEY_ALIAS" >/dev/null
+
+      - name: Build obfuscated split APKs
+        working-directory: user-flutter
+        env:
+          API_BASE_URL: ${{ vars.PRODUCTION_API_BASE_URL }}
+        run: |
+          set -Eeuo pipefail
+          flutter build apk --release \
+            --obfuscate \
+            --split-debug-info=build/symbols \
+            --split-per-abi \
+            --dart-define=API_BASE_URL="$API_BASE_URL"
+
+      - name: Verify APK signatures and report sizes
+        run: |
+          set -Eeuo pipefail
+          apksigner="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner -print -quit)"
+          test -n "$apksigner"
+          shopt -s nullglob
+          apks=(user-flutter/build/app/outputs/flutter-apk/*.apk)
+          test "${#apks[@]}" -eq 3
+          expected=(
+            user-flutter/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+            user-flutter/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
+            user-flutter/build/app/outputs/flutter-apk/app-x86_64-release.apk
+          )
+          for apk in "${apks[@]}"; do
+            "$apksigner" verify --verbose "$apk"
+            stat -c '%n %s bytes' "$apk"
+          done
+          for apk in "${expected[@]}"; do
+            test -s "$apk"
+          done
+
+      - name: Encrypt obfuscation symbols
+        env:
+          SYMBOLS_PASSPHRASE: ${{ secrets.RELEASE_SYMBOLS_ARCHIVE_PASSPHRASE }}
+        run: |
+          set -Eeuo pipefail
+          test -n "$(find user-flutter/build/symbols -type f -size +0c -print -quit)"
+          tar -czf "$RUNNER_TEMP/omnivote-symbols.tar.gz" \
+            -C user-flutter/build symbols
+          printf '%s' "$SYMBOLS_PASSPHRASE" > "$RUNNER_TEMP/symbols-passphrase"
+          chmod 600 "$RUNNER_TEMP/symbols-passphrase"
+          gpg --batch --yes --pinentry-mode loopback \
+            --passphrase-file "$RUNNER_TEMP/symbols-passphrase" \
+            --symmetric --cipher-algo AES256 \
+            --output "$RUNNER_TEMP/omnivote-symbols.tar.gz.gpg" \
+            "$RUNNER_TEMP/omnivote-symbols.tar.gz"
+
+      - name: Upload signed APKs for device testing
+        uses: actions/upload-artifact@v4
+        with:
+          name: omnivote-student-test-apks-${{ github.run_number }}
+          path: user-flutter/build/app/outputs/flutter-apk/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload encrypted symbols archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: omnivote-obfuscation-symbols-encrypted-${{ github.run_number }}
+          path: ${{ runner.temp }}/omnivote-symbols.tar.gz.gpg
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Remove temporary signing material
+        if: always()
+        run: |
+          rm -f user-flutter/android/keystore.properties \
+            "$RUNNER_TEMP/omnivote-release.jks" \
+            "$RUNNER_TEMP/omnivote-symbols.tar.gz" \
+            "$RUNNER_TEMP/omnivote-symbols.tar.gz.gpg" \
+            "$RUNNER_TEMP/symbols-passphrase"
