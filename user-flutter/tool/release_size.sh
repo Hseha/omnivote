@@ -16,7 +16,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 APK_SIZE_BUDGET_BYTES="${APK_SIZE_BUDGET_BYTES:-$((24 * 1024 * 1024))}"
-API_BASE_URL="${API_BASE_URL:-https://omnivote.example.com/api}"
+API_BASE_URL="${API_BASE_URL:-https://debian.tail7e9e1e.ts.net/api}"
 MODE="${1:-build}"
 
 mb() { awk -v b="$1" 'BEGIN{printf "%.2f", b/1024/1024}'; }

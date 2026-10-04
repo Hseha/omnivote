@@ -1,0 +1,191 @@
+name: Publish student app release
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_run_id:
+        description: Successful Student app test build run ID whose APK was smoke-tested
+        required: true
+        type: string
+      smoke_test_passed:
+        description: Confirm arm64 APK login and authenticated screen passed on a non-Tailscale device
+        required: true
+        default: false
+        type: boolean
+      release_channel:
+        description: Use a prerelease for device testing, or stable only after smoke testing
+        required: true
+        default: test
+        type: choice
+        options:
+          - test
+          - stable
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: publish-student-app
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish signed APKs
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (inputs.release_channel == 'test' || inputs.smoke_test_passed == true)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Verify the source build run
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_RUN_ID: ${{ inputs.build_run_id }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$BUILD_RUN_ID" =~ ^[0-9]+$ ]] || {
+            echo "Build run ID must be numeric." >&2
+            exit 1
+          }
+          workflow_id="$(gh api "repos/$REPOSITORY/actions/workflows/student-app-test-build.yml" --jq '.id')"
+          run="$(gh api "repos/$REPOSITORY/actions/runs/$BUILD_RUN_ID")"
+          jq -e \
+            --argjson expected_workflow "$workflow_id" \
+            '(.workflow_id == $expected_workflow) and
+             (.event == "workflow_dispatch") and
+             (.head_branch == "main") and
+             (.conclusion == "success")' <<<"$run" >/dev/null || {
+              echo "Run must be a successful Student app test build from main." >&2
+              exit 1
+            }
+          echo "head_sha=$(jq -r '.head_sha' <<<"$run")" >> "$GITHUB_OUTPUT"
+          echo "run_number=$(jq -r '.run_number' <<<"$run")" >> "$GITHUB_OUTPUT"
+
+      - name: Check out the tested source commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.source.outputs.head_sha }}
+          fetch-depth: 0
+
+      - name: Download APKs from the smoke-tested run
+        uses: actions/download-artifact@v4
+        with:
+          name: omnivote-student-test-apks-${{ steps.source.outputs.run_number }}
+          path: release-apks
+          run-id: ${{ inputs.build_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Verify tested release metadata and APK signatures
+        id: release
+        env:
+          RELEASE_CHANNEL: ${{ inputs.release_channel }}
+        run: |
+          set -Eeuo pipefail
+          version="$(sed -n 's/^version:[[:space:]]*//p' user-flutter/pubspec.yaml)"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+\+[0-9]+$ ]] || {
+            echo "pubspec.yaml must use X.Y.Z+N version format." >&2
+            exit 1
+          }
+          release_version="${version%%+*}"
+          if [[ "$RELEASE_CHANNEL" == "test" ]]; then
+            tag="v${release_version}-test.${GITHUB_RUN_NUMBER}"
+          else
+            tag="v$release_version"
+          fi
+          echo "version=$release_version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+          shopt -s nullglob
+          apks=(release-apks/*.apk)
+          test "${#apks[@]}" -eq 3
+          for filename in \
+            app-arm64-v8a-release.apk \
+            app-armeabi-v7a-release.apk \
+            app-x86_64-release.apk; do
+            test -s "release-apks/$filename"
+          done
+          apksigner="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner -print -quit)"
+          test -n "$apksigner"
+          for apk in "${apks[@]}"; do
+            "$apksigner" verify --verbose "$apk"
+            stat -c '%n %s bytes' "$apk"
+          done
+
+          remote_tag="$(git ls-remote --tags origin "refs/tags/$tag")"
+          if [[ -n "$remote_tag" ]]; then
+            echo "Release tag $tag already exists; refusing to replace it." >&2
+            exit 1
+          fi
+
+      - name: Write app-specific release notes
+        env:
+          START_TAG: archive/user-flutter
+          RELEASE_CHANNEL: ${{ inputs.release_channel }}
+        run: |
+          set -Eeuo pipefail
+          git rev-parse --verify "$START_TAG^{commit}" >/dev/null
+          python - <<'PY'
+          import re
+          import subprocess
+          from pathlib import Path
+
+          commits = subprocess.check_output(
+              ["git", "log", "--no-merges", "--format=%s", "archive/user-flutter..HEAD", "--", "user-flutter/"],
+              text=True,
+          ).splitlines()
+          sections = {"Added": [], "Fixed": [], "Changed": []}
+          for subject in commits:
+              match = re.match(r"^([a-zA-Z]+)(?:\([^)]*\))?:\s*(.+)$", subject)
+              kind, summary = (match.group(1).lower(), match.group(2)) if match else ("", subject)
+              if kind in {"feat", "feature"}:
+                  section = "Added"
+              elif kind in {"fix", "bugfix"}:
+                  section = "Fixed"
+              else:
+                  section = "Changed"
+              sections[section].append(summary.rstrip("."))
+
+          notes = ["# OmniVote student app"]
+          for section, items in sections.items():
+              if items:
+                  notes.extend(["", f"## {section}"])
+                  notes.extend(f"- {item}" for item in items)
+          Path("RELEASE_NOTES.md").write_text("\n".join(notes) + "\n", encoding="utf-8")
+          PY
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+          HEAD_SHA: ${{ steps.source.outputs.head_sha }}
+          RELEASE_CHANNEL: ${{ inputs.release_channel }}
+          RELEASE_TITLE: ${{ inputs.release_channel == 'test' && format('OmniVote v{0} Device Test Prerelease', steps.release.outputs.version) || format('OmniVote v{0}', steps.release.outputs.version) }}
+        run: |
+          set -Eeuo pipefail
+          release_args=()
+          if [[ "$RELEASE_CHANNEL" == "test" ]]; then
+            release_args+=(--prerelease)
+          fi
+          gh release create "$RELEASE_TAG" \
+            release-apks/app-arm64-v8a-release.apk \
+            release-apks/app-armeabi-v7a-release.apk \
+            release-apks/app-x86_64-release.apk \
+            --repo "$REPOSITORY" \
+            --title "$RELEASE_TITLE" \
+            --target "$HEAD_SHA" \
+            --notes-file RELEASE_NOTES.md \
+            "${release_args[@]}"
+
+      - name: Verify published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          gh release view "$RELEASE_TAG" --repo "$REPOSITORY" \
+            --json url,assets --jq '{url, assets: [.assets[].name]}'
