@@ -1,0 +1,37 @@
+name: Validate production tailnet access
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Authenticate and ping production
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check required configuration
+        env:
+          TS_OAUTH_CLIENT_ID: ${{ vars.TS_OAUTH_CLIENT_ID }}
+          TS_AUDIENCE: ${{ vars.TS_AUDIENCE }}
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+        run: |
+          set -Eeuo pipefail
+          : "${TS_OAUTH_CLIENT_ID:?Set TS_OAUTH_CLIENT_ID in the production environment}"
+          : "${TS_AUDIENCE:?Set TS_AUDIENCE in the production environment}"
+          : "${DEPLOY_HOST:?Set DEPLOY_HOST in the production environment}"
+
+      - name: Connect to the production tailnet and ping the server
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ vars.TS_OAUTH_CLIENT_ID }}
+          audience: ${{ vars.TS_AUDIENCE }}
+          tags: tag:omnivote-ci
+          ping: ${{ vars.DEPLOY_HOST }}

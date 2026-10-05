@@ -409,13 +409,17 @@ environment credentials.
 2. In the Tailscale admin console, create an OpenID Connect trust credential
    for GitHub Actions:
    - Issuer: `https://token.actions.githubusercontent.com`
-   - Subject: `repo:Hseha/omnivote:environment:production`
+   - Subject: `repo:Hseha@152290531/omnivote@131681826:environment:production`
+     (the exact `sub` claim observed for this repository's production
+     environment; if GitHub shows a different `sub` claim, use that exact value)
+   - Scope: `auth_keys`
    - Tag: `tag:omnivote-ci`
-   - Scope: `auth_keys` only
 
-   Record its client ID and audience; these are identifiers, not secrets. Add
-   `tag:omnivote-ci` to your tailnet policy and authorize it to reach only the
-   production server's SSH port (TCP 22). Tag the server as
+   Record the credential's client ID and audience; these are identifiers, not
+   secrets. In the GitHub `production` environment, set `TS_OAUTH_CLIENT_ID`
+   and `TS_AUDIENCE` to those exact values. The credential must authorize
+   `tag:omnivote-ci`; that tag must exist and be permitted by the tailnet policy
+   to reach only the production server's SSH port (TCP 22). Tag the server as
    `tag:omnivote-server` or use its exact Tailscale IP as the destination.
    Review existing grants/ACL rules as well: a broader existing rule can
    override the intended narrow access. See Tailscale's
@@ -432,6 +436,24 @@ environment credentials.
    `false` (or leave it unset) until the server-side SSH key, helper, and
    sudoers setup is complete. The deploy job will remain skipped while it is
    false.
+
+### Safely validate Tailscale authentication
+
+Before enabling production deployment, run **Validate production tailnet
+access** from **Actions → Validate production tailnet access → Run workflow**,
+selecting the `main` branch. This manual check uses the `production` environment
+and the same Tailscale OIDC client, audience, and tag as deployment, then pings
+the configured `DEPLOY_HOST`. It does not read the SSH deploy key or invoke the
+server deploy command. A successful run confirms GitHub OIDC authentication and
+tailnet reachability; it does not verify SSH authentication or that a release
+can deploy.
+
+If Tailscale reports an unauthorized OIDC token, compare the trust credential's
+issuer, exact subject, audience, and permitted `tag:omnivote-ci` tag with the
+GitHub environment values and this workflow. Keep
+`PRODUCTION_DEPLOY_ENABLED=false` while troubleshooting. The trust-credential
+status indicator may remain until Tailscale receives a token from the issuer;
+use the validation workflow to safely generate that token.
 
 ### One-time: prepare restricted SSH deployment access
 
