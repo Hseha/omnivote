@@ -160,6 +160,12 @@ log "Fixing storage permissions"
 # www-data ownership and restrictive mode must survive every deploy.
 sudo "$PERMISSION_HELPER"
 
+log "Creating public/storage symlink"
+# public/storage (-> ../storage/app/public) carries candidate-photo media the
+# student app fetches via asset('storage/...'). A fresh checkout has no such
+# symlink; PresenceCommand cannot create an existing one, hence --force.
+"$PHP" artisan storage:link --force
+
 log "Restarting queue worker + php-fpm"
 # Signal the running worker to finish its current job, then restart its systemd
 # unit so a dead or stale worker is started with the new release. These services
