@@ -86,6 +86,10 @@ log "5/8  Installing nginx site config"
 cp deploy/nginx-omnivote.conf /etc/nginx/sites-available/omnivote
 sed -i "s|debian.tail7e9e1e.ts.net|$(hostname)|g" /etc/nginx/sites-available/omnivote
 ln -sf /etc/nginx/sites-available/omnivote /etc/nginx/sites-enabled/omnivote
+# The Funnel / tailnet-serve vhost (127.0.0.1:8080). Keep the ts.net
+# servername so `tailscale funnel` and `tailscale serve` host headers match.
+cp deploy/nginx-funnel-api.conf /etc/nginx/sites-available/omnivote-funnel-api
+ln -sf /etc/nginx/sites-available/omnivote-funnel-api /etc/nginx/sites-enabled/omnivote-funnel-api
 rm -f /etc/nginx/sites-enabled/default
 nginx -t
 
