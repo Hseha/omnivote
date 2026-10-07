@@ -185,6 +185,10 @@ systemctl list-timers omnivote-backup.timer
 # 2) nginx vhost + php-fpm pool + queue worker
 sudo cp nginx-omnivote.conf /etc/nginx/sites-available/omnivote
 sudo ln -sf /etc/nginx/sites-available/omnivote /etc/nginx/sites-enabled/omnivote
+# funnel/serve vhost (127.0.0.1:8080) — keeps the ts.net server_name so
+# `tailscale funnel` and `tailscale serve` host headers match
+sudo cp nginx-funnel-api.conf /etc/nginx/sites-available/omnivote-funnel-api
+sudo ln -sf /etc/nginx/sites-available/omnivote-funnel-api /etc/nginx/sites-enabled/omnivote-funnel-api
 sudo rm -f /etc/nginx/sites-enabled/default
 sudo cp php-fpm-pool.conf /etc/php/8.4/fpm/pool.d/omnivote.conf
 sudo cp omnivote-worker.service /etc/systemd/system/
@@ -200,7 +204,11 @@ sudo systemctl restart php8.4-fpm
 
 # 4) verify
 systemctl is-active nginx php8.4-fpm mysql omnivote-worker omnivote-backup.timer
-curl -k https://debian.tail7e9e1e.ts.net/up
+# NOTE: /up is tailnet-only now; over the public Funnel and from the server's
+# own hostname (which resolves to the public ingress) the funnel vhost
+# deliberately returns 404. Resolve via a tailnet IP:
+curl -k --resolve debian.tail7e9e1e.ts.net:443:$(tailscale ip -4) https://debian.tail7e9e1e.ts.net/up
+# public API route: reachable from anywhere
 curl -k https://debian.tail7e9e1e.ts.net/api/election/status
 ```
 
@@ -212,23 +220,48 @@ dev only; the deployed endpoint is nginx + php-fpm.
 
 ## 4. nginx — server block
 
-Copy `deploy/nginx-omnivote.conf`:
+Two vhosts, because of the Tailscale ("ts.net") network layout:
+
+- **`omnivote`** (`deploy/nginx-omnivote.conf`) listens on public `:443`. Serve
+  the HTTPS API + the `/admin/` console from here when connecting over the LAN.
+- **`omnivote-funnel-api`** (`deploy/nginx-funnel-api.conf`) listens on
+  `127.0.0.1:8080` and is the target of `tailscale funnel` (public student API)
+  **and** `tailscale serve` (tailnet clients). Because both tailnet and public
+  traffic land on this same vhost, it gates the admin surface on the
+  `Tailscale-Funnel-Request` header tailscaled sets on every *public* Funnel
+  request (it strips client-supplied values first, so it cannot be spoofed):
+  `/admin/`, `/up`, `/sanctum/`, and `/api/admin/*` return 404 for public
+  callers and are served normally for tailnet clients.
+
+Copy both:
 
 ```bash
 sudo cp deploy/nginx-omnivote.conf /etc/nginx/sites-available/omnivote
 sudo ln -s /etc/nginx/sites-available/omnivote /etc/nginx/sites-enabled/omnivote
+sudo cp deploy/nginx-funnel-api.conf /etc/nginx/sites-available/omnivote-funnel-api
+sudo ln -s /etc/nginx/sites-available/omnivote-funnel-api /etc/nginx/sites-enabled/omnivote-funnel-api
 sudo rm -f /etc/nginx/sites-enabled/default
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
-What it does:
+What it does (both vhosts):
 
 - **Port 80 → 301 → HTTPS** (your repo already enforces HTTPS everywhere).
 - `root /var/www/omnivote/backend-laravel/public` — the only folder nginx can
-  see; `.env`, `.git`, `vendor/src` stay unreachable.
+  see; `.env`, `.git`, `vendor/src` stay unreachable. Dotfiles are denied.
 - `try_files ... /index.php` sends every request to Laravel's front controller.
 - `location ~ \.php$` → `fastcgi_pass unix:/run/php/php8.4-fpm.sock` (the php-fpm socket).
-- Dotfiles are denied, uploads capped at 25 MB (registrar CSV import).
+- Uploads capped at 25 MB (registrar CSV import).
+
+Caveats:
+
+- The two vhosts must stay in sync; `deploy.sh` does not rewrite
+  `/etc/nginx`, so copy new versions during deploys by hand.
+- The 404-for-funnel gate assumes tailscaled removes client-supplied
+  `Tailscale-Funnel-Request` values (`addTailscaleIdentityHeaders`). Verify
+  after a tailscale upgrade: tailnet `/up` must stay 200 and public `/up` 404.
+- The admin console is intentionally **tailnet-only**. LAN access via the
+  omnivote vhost still works; the public Funnel always gets 404 on `/admin/`.
 
 ---
 
@@ -340,15 +373,16 @@ Optional: ensure nothing listens on port 8000 anymore (`sudo ss -tlnp | grep 800
 ## 9. Verify the 24/7 setup
 
 ```bash
-# health endpoint Laravel ships with (bootstrap routes: health: '/up')
-curl https://debian.tail7e9e1e.ts.net/up
+# health endpoint Laravel ships with (bootstrap routes: health: '/up').
+# NOTE: resolve via a tailnet IP (or loopback) — over the public Funnel the
+# funnel vhost intentionally returns 404 for /up and /sanctum/ and /admin/.
+curl -k --resolve debian.tail7e9e1e.ts.net:443:100.84.115.25 https://debian.tail7e9e1e.ts.net/up
 
 # services that must never die
 systemctl is-enabled php8.4-fpm nginx mysql omnivote-worker
 systemctl is-active   php8.4-fpm nginx mysql omnivote-worker
 
-# API smoke test
-curl -i -k https://debian.tail7e9e1e.ts.net/sanctum/csrf-cookie
+# API smoke test (public + tailnet; these are public routes, both must work)
 curl -i -k https://debian.tail7e9e1e.ts.net/api/election/status
 ```
 
@@ -572,7 +606,8 @@ sudo systemctl reload nginx
 | File | Purpose |
 |---|---|
 | `README.md` | this guide |
-| `nginx-omnivote.conf` | nginx server block (HTTP→HTTPS + FastCGI) |
+| `nginx-omnivote.conf` | nginx server block (HTTP→HTTPS + FastCGI), public `:443` |
+| `nginx-funnel-api.conf` | nginx vhost for `127.0.0.1:8080` (tailscale funnel/serve); tailnet-only admin gate |
 | `php-fpm-pool.conf` | php-fpm pool tuning (dynamic workers) |
 | `omnivote-worker.service` | Laravel queue worker, 24/7 |
 | `setup-server.sh` | one-shot provisioning for Ubuntu 24.04 / Debian 12 |
