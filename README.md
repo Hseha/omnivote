@@ -1,204 +1,207 @@
 # OmniVote
 
-SSG election system for one school: student self-enrollment, secret-ballot voting,
-announcements, and results — with a console for the election committee.
 
-**This is the index for the whole repo** — per-folder READMEs drifted out of sync, so add a
-section here instead of creating a new one. The one exception is
-[`deploy/README.md`](deploy/README.md), the 457-line production runbook, which deliberately
-stays beside the scripts it describes.
+OmniVote is a school election system with student enrollment, secret-ballot voting,
+announcements, election results, and an administration console.
 
-[Repository map](#repository-map) · [Run it locally](#run-it-locally) · [Tests](#tests) ·
-[Backend](#backend-layout) · [Console](#admin-console) · [Student app](#student-app) ·
-[Things that bite](#things-that-bite) · [Docs index](#docs-index) · [Deploy](#deploy) ·
-[House rules](#house-rules)
+This README is the repository index and deployment starting point. The detailed
+server procedure lives in [`deploy/README.md`](deploy/README.md); use that runbook
+for commands and server-specific configuration rather than treating this overview
+as a substitute.
+
+## Before deploying
+
+Production deployment is not just a `git push`. Complete the server setup and
+launch checks in [`deploy/README.md`](deploy/README.md) first. At a minimum:
+
+- Use a supported Ubuntu 24.04 or Debian 12 server with PHP 8.4.1+, nginx,
+  PHP-FPM, MySQL, Node.js 20, and the required PHP extensions.
+- Create the production checkout and its **untracked** `backend-laravel/.env`.
+  Configure `APP_ENV=production`, `APP_DEBUG=false`, an HTTPS `APP_URL`, a
+  persistent `APP_KEY`, the production database credentials, and
+  `SESSION_SECURE_COOKIE=true`. Never copy development credentials into
+  production or commit a real `.env`.
+- Install and enable the nginx/PHP-FPM configuration, Laravel queue worker, and
+  encrypted backup timer. Run
+  `php artisan security:assert-production-config` and verify the `/up` health
+  endpoint before opening the service to users.
+- Configure the GitHub `production` environment for automatic deployment. The
+  deploy job uses a disposable GitHub-hosted runner that joins the tailnet via
+  GitHub OIDC (Tailscale trust credential) and connects to the server over
+  restricted SSH. Do **not** install a persistent runner on the production
+  server; see the runbook for the GitHub/Tailscale one-time setup.
+- Confirm the recovery plan and test a backup restore before election day.
+
+After setup, pushes to `main` run CI: `test`, then the `Release size budget`
+job, then — only for `main` — the `Deploy` job. Deployment runs on a disposable
+GitHub-hosted runner that authenticates to the tailnet with GitHub OIDC and
+invokes a restricted SSH deploy command on the server. The deploy script resets
+the server checkout to `origin/main`, so do not keep tracked server-only edits
+there. The server `.env` is untracked and remains outside that reset.
+
+**Do not deploy until the complete preflight, first-deploy, and verification
+steps in [`deploy/README.md`](deploy/README.md) pass.** In particular, the
+deployment script expects the server, `.env`, systemd units, and the
+GitHub/Tailscale identity to be provisioned before it runs.
 
 ## Repository map
 
-| Path | What it is | Stack |
+| Path | Purpose | Stack |
 |---|---|---|
-| `backend-laravel/` | REST API, session auth, role/permission + phase enforcement. **Authoritative** for every rule. | PHP ^8.4.1, Laravel ^13.17, Sanctum ^4 (cookie sessions), google2fa, MySQL/MariaDB |
-| `admin-react/` | Committee / registrar / auditor console (SPA). | React 19 + Vite 8, plain JS (no TS, no router lib) |
-| `user-flutter/` | Student app (Android APK; web build also works). | Flutter, Dart ^3.13, Riverpod |
-| `deploy/` | VPS bring-up, nginx/PHP-FPM/systemd units, hardened config, backup tooling. | Bash, nginx, systemd, MariaDB |
-| `docs/` | Specs, audits, API contract, ops guides, process docs. | Markdown |
-| `.github/workflows/deploy.yml` | `test` job, then gated `deploy` on a self-hosted runner over Tailscale. | GitHub Actions |
+| [`backend-laravel/`](backend-laravel/) | Authoritative API, election rules, authentication, authorization, and phase enforcement | PHP 8.4.1+, Laravel 13, Sanctum, MySQL |
+| [`admin-react/`](admin-react/) | Committee, registrar, and auditor administration console | React 19, Vite |
+| [`user-flutter/`](user-flutter/) | Student mobile app; Flutter web builds are also supported | Flutter, Dart, Riverpod |
+| [`deploy/`](deploy/) | Server provisioning, nginx/PHP-FPM/systemd configuration, backups, and deployment scripts | Bash, nginx, systemd |
+| [`docs/`](docs/) | Architecture, API contract, product references, audits, and operations guides | Markdown |
+| [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) | CI checks, Android release-size gate, and gated production deployment | GitHub Actions |
 
-## Run it locally
+## Run locally
+
+Requirements: PHP and Composer, Node.js and npm, Flutter, and the PHP SQLite
+driver for backend tests. Use separate terminals for the API and console.
+
+### Backend API
 
 ```bash
-# 1. API → http://127.0.0.1:8000  (the React proxy and Flutter dev builds expect this port)
 cd backend-laravel
-composer install && cp -n .env.example .env && php artisan key:generate
-php artisan migrate:fresh --seed     # catalog + the three panel logins
-#   Panel-login passwords are never committed: the seeder prints a generated one
-#   per account (copy it now), or set SEED_DEV_PASSWORD to choose your own.
-php artisan serve --host=127.0.0.1 --port=8000   # or ./serve-dev.sh
+composer install
+cp -n .env.example .env
+php artisan key:generate
+php artisan migrate:fresh --seed
+php artisan serve --host=127.0.0.1 --port=8000
+```
 
-# 2. Console → http://localhost:5173  (proxies /api and /sanctum to 127.0.0.1:8000)
-cd ../admin-react && npm install && npm run dev
+The development seeders provide catalog data and local panel accounts. They
+generate passwords for development; never use these accounts or development
+seed data as production credentials.
 
-# 3. Student app (Android emulator: 10.0.2.2 reaches the host machine)
-cd ../user-flutter && flutter pub get
+### Admin console
+
+```bash
+cd admin-react
+npm ci
+npm run dev
+```
+
+The Vite development proxy forwards `/api` and `/sanctum` to the local API.
+
+### Student app
+
+```bash
+cd user-flutter
+flutter pub get
 flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8000/api
 ```
 
-## Tests
+`10.0.2.2` lets an Android emulator reach the host machine. For a different
+device or API host, set `API_BASE_URL` to the appropriate address.
+
+## Checks
+
+Run the relevant checks before proposing or deploying changes:
 
 ```bash
+# Backend tests (pdo_sqlite is required)
 cd backend-laravel
-./bin/test-local                # or: composer test:local
-cd ../user-flutter && flutter test   # 10 test files
-cd ../admin-react && npm run lint    # no JS test runner is configured
+./bin/test-local
+
+# Admin console
+cd ../admin-react
+npm ci
+npm run lint
+npm run build
+
+# Student app
+cd ../user-flutter
+flutter pub get
+flutter analyze
+flutter test
 ```
 
-Backend suite today: **185 tests / 832 assertions**, 20 feature + 3 unit files. `phpunit.xml`
-uses sqlite `:memory:` plus `array` session/cache stores, so tests never touch a real database.
+The backend tests use an in-memory SQLite database and array-backed session and
+cache stores; they do not exercise a production database. The test bootstrap
+fails if `pdo_sqlite` is unavailable instead of silently skipping feature tests.
+CI installs the required PHP extension and runs these checks. It also builds the
+obfuscated arm64 release APK and enforces the size budget in
+[`user-flutter/tool/release_size.sh`](user-flutter/tool/release_size.sh).
 
-**`pdo_sqlite` is required, and the suite refuses to start without it.** Every feature test
-builds an isolated in-memory SQLite schema, so the driver is mandatory. `tests/bootstrap.php`
-checks for it once at startup and `exit(1)`s with fix instructions if it is missing — it does
-*not* skip. This matters: the per-test `markTestSkipped` guard it replaced produced a green
-`185 tests / 21 passed / 164 skipped / exit 0` on any machine missing the extension, which
-silently declined to verify ballot secrecy, electorate scoping and login backoff.
+## Application overview
 
-Use `bin/test-local` rather than `php artisan test` on a box where the driver is installed but
-not enabled in `php.ini`. `artisan test` re-executes phpunit as a subprocess, so
-`-d extension=…` flags never reach it; `bin/test-local` loads the driver only when it is
-actually missing and calls `vendor/bin/phpunit` directly. CI installs `pdo_sqlite` via
-`shivammathur/setup-php`, so it needs none of this.
+### Backend
 
-## Backend layout
+The Laravel API is the authority for election rules and access control. Routes
+use role, permission, password-change, and election-phase middleware; client-side
+visibility is only a user-interface convenience. The backend also owns ballot
+handling, tallying, audit records, notifications, two-factor authentication,
+and production configuration checks.
 
-```
-app/Http/Controllers/       21 controllers + Concerns/  (Admin* prefix, no Admin/ dir)
-app/Http/Middleware/        CheckPhase, EnsurePermission, EnsureRole,
-                            EnsurePasswordChanged, ApplySessionLifetime, SecurityHeaders
-app/Http/Requests/          6 form requests (validation lives here, not in controllers)
-app/Support/                ElectionTally, BackupManager, AppSettings, Notifier, TwoFactor,
-                            RegistrarCode, TemporaryPassword, TermArchive, DepartmentCatalog,
-                            TrustedHosts, ProductionConfigGuard
-app/Console/Commands/       omnivote:backup, security:assert-production-config,
-                            security:rotate-student-credentials
-app/Models/                 User, Phase, Position, Candidate, BallotDraft, VoteLedger, …
-routes/api.php              ~88 routes: per-route middleware + named rate limiters
-config/permissions.php      permission → role map (authorization source of truth)
-database/migrations/        38 migrations
-```
+Ballot secrecy is a core constraint: voter records must not be linkable to
+individual selections. Do not add a voter-to-candidate relationship or weaken
+the anonymized tally and receipt design.
 
-Middleware aliases (in `bootstrap/app.php`): `checkPhase:<phase>`, `permission:<key>`,
-`role:<role>`, `passwordChanged`. `SecurityHeaders` and `ApplySessionLifetime` are
-*prepended* globally; trusted proxies and trusted hosts are configured in the same file.
+### Admin console
 
-## Admin console
+The React single-page app serves committee, registrar, and auditor workflows.
+Production serves it under `/admin/` on the same origin as the API. The console
+authenticates with Sanctum session cookies and CSRF protection; it does not use
+bearer tokens. `VITE_API_BASE_URL` is normally unset in production, allowing
+same-origin requests.
 
-Views are switched in `App.jsx` (there is no router): `allowedViews` / `defaultView` from
-`lib/permissions.js` decide what a role can see — the API re-checks every call, so hiding a
-button is a convenience, never a control.
+### Student app
 
-- `src/lib/` — `api.js` (axios, `withCredentials`, CSRF bootstrap via `/sanctum/csrf-cookie`),
-  `AuthContext.jsx`, `auth.js`, `permissions.js`, `ThemeContext.jsx`,
-  `ElectionStatusContext.jsx`, `branding.js`, `avatar.js`, `mobileShell.js`
-- `src/components/` — `Sidebar`, `Header`, `DashboardWidgets`, `NotificationCenter`,
-  `PhaseStatusDialog`, `MobileMenuButton`
-- Screens are flat in `src/`: `Candidates`, `StudentRegistry`, `ElectionSetup`, `Results`,
-  `Settings`, `UserManagement`, `Departments`, `SsgPresident`, `Announcements`,
-  `TwoFactorEnrollmentScreen` / `TwoFactorSetup`, `AdminLogin`, `ForgotPassword`,
-  `ResetPassword` (each with a sibling `.css`)
-- `VITE_API_BASE_URL` (see `.env.example`) overrides the API origin; empty means
-  same-origin, which is how production serves it.
+The Flutter app authenticates to the API with a Sanctum bearer token. Native
+token storage uses platform secure storage; web token storage is in memory.
+Students who need to reset a password use the registrar-issued activation code.
+The API base URL can be overridden with
+`--dart-define=API_BASE_URL=https://your-host/api`.
 
-## Student app
+## Deployment and operations
 
-`lib/core/constants/api_constants.dart` reads `--dart-define=API_BASE_URL` and defaults to
-the production Tailscale origin. Students recover a password with the registrar-issued activation
-code (`POST /api/auth/password/reset-with-code`), because a name-slug handle has no mailbox.
+Read [`deploy/README.md`](deploy/README.md) for the supported deployment
+procedure, including:
 
-**The two clients authenticate differently, deliberately.** The console is cookie-only:
-`admin-react/src/lib/api.js` bootstraps CSRF from `/sanctum/csrf-cookie` and sends
-`withCredentials` + `withXSRFToken`, never a bearer token. The student app is the reverse — the API
-issues a Sanctum token at login (`createToken('mobile')` in `StudentAuthController`), and
-`api_client.dart` sends it as `Authorization: Bearer`. `TokenStore` keeps that token in memory on
-web (so it is never written to `localStorage`/`shared_preferences`) and in platform secure storage
-on native. Both therefore need `withCredentials`-style cookie support too, because Sanctum
-issues the session cookie alongside the token.
+- One-time host provisioning with `deploy/setup-server.sh`
+- Production `.env` configuration and the production safety check
+- nginx, PHP-FPM, queue worker, backup timer, and HTTPS setup
+- GitHub `production` environment, Tailscale OIDC trust credential, and
+  restricted SSH setup for automatic deployment
+- First deployment, verification, client access, and troubleshooting
 
-## Things that bite
+The production stack uses nginx and PHP-FPM; `php artisan serve` is for local
+development only. The deployment process runs database migrations and refreshes
+Laravel caches. Backups are encrypted; configure and verify the timer and a
+restore procedure before collecting real election data.
 
-- **The two clients use different auth transports.** The console is Sanctum session-cookie only
-  (`withCredentials` + `X-XSRF-TOKEN`); the student app carries a Sanctum bearer token
-  (`createToken('mobile')`). Neither client is a JWT setup, and the API re-checks every call —
-  hiding a button in the console is a convenience, never a control.
-- **CSRF token mismatch** on an admin POST usually means the SPA origin is missing from
-  `config/cors.php` `allowed_origins` — not a token bug. Only `POST /api/auth/login` is
-  exempt from CSRF in `routes/api.php`.
-- **A new student-facing route needs its own `checkPhase:` gate.** Several were missing one
-  in the 2026-09-26 audit; the middleware will not guess for you.
-- **Ballots are secret by design.** The ledger keeps no candidate reference per voter and
-  receipts are HMACs of the anonymised tally — nothing may re-link a voter to a ballot.
-- `AuditLog` stores changes in the **`details`** JSON column; there is no `description`.
-- Never rename anything under `storage/` — vote photos and ballot backups live there.
-- `artisan`/`php -l` need the right `PHP_INI_SCAN_DIR` (see [Tests](#tests)), or SQLite
-  features disappear and results get misleading.
+## Authentication and configuration notes
 
-## Docs index
+- **Admin console:** Sanctum cookie session plus CSRF token. For a separate
+  frontend origin, configure the exact origin in Laravel's CORS and Sanctum
+  stateful-domain settings; do not use wildcard origins for authenticated
+  requests.
+- **Student app:** Sanctum bearer token. Do not treat this as a JWT flow.
+- **Production safety:** production requests are guarded against debug mode,
+  insecure session cookies, non-HTTPS `APP_URL`, and missing `APP_KEY`. The
+  deployment script runs the corresponding Artisan safety check before serving
+  the new release.
+- **Secrets:** `.env`, signing keys, and keystore files must stay out of git.
+  Preserve an existing `APP_KEY` when retaining an existing database; rotating
+  it can invalidate encrypted data and sessions.
+- **API changes:** give each new student-facing route its required
+  `checkPhase:` middleware and keep validation and authorization enforced by the
+  API.
 
-Code is the source of truth: when a doc and the code disagree, the code wins and the doc
-gets corrected or labelled historical. Filenames are load-bearing — ~90 links point at
-`docs/…` paths, including from migration comments and `config/session.php`, so don't move
-or rename files in there.
+## Documentation index
 
-**Start here**
-
-| Doc | Covers |
+| Document | Purpose |
 |---|---|
-| `docs/ARCHITECTURE_GUIDE.md` | Repo-wide architecture: apps, request flow, auth, phase gates |
-| `docs/01_PROJECT_OVERVIEW.md` | What the system does, roles, election lifecycle |
-| `docs/05_API_INTEGRATION.md` | Client ↔ API contract (endpoints, auth/CSRF, payloads) — the most-referenced doc |
-| `docs/SECURITY_ASSESSMENT_2026_09_26.md` | Live security backlog (Critical→Low) + remediation checklist |
+| [`deploy/README.md`](deploy/README.md) | Production server and deployment runbook |
+| [`docs/ARCHITECTURE_GUIDE.md`](docs/ARCHITECTURE_GUIDE.md) | System architecture and request flow |
+| [`docs/01_PROJECT_OVERVIEW.md`](docs/01_PROJECT_OVERVIEW.md) | Roles, election lifecycle, and product overview |
+| [`docs/05_API_INTEGRATION.md`](docs/05_API_INTEGRATION.md) | Client/API contract |
+| [`docs/DEPLOYMENT_BACKUP_GUIDE.md`](docs/DEPLOYMENT_BACKUP_GUIDE.md) | Backup and recovery operations |
+| [`docs/08_BUILD_RELEASE.md`](docs/08_BUILD_RELEASE.md) | Flutter release build process |
+| [`docs/PR_GUIDE.md`](docs/PR_GUIDE.md) | Branch and pull-request conventions |
 
-**Build-spec series `00`–`10`** — reference; written while the student app was the centre of
-the project, so re-check any path against `user-flutter/lib/`:
-`00_FILE_TREE_AND_FLOW`, `02_FOLDER_STRUCTURE`, `03_APP_FLOW` (journey), `04_SCREENS_SPEC`
-(fields/states/validation per screen), `06_STATE_MANAGEMENT` (Riverpod), `07_DESIGN_SYSTEM`
-(still the design rules), `08_BUILD_RELEASE` (APK release), `09_SCREENS_LOCATION_GUIDE`
-("which file is screen X"), `10_FOLDER_MAPPING`.
-
-**Operations** — [`deploy/README.md`](deploy/README.md) is the runbook kept beside the
-scripts it describes; `docs/DEPLOYMENT_BACKUP_GUIDE.md` is the narrative version of the same
-rollout (HTTPS terminates at Tailscale Funnel, not on the origin);
-`docs/NGINX_TAILSCALE_TEAM_ACCESS.md`; `docs/SETUP_WINDOWS_DEV.md`.
-
-**Historical snapshots** — useful as evidence of what was checked and why; do not treat their
-file lists or line numbers as current: `docs/FLUTTER_AUDIT_2026_09_13.md`,
-`docs/AUDIT_2026_09_12.md`, `docs/AUDIT.md`, `docs/API_INTEGRATION_REVIEW.md`,
-`docs/API_INTEGRATION_FIXES.md`, `docs/FLUTTER_WEB_API_CONNECTIVITY_FIX.md`.
-
-**Feature records** — `docs/ssg-president-role.md`, `docs/ADMIN_USER_MANAGEMENT_FEASIBILITY.md`,
-`docs/ADMIN_USER_MANAGEMENT_IMPLEMENTATION.md`. **Process** — `docs/PR_GUIDE.md`,
-`backend-laravel/AGENTS.md`.
-
-Naming: point-in-time docs get a `_YYYY-MM-DD` suffix and a row above. When a doc stops
-describing reality, label it historical inside the file instead of deleting it — the
-reasoning is worth keeping. (One exception removed: `FLUTTER_AUDIT_FIXES_APPLIED.md` was a
-byte-identical copy of `FLUTTER_AUDIT_2026_09_13.md`.)
-
-## Deploy
-
-[`deploy/README.md`](deploy/README.md) is the runbook: `setup-server.sh` brings up nginx +
-PHP-FPM + systemd from the unit files in that folder, `deploy.sh` publishes a release, and
-`omnivote:backup` (driven by `omnivote-backup.timer`) writes an AES-256-GCM snapshot.
-`security:assert-production-config` is the fail-fast guard that refuses to serve on unsafe
-settings. CI runs the tests on GitHub-hosted runners and deploys only from the self-hosted
-runner on the app server, so nothing is exposed publicly. APK build steps:
-`docs/08_BUILD_RELEASE.md`.
-
-## House rules
-
-- `backend-laravel/AGENTS.md` defines agent jurisdictions — backend vs. frontend ownership,
-  the cross-domain limit, and "check `git status` before mass file operations". Two agents
-  sharing this working tree have already caused lost work; commit before handing off.
-- `docs/PR_GUIDE.md` for branch and PR conventions.
-- Secrets stay out of git: `.env*`, `*.jks`, `*.keystore`, `keystore.properties` are ignored
-  on purpose.
-
+Audit documents with dates in their filenames are point-in-time records, not
+necessarily a description of the current code. When documentation conflicts
+with implementation, verify the code and update the relevant current guide.
