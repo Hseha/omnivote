@@ -41,30 +41,24 @@ were created.
 
 ## 2. Deploy the app
 
+Use `deploy/deploy.sh` (the CI/CD deploy job runs this via SSH). To run by
+hand on the server:
+
 ```bash
 # On the server
 cd /var/www/omnivote
-git pull
+bash deploy/deploy.sh
 
-# Backend dependencies
-composer install --no-dev --optimize-autoloader --no-interaction
-
-# Admin SPA
-npm ci
-npm run build          # output: admin-react/dist/
-
-# Deploy dist/ into the nginx webroot (serve SPA and API from same origin,
-# which keeps Sanctum cookie auth + the default empty VITE_API_BASE_URL valid)
-
-# Migrations + caches
-sudo -u www-data php artisan migrate --force
-sudo -u www-data php artisan config:cache
-sudo -u www-data php artisan route:cache
-
-# Reload web stack
-sudo systemctl reload php8.3-fpm
-sudo systemctl reload nginx
+# That script handles: git sync, admin SPA build, composer install,
+# security assertions, migrations, caches, storage permissions, the
+# public/storage symlink, queue worker + php-fpm restart, backup timer.
 ```
+
+The admin SPA (`npm run build` in `admin-react/`) is built **by the deploy
+script** and Vite writes it into `backend-laravel/public/admin/` so nginx
+serves `/admin/` on the same origin as `/api/` (keeps Sanctum cookie auth
+same-origin). See `deploy/README.md` §4 for the nginx vhosts and the
+tailnet-only admin gate.
 
 Known-good production `.env` values (from `docs/NGINX_TAILSCALE_TEAM_ACCESS.md`):
 
