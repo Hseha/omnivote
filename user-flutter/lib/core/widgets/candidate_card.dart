@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../constants/app_colors.dart';
 import '../constants/app_text_styles.dart';
 import '../theme/app_tokens.dart';
 import '../../data/models/candidate_model.dart';
@@ -28,6 +27,8 @@ class CandidateCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final appText = AppTextStyles.of(context);
+    final scheme = Theme.of(context).colorScheme;
+
     return Card(
       elevation: 0,
       margin: const EdgeInsets.only(bottom: 16),
@@ -86,7 +87,7 @@ class CandidateCard extends StatelessWidget {
                   Checkbox(
                     value: isSelected,
                     onChanged: onSelected,
-                    activeColor: AppColors.primaryBlue,
+                    activeColor: scheme.primary,
                   ),
               ],
             ),
@@ -127,10 +128,10 @@ class CandidateCard extends StatelessWidget {
                 children: [
                   TextButton(
                     onPressed: onViewProfile,
-                    child: const Text(
+                    child: Text(
                       'View Profile',
                       style: TextStyle(
-                        color: AppColors.primaryBlue,
+                        color: scheme.primary,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -139,7 +140,7 @@ class CandidateCard extends StatelessWidget {
                     ElevatedButton(
                       onPressed: onVote,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primaryBlue,
+                        backgroundColor: scheme.primary,
                         foregroundColor: Colors.white,
                         elevation: 0,
                         shape: RoundedRectangleBorder(
