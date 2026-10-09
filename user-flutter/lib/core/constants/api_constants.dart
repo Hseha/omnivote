@@ -31,9 +31,12 @@ class ApiConstants {
   static const String departments = '/departments';
   static const String parties = '/parties';
 
-  // Candidacy application endpoint (registration phase only)
+  // Candidacy application (registration phase only) + self-service edit /
+  // withdraw (allowed until polls close)
   static const String candidacyMe = '/candidacy/me';
   static const String candidacySubmit = '/candidate/apply';
+  static const String candidacyUpdate = '/candidate/apply';
+  static const String candidacyWithdraw = '/candidate/withdraw';
 
   // Ballot endpoints
   static const String ballotMe = '/ballot/me';
