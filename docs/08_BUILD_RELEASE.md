@@ -104,6 +104,16 @@ app-only Added/Fixed/Changed notes from commits since `archive/user-flutter`,
 refuses an existing tag, and creates the GitHub Release with APKs only. It does
 not upload symbols or signing materials.
 
+### In-app update notice
+
+Students learn about a new build from the app itself: on launch the app reads
+the newest GitHub Release (`api.github.com/.../releases`) and, when its
+`X.Y.Z` is newer than the installed version, shows a one-time dialog and a
+dashboard banner with the release notes and a download link (stable `vX.Y.Z`
+is preferred over a `vX.Y.Z-test.N` prerelease of the same version). The check
+is cached for 30 minutes and fails silent offline. Publishing a Release is the
+only trigger — no extra workflow step is needed.
+
 ### Public API Funnel isolation
 
 The public Funnel target must use the API-only listener in
