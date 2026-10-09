@@ -144,8 +144,7 @@ body {
 }
 
 .logo-icon {
-  background-color: var(--brand-primary);
-  color: #ffffff;
+  background-color: #ffffff;
   width: 36px;
   height: 36px;
   border-radius: 8px;
@@ -156,20 +155,19 @@ body {
 }
 
 .sidebar-logo-img {
-  width: 22px;
-  height: 22px;
+  width: 32px;
+  height: 32px;
   object-fit: contain;
 }
 
 .logo-icon-bg {
   width: 36px;
   height: 36px;
-  background: var(--brand-primary);
+  background: #ffffff;
   border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
 }
 
 .brand-name {

@@ -145,7 +145,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     child: BrandLogo(
                       logoUrl: branding.logoUrl,
                       size: 72,
-                      tint: branding.primaryColor,
                     ),
                   ),
                   AppSpacing.vMd,

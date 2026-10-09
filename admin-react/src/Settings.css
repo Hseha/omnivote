@@ -73,12 +73,11 @@
 .settings-app .logo-icon-bg {
   width: 36px;
   height: 36px;
-  background: var(--brand-primary);
+  background: #ffffff;
   border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #ffffff;
   box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.3);
 }
 

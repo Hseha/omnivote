@@ -1,7 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
-import '../constants/app_colors.dart';
 import '../theme/app_tokens.dart';
 import '../utils/data_image_cache.dart';
 import '../utils/safe_json.dart';
@@ -10,28 +9,21 @@ import '../utils/safe_json.dart';
 /// inside a rounded square, with explicit fallbacks like [CachedAvatar]:
 ///  - `http(s)` images pass through the safe-url guard,
 ///  - `data:image/*;base64,…` values are decoded into memory,
-///  - anything else (empty, non-http, malformed) shows the default icon.
+///  - anything else (empty, non-http, malformed) shows the OmniVote mark.
 ///
-/// Sized for the pre-login brand mark: [size] is the box edge, [tint] colors
-/// the default icon when no logo is configured.
+/// Sized for the pre-login brand mark: [size] is the box edge.
 class BrandLogo extends StatelessWidget {
   final String? logoUrl;
   final double size;
-  final Color tint;
 
-  const BrandLogo({
-    super.key,
-    required this.logoUrl,
-    this.size = 72,
-    this.tint = AppColors.primaryBlue,
-  });
+  const BrandLogo({super.key, required this.logoUrl, this.size = 72});
 
   @override
   Widget build(BuildContext context) {
     final url = logoUrl?.trim() ?? '';
 
     if (url.isEmpty) {
-      return _brandBox(context, child: _defaultIcon(context));
+      return _brandBox(context, child: _defaultLogo());
     }
 
     final lower = url.toLowerCase();
@@ -61,12 +53,12 @@ class BrandLogo extends StatelessWidget {
               ),
             ),
           ),
-          errorWidget: (context, url, error) => _defaultIcon(context),
+          errorWidget: (context, url, error) => _defaultLogo(),
         );
       }
     }
 
-    return _brandBox(context, child: child ?? _defaultIcon(context));
+    return _brandBox(context, child: child ?? _defaultLogo());
   }
 
   Widget _brandBox(BuildContext context, {required Widget child}) {
@@ -83,12 +75,10 @@ class BrandLogo extends StatelessWidget {
     );
   }
 
-  Widget _defaultIcon(BuildContext context) {
-    return Container(
-      color: tint,
-      width: size,
-      height: size,
-      child: Icon(Icons.how_to_vote, size: size * 0.52, color: Colors.white),
+  Widget _defaultLogo() {
+    return Image.asset(
+      'assets/branding/omnivote_logo_4_monogram.png',
+      fit: BoxFit.contain,
     );
   }
 
@@ -108,7 +98,7 @@ class BrandLogo extends StatelessWidget {
       image: provider,
       fit: BoxFit.cover,
       gaplessPlayback: true,
-      errorBuilder: (context, error, stackTrace) => _defaultIcon(context),
+      errorBuilder: (context, error, stackTrace) => _defaultLogo(),
     );
   }
 
