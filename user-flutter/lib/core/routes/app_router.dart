@@ -13,6 +13,7 @@ import '../../features/ballot/screens/my_ballot_screen.dart';
 import '../../features/results/screens/results_screen.dart';
 import '../../features/candidacy/screens/candidacy_apply_screen.dart';
 import '../../features/notifications/screens/notifications_screen.dart';
+import '../../features/app_update/screens/app_update_screen.dart';
 import '../../features/settings/screens/api_settings_screen.dart';
 import '../../features/settings/screens/my_profile_screen.dart';
 import '../../features/settings/screens/help_faq_screen.dart';
@@ -113,6 +114,11 @@ class AppRouter {
       GoRoute(
         path: '/notifications',
         builder: (context, state) => const NotificationsScreen(),
+      ),
+      // What's-New / update screen (update banner + Settings entry).
+      GoRoute(
+        path: '/app-update',
+        builder: (context, state) => const AppUpdateScreen(),
       ),
       if (kDebugMode)
         // Dev-only runtime base-URL editor. Registered only in debug builds so
