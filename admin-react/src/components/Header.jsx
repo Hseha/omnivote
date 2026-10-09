@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Clock } from 'lucide-react';
 import { useAuth } from '../lib/AuthContext';
 import { useElectionStatus } from '../lib/ElectionStatusContext';
-import { fallbackAvatarOnError } from '../lib/avatar';
+import { fallbackAvatarOnError, initialsAvatarDataUri } from '../lib/avatar';
 import NotificationCenter from './NotificationCenter';
 import PhaseStatusDialog from './PhaseStatusDialog';
 import MobileMenuButton from './MobileMenuButton';
@@ -92,7 +92,7 @@ export default function Header({
             />
           ) : (
             <img
-              src={`https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(me?.name || 'U')}&backgroundColor=2563eb`}
+              src={initialsAvatarDataUri(me?.name || 'U')}
               alt={me?.name || 'User'}
               className="user-avatar"
               onError={fallbackAvatarOnError(me?.name)}
