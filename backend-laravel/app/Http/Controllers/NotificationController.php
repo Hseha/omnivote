@@ -3,16 +3,20 @@
 namespace App\Http\Controllers;
 
 use App\Models\UserNotification;
+use App\Support\Notifier;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 /**
- * Admin notification center (React shell bell + dashboard activity feed).
+ * Notification center shared by the student app and the admin console.
  *
- *   GET  /api/admin/notifications        — recent notifications for the caller
- *   POST /api/admin/notifications/read   — mark one/all as read
+ *   GET  /api/admin/notifications         — recent notifications for the caller
+ *   POST /api/admin/notifications/read    — mark one/all as read
+ *   POST /api/admin/notifications/broadcast — fan out to students
+ *   GET  /api/notifications               — same feed for the student app
+ *   POST /api/notifications/read          — same read action for the student app
  *
- * Every notification is scoped to the authenticated user, so one admin's
+ * Every notification is scoped to the authenticated user, so one account's
  * read/unread state never leaks to another.
  */
 class NotificationController extends Controller
@@ -59,5 +63,41 @@ class NotificationController extends Controller
         $updated = $query->update(['read_at' => now()]);
 
         return response()->json(['updated' => $updated]);
+    }
+
+    /**
+     * Fan a single notification out to students (admin broadcast composer).
+     *
+     * Targeting is optional: with no filters it reaches every active student,
+     * otherwise it narrows to one year level / department / course.
+     */
+    public function broadcast(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'title' => ['required', 'string', 'max:200'],
+            'body' => ['nullable', 'string', 'max:20000'],
+            'link' => ['nullable', 'string', 'max:500'],
+            'type' => ['sometimes', 'string', 'in:info,success,warning,danger'],
+            'year_level' => ['nullable', 'string', 'max:64'],
+            'department' => ['nullable', 'string', 'max:128'],
+            'course' => ['nullable', 'string', 'max:128'],
+        ]);
+
+        $recipients = Notifier::notifyStudents(
+            $validated['type'] ?? 'info',
+            $validated['title'],
+            $validated['body'] ?? null,
+            $validated['link'] ?? null,
+            [
+                'year_level' => $validated['year_level'] ?? null,
+                'department' => $validated['department'] ?? null,
+                'course' => $validated['course'] ?? null,
+            ],
+        );
+
+        return response()->json([
+            'message' => "Notification sent to {$recipients} student(s).",
+            'recipients' => $recipients,
+        ], 201);
     }
 }

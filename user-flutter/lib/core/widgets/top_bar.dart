@@ -8,14 +8,21 @@ import '../../features/auth/providers/auth_provider.dart';
 import '../constants/app_text_styles.dart';
 import '../theme/app_tokens.dart';
 import 'cached_avatar.dart';
+import 'notification_bell.dart';
 
-/// Minimal app bar: just the title/back affordance and the avatar account
-/// menu. The live clock and phase badge were removed to keep every screen's
-/// top edge clean (phase now lives in the dashboard welcome banner).
+/// Minimal app bar: the title/back affordance, an optional set of screen-level
+/// [actions], the notifications bell and the avatar account menu. The live
+/// clock and phase badge were removed to keep every screen's top edge clean
+/// (phase now lives in the dashboard welcome banner).
 class TopBar extends ConsumerWidget implements PreferredSizeWidget {
   final String title;
 
-  const TopBar({super.key, required this.title});
+  /// Screen-specific actions rendered between the title and the bell. Kept
+  /// optional (default empty) so every existing `const TopBar(title: ...)` call
+  /// is unaffected.
+  final List<Widget> actions;
+
+  const TopBar({super.key, required this.title, this.actions = const []});
 
   @override
   Size get preferredSize => const Size.fromHeight(kToolbarHeight);
@@ -66,6 +73,9 @@ class TopBar extends ConsumerWidget implements PreferredSizeWidget {
       centerTitle: false,
       actions: [
         if (student != null) ...[
+          ...actions,
+          // The bell carries the live unread badge and opens the center.
+          const NotificationBell(),
           // The avatar opens the account menu: My Profile, Apply for
           // Candidacy, Help & FAQ, Settings and (debug builds only) the dev
           // API Settings screen, then Log Out.

@@ -93,6 +93,20 @@ class SettingsScreen extends ConsumerWidget {
             padding: EdgeInsets.zero,
             child: ListTile(
               leading: Icon(
+                Icons.notifications_outlined,
+                color: scheme.primary,
+              ),
+              title: const Text('Notifications'),
+              subtitle: const Text('Election updates, results and account messages'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => context.push('/notifications'),
+            ),
+          ),
+          AppSpacing.vSm,
+          AppCard(
+            padding: EdgeInsets.zero,
+            child: ListTile(
+              leading: Icon(
                 Icons.help_outline,
                 color: scheme.primary,
               ),

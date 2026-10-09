@@ -104,6 +104,16 @@ class RegistrationController extends Controller
 
         RateLimiter::hit($key, self::REGISTER_IP_DECAY_SECONDS);
 
+        // Welcome the new account: the app opens straight into the dashboard
+        // with a bell entry waiting, which doubles as an onboarding hint.
+        Notifier::notifyUser(
+            $user->id,
+            'success',
+            'Welcome to OmniVote',
+            'Your account is ready. Election news and reminders will appear here.',
+            '/dashboard',
+        );
+
         Notifier::toAdmins(
             'notifyOnRegistration',
             'info',

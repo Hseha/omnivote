@@ -46,6 +46,10 @@ class ApiConstants {
   // Announcements (public)
   static const String announcements = '/announcements';
 
+  // In-app notification center (student feed + read receipt)
+  static const String notifications = '/notifications';
+  static const String notificationsRead = '/notifications/read';
+
   // Public branding (site name, colors, logo) — safe before/without auth
   static const String branding = '/branding';
 
