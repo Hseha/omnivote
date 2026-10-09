@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { CheckCircle2, KeyRound, Lock, Eye, EyeOff } from 'lucide-react';
+import { CheckCircle2, Lock, Eye, EyeOff } from 'lucide-react';
 import api from './lib/api';
 import { useBranding } from './lib/branding';
 import { passwordProblem } from './lib/passwordRules';
+import OmniVoteMark from './components/OmniVoteMark';
 import './AdminLogin.css';
 
 /*
@@ -54,7 +55,7 @@ export default function ResetPassword({ token, email, onCompleted }) {
         <div className="login-header">
           <div className="brand-wrapper">
             <div className="brand-icon-box">
-              {branding.logoUrl ? <img src={branding.logoUrl} alt="" className="brand-logo-img" /> : <KeyRound size={24} />}
+              {branding.logoUrl ? <img src={branding.logoUrl} alt="" className="brand-logo-img" /> : <OmniVoteMark className="brand-logo-img" />}
             </div>
             <div className="brand-text">
               <h1 className="brand-title">{branding.siteName || 'OmniVote'}</h1>

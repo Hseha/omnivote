@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import {
-  Settings as SettingsIcon,
   Shield,
   Clock,
   Palette,
@@ -28,6 +27,7 @@ import { refreshBranding } from './lib/branding';
 import { useElectionStatus } from './lib/ElectionStatusContext';
 import TwoFactorSetup from './TwoFactorSetup';
 import NotificationBroadcast from './components/NotificationBroadcast';
+import OmniVoteMark from './components/OmniVoteMark';
 import './Settings.css';
 
 const STORAGE_KEY = 'omnivote:admin:settings';
@@ -851,7 +851,7 @@ export default function Settings({ onLogout, onNavigate, initialTab = 'profile' 
     <div className="settings-app">
       <aside className="sidebar">
         <div className="logo-area">
-          <div className="logo-icon-bg"><SettingsIcon size={22} /></div>
+          <div className="logo-icon-bg"><OmniVoteMark className="sidebar-logo-img" /></div>
           <div><h1 className="brand-name">OmniVote</h1><p className="brand-sub">SETTINGS</p></div>
         </div>
         {typeof onNavigate === 'function' && (
