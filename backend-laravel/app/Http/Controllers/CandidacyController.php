@@ -29,6 +29,9 @@ class CandidacyController extends Controller
                 'party_name' => $candidate->party_name,
                 'platform_statement' => $candidate->platform_statement,
                 'photo_path' => $candidate->photo_path,
+                'photo_url' => $candidate->photo_path
+                    ? asset('storage/'.$candidate->photo_path)
+                    : null,
                 'approval_status' => $candidate->approval_status,
                 'created_at' => $candidate->created_at,
             ],

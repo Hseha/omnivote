@@ -68,6 +68,61 @@ class CandidacyNotifier extends StateNotifier<CandidacyState> {
     }
   }
 
+  Future<bool> update({
+    required String positionId,
+    String? slogan,
+    required String platformStatement,
+    String? partyName,
+    List<int>? photoBytes,
+    String? photoName,
+  }) async {
+    state = state.copyWith(isSubmitting: true, clearError: true);
+    try {
+      final application = await _repository.update(
+        positionId: positionId,
+        slogan: slogan,
+        platformStatement: platformStatement,
+        partyName: partyName,
+        photoBytes: photoBytes,
+        photoName: photoName,
+      );
+      state = state.copyWith(isSubmitting: false, submittedApplication: application);
+      return true;
+    } catch (e) {
+      state = state.copyWith(
+        isSubmitting: false,
+        errorMessage: _candidacyErrorMessage(e),
+      );
+      return false;
+    }
+  }
+
+  /// Withdraws/forfeits the candidate's application. Returns `true` on
+  /// success (the caller flips its local status to `withdrawn`).
+  Future<bool> withdraw() async {
+    state = state.copyWith(isSubmitting: true, clearError: true);
+    try {
+      await _repository.withdraw();
+      state = state.copyWith(isSubmitting: false);
+      return true;
+    } catch (e) {
+      state = state.copyWith(
+        isSubmitting: false,
+        errorMessage: _candidacyErrorMessage(e),
+      );
+      return false;
+    }
+  }
+
+  /// Loads the caller's full application (null when they have none).
+  Future<CandidacyApplication?> myApplication() async {
+    try {
+      return await _repository.getMyApplication();
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Surfaces the real failure instead of masking every error: server message,
   /// phase rejection (403), and duplicate application (409) each get a
   /// distinct, actionable message (audit §2 #9).
@@ -80,13 +135,13 @@ class CandidacyNotifier extends StateNotifier<CandidacyState> {
         return 'You already have a candidacy application under review.';
       }
       if (statusCode == 403) {
-        return 'Candidacy applications are only accepted during the registration phase.';
+        return 'Candidacy changes are only available until voting closes.';
       }
       if (serverMessage != null && serverMessage.isNotEmpty) {
         return serverMessage;
       }
     }
-    return apiErrorMessage(error, fallback: 'Application failed. Please try again.');
+    return apiErrorMessage(error, fallback: 'Request failed. Please try again.');
   }
 
   Future<String?> applicationStatus() async {

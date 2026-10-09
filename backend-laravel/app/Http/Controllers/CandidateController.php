@@ -6,11 +6,13 @@ use App\Http\Requests\CandidateApplicationRequest;
 use App\Models\Candidate;
 use App\Models\Department;
 use App\Models\Party;
+use App\Models\Phase;
 use App\Support\DepartmentCatalog;
 use App\Support\Notifier;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class CandidateController extends Controller
@@ -174,6 +176,122 @@ class CandidateController extends Controller
         );
 
         return response()->json(['candidate' => $this->payload($candidate->load('position', 'user'))], 201);
+    }
+
+    /**
+     * PUT /api/candidate/apply  (multipart)
+     *
+     * Edit the caller's campaign. Allowed for pending AND approved candidates
+     * while the election is in `registration` or `voting_open` (never after
+     * polls close). Once a candidacy is approved the position is locked —
+     * changing office requires committee re-review — but slogan, party,
+     * platform and photo stay editable.
+     */
+    public function update(CandidateApplicationRequest $request): JsonResponse
+    {
+        if ($blocked = $this->assertCandidacyEditable($request)) {
+            return $blocked;
+        }
+
+        $candidate = Candidate::where('user_id', $request->user()->id)->first();
+        if (! $candidate) {
+            return response()->json(['message' => 'No candidacy application found.'], 404);
+        }
+
+        if (! in_array($candidate->approval_status, ['pending', 'approved'], true)) {
+            return response()->json(['message' => 'Only pending or approved applications can be edited.'], 409);
+        }
+
+        $validated = $request->validated();
+        $sanitized = strip_tags($validated['platform_statement'], '<p><br><strong><em><ul><ol><li>');
+
+        $candidate->update([
+            // The position is locked once approved; pending applications may
+            // still change office before the committee reviews them.
+            'position_id' => $candidate->approval_status === 'approved'
+                ? $candidate->position_id
+                : $validated['position_id'],
+            'slogan' => $validated['slogan'] ?? null,
+            'party_name' => $validated['party_name'] ?? null,
+            'platform_statement' => $sanitized,
+            'platform_points' => array_values(array_filter(array_map('trim', explode("\n", $sanitized)))),
+        ]);
+
+        if ($request->hasFile('photo')) {
+            $path = $request->file('photo')->store('candidates', 'public');
+            if ($candidate->photo_path) {
+                Storage::disk('public')->delete($candidate->photo_path);
+            }
+            $candidate->photo_path = $path;
+            $candidate->save();
+        }
+
+        Notifier::toAdmins(
+            'notifyOnRegistration',
+            'info',
+            'Candidate application updated',
+            "{$candidate->user->name} updated their campaign for ".($candidate->position->label ?? 'a position').'.',
+            '/candidates',
+            false,
+        );
+
+        return response()->json(['candidate' => $this->payload($candidate->load('position', 'user'))]);
+    }
+
+    /**
+     * POST /api/candidate/withdraw
+     *
+     * Forfeit a pending or approved candidacy. Allowed until polls close so an
+     * approved candidate can still step down during voting. A withdrawn
+     * candidacy disappears from the approved listings/ballot; votes already
+     * cast are preserved (the tally already tolerates vanished candidates).
+     */
+    public function withdraw(Request $request): JsonResponse
+    {
+        if ($blocked = $this->assertCandidacyEditable($request)) {
+            return $blocked;
+        }
+
+        $candidate = Candidate::where('user_id', $request->user()->id)->first();
+        if (! $candidate) {
+            return response()->json(['message' => 'No candidacy application found.'], 404);
+        }
+
+        if (! in_array($candidate->approval_status, ['pending', 'approved'], true)) {
+            return response()->json(['message' => 'This application can no longer be withdrawn.'], 409);
+        }
+
+        $candidate->update(['approval_status' => 'withdrawn']);
+
+        Notifier::toAdmins(
+            'notifyOnRegistration',
+            'info',
+            'Candidate withdrew',
+            "{$candidate->user->name} withdrew from running for ".($candidate->position->label ?? 'a position').'.',
+            '/candidates',
+            false,
+        );
+
+        return response()->json(['candidate' => $this->payload($candidate->load('position', 'user'))]);
+    }
+
+    /**
+     * Shared gate for self-service candidacy changes: only meaningful while
+     * applications are accepted and ballots can still be cast (registration
+     * or voting_open). After polls close nothing may change.
+     */
+    private function assertCandidacyEditable(Request $request): ?JsonResponse
+    {
+        $phase = Phase::current()?->name;
+        if (! in_array($phase, ['registration', 'voting_open'], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Action not allowed in current election phase',
+                'phase' => $phase,
+            ], 403);
+        }
+
+        return null;
     }
 
     /**

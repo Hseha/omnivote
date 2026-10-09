@@ -9,6 +9,7 @@ class CandidacyApplication {
   final String platformStatement;
   final String? partyName;
   final String? photoPath;
+  final String? photoUrl;
   final String? status;
 
   const CandidacyApplication({
@@ -17,6 +18,7 @@ class CandidacyApplication {
     required this.platformStatement,
     this.partyName,
     this.photoPath,
+    this.photoUrl,
     this.status,
   });
 
@@ -28,6 +30,7 @@ class CandidacyApplication {
           (json['platform_statement'] ?? json['platformStatement'] ?? '').toString(),
       partyName: (json['party_name'] ?? json['partyName']) as String?,
       photoPath: (json['photo_path'] ?? json['photoPath']) as String?,
+      photoUrl: (json['photo_url'] ?? json['photoUrl']) as String?,
       status: (json['status'] ?? json['approval_status']) as String?,
     );
   }
