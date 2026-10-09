@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../data/models/election_status_model.dart';
 import '../../auth/providers/auth_provider.dart';
-import '../../settings/providers/branding_provider.dart';
 import '../providers/election_status_provider.dart';
 
 /// Dashboard header: a time-of-day greeting with the student's name, the
@@ -51,10 +50,9 @@ class WelcomeBanner extends ConsumerWidget {
         (state) => state.valueOrNull?.phase ?? ElectionPhase.unknown,
       ),
     );
-    final accent = ref.watch(
-          brandingProvider.select((state) => state.valueOrNull?.primaryColor),
-        ) ??
-        const Color(0xFF2F5EFF);
+    // Accent follows the active theme (pack palette or school branding), which
+    // app.dart folds into ColorScheme.primary.
+    final accent = Theme.of(context).colorScheme.primary;
 
     if (student == null) return const SizedBox.shrink();
 

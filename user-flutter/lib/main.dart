@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'app.dart';
 import 'data/services/api_config.dart';
 import 'data/services/theme_mode.dart';
+import 'data/services/theme_pack.dart';
 
 /// Standard Flutter entrypoint that delegates to the OmniVote app bootstrap.
 /// The app's `main()` lives in [app.dart]; this file enables `flutter build`
@@ -25,15 +26,16 @@ Future<void> main() async {
     return;
   }
 
-  // Both values have to be known before the first frame: the base URL decides
-  // where the splash's `GET /me` goes (getting that wrong would sign a student
-  // out), and the theme decides how the very first frame looks. They are
-  // independent reads though, so they run **together** instead of one after the
-  // other — on a cold start that is one platform-channel round-trip of latency
-  // saved rather than two.
-  final (storedBaseUrl, storedThemeMode) = await (
+  // All three values have to be known before the first frame: the base URL
+  // decides where the splash's `GET /me` goes (getting that wrong would sign a
+  // student out), and the theme (mode + pack) decides how the very first frame
+  // looks. They are independent reads though, so they run **together** instead
+  // of one after the other — on a cold start that is one platform-channel
+  // round-trip of latency saved rather than three.
+  final (storedBaseUrl, storedThemeMode, storedThemePack) = await (
     ApiConfigStorage.loadBaseUrl(),
     ThemeModeStorage.load(),
+    ThemePackStorage.load(),
   ).wait;
 
   runApp(
@@ -41,6 +43,7 @@ Future<void> main() async {
       overrides: [
         apiBaseUrlProvider.overrideWith((ref) => storedBaseUrl),
         themeModeProvider.overrideWith((ref) => storedThemeMode),
+        themePackProvider.overrideWith((ref) => storedThemePack),
       ],
       child: const OmniVoteApp(),
     ),

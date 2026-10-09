@@ -14,6 +14,12 @@ class Branding {
   final String headerText;
   final String footerText;
 
+  /// Whether the backend actually sent a `primaryColor`. The default value of
+  /// [primaryColor] is [AppColors.primaryBlue], so callers that must tell "the
+  /// school configured blue" apart from "no branding configured" use this flag
+  /// (a theme-pack fallback should only lose to branding that exists).
+  final bool primaryConfigured;
+
   const Branding({
     this.siteName = 'OmniVote',
     this.logoUrl = '',
@@ -21,18 +27,20 @@ class Branding {
     this.secondaryColor = AppColors.textSecondary,
     this.headerText = '',
     this.footerText = '',
+    this.primaryConfigured = false,
   });
 
   factory Branding.fromJson(Map<String, dynamic> json) {
+    final primary = _color(json['primaryColor']);
+    final secondary = _color(json['secondaryColor']);
     return Branding(
       siteName: _string(json['siteName']) ?? 'OmniVote',
       logoUrl: _string(json['logoUrl']) ?? '',
-      primaryColor: _color(json['primaryColor']) ?? AppColors.primaryBlue,
-      secondaryColor: _color(json['secondaryColor']) != null
-          ? _color(json['secondaryColor'])!
-          : AppColors.textSecondary,
+      primaryColor: primary ?? AppColors.primaryBlue,
+      secondaryColor: secondary ?? AppColors.textSecondary,
       headerText: _string(json['headerText']) ?? '',
       footerText: _string(json['footerText']) ?? '',
+      primaryConfigured: primary != null,
     );
   }
 

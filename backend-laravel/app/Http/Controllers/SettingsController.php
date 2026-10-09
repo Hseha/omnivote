@@ -120,8 +120,18 @@ class SettingsController extends Controller
             'footerText' => 'Powered by OmniVote Administration Console',
         ];
 
+        $stored = $this->readSection('branding');
+
         return response()->json([
-            'branding' => array_merge($defaults, array_filter($this->readSection('branding'))),
+            'branding' => [
+                ...array_merge($defaults, array_filter($stored)),
+                // Explicit "was a school color configured?" flags. The default
+                // values above are always present, so clients that must let a
+                // theme-pack accent win when no brand was set use these rather
+                // than testing `primaryColor` truthiness (it is always truthy).
+                'primaryConfigured' => array_key_exists('primaryColor', $stored),
+                'secondaryConfigured' => array_key_exists('secondaryColor', $stored),
+            ],
         ]);
     }
 

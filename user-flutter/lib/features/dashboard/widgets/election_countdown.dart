@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/constants/app_colors.dart';
 import '../../../core/theme/app_tokens.dart';
 
 /// A live countdown to [target] that re-renders only its own text.
@@ -64,7 +63,7 @@ class _ElectionCountdownState extends ConsumerState<ElectionCountdown> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Icon(Icons.schedule, size: 16, color: AppColors.primaryBlue),
+        Icon(Icons.schedule, size: 16, color: Theme.of(context).colorScheme.primary),
         const SizedBox(width: 6),
         Text(
           widget.label,
