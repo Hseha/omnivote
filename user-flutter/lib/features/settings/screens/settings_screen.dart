@@ -6,11 +6,13 @@ import '../../../core/constants/app_text_styles.dart';
 import '../../../core/theme/app_shape.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_tokens.dart';
+import '../../../core/theme/theme_pack.dart';
 import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/section_header.dart';
 import '../../../core/widgets/top_bar.dart';
 import '../../../data/models/branding_model.dart';
 import '../../../data/services/theme_mode.dart';
+import '../../../data/services/theme_pack.dart';
 import '../../app_update/providers/app_update_provider.dart';
 import '../providers/branding_provider.dart';
 
@@ -25,6 +27,7 @@ class SettingsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final themeMode = ref.watch(themeModeProvider);
+    final themePack = ref.watch(themePackProvider);
     final branding = ref.watch(
       brandingProvider.select((state) => state.valueOrNull ?? const Branding()),
     );
@@ -90,6 +93,44 @@ class SettingsScreen extends ConsumerWidget {
                       borderRadius: AppRadius.smAll,
                     ),
                   ),
+                ),
+                const Divider(height: 32, color: Colors.transparent),
+                Text('Theme pack', style: appText.titleMedium),
+                AppSpacing.vXs,
+                Text(
+                  'Pick a palette for the whole app — it applies to both '
+                  'light and dark.',
+                  style: appText.bodySmall,
+                ),
+                AppSpacing.vMd,
+                SegmentedButton<ThemePack>(
+                  segments: [
+                    for (final pack in ThemePack.values)
+                      ButtonSegment(
+                        value: pack,
+                        icon: Icon(Icons.circle, size: 12, color: pack.primary),
+                        label: Text(pack.label),
+                      ),
+                  ],
+                  selected: {themePack},
+                  onSelectionChanged: (selection) {
+                    final pack = selection.first;
+                    ref.read(themePackProvider.notifier).state = pack;
+                    ThemePackStorage.save(pack);
+                  },
+                  style: SegmentedButton.styleFrom(
+                    selectedBackgroundColor: scheme.primary,
+                    selectedForegroundColor: Colors.white,
+                    side: BorderSide(color: context.appBorder),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: AppRadius.smAll,
+                    ),
+                  ),
+                ),
+                AppSpacing.vXs,
+                Text(
+                  themePack.description,
+                  style: appText.bodySmall,
                 ),
               ],
             ),
