@@ -12,12 +12,24 @@ import '../constants/app_colors.dart';
 /// backend never configured one, which keeps every deployment rendering
 /// sensibly.
 extension BrandAccentRefX on WidgetRef {
+  /// The configured branding accent, or the default blue when the backend
+  /// never configured one (or is still loading).
   Color brandAccent() {
-    return watch(
-          brandingProvider.select(
-            (state) => state.valueOrNull?.primaryColor,
-          ),
-        ) ??
-        AppColors.primaryBlue;
+    return brandAccentOrNull() ?? AppColors.primaryBlue;
+  }
+
+  /// The school's configured branding accent, or null when branding is still
+  /// loading or the backend never sent a primary color.
+  ///
+  /// Code that must fall back to a theme-pack accent uses this instead of
+  /// [brandAccent] so a default (unconfigured) deployment renders the pack it
+  /// was given rather than always reverting to the blue fallback.
+  Color? brandAccentOrNull() {
+    final branding = watch(
+      brandingProvider.select((state) => state.valueOrNull),
+    );
+    return (branding != null && branding.primaryConfigured)
+        ? branding.primaryColor
+        : null;
   }
 }

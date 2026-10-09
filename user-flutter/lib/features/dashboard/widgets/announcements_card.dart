@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_text_styles.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/cached_avatar.dart';
@@ -101,7 +100,7 @@ class _AnnouncementTile extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(icon, size: 18, color: AppColors.primaryBlue),
+                Icon(icon, size: 18, color: Theme.of(context).colorScheme.primary),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(

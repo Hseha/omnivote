@@ -24,6 +24,7 @@ import { fallbackAvatarOnError } from './lib/avatar';
 import { writeLocalAvatar } from './lib/auth';
 import { useAuth } from './lib/AuthContext';
 import { useTheme } from './lib/ThemeContext';
+import { THEME_PACKS } from './lib/themePacks';
 import { refreshBranding } from './lib/branding';
 import { useElectionStatus } from './lib/ElectionStatusContext';
 import TwoFactorSetup from './TwoFactorSetup';
@@ -544,9 +545,29 @@ function ToggleRow({ label, desc, checked, onChange, onLabel = 'Enabled', offLab
   );
 }
 
+/* Selectable theme-pack card: swatch preview + label + description. */
+function ThemePackCard({ packDef, selected, onSelect }) {
+  return (
+    <button
+      type="button"
+      className={`theme-pack-card${selected ? ' selected' : ''}`}
+      onClick={onSelect}
+      aria-pressed={selected}
+    >
+      <span className="theme-pack-swatches">
+        {packDef.swatches.map((color) => (
+          <span key={color} className="theme-pack-swatch" style={{ background: color }} />
+        ))}
+      </span>
+      <span className="theme-pack-name">{packDef.label}</span>
+      <span className="theme-pack-desc">{packDef.desc}</span>
+    </button>
+  );
+}
+
 export default function Settings({ onLogout, onNavigate, initialTab = 'profile' }) {
   const { user, logout, updateUserAvatar } = useAuth();
-  const { theme, toggleTheme } = useTheme();
+  const { theme, pack, toggleTheme, selectPack } = useTheme();
   // Shared phase poller. The voting window decides the derived phase, and the
   // provider is mounted above every view (App.jsx), so navigating away from
   // Settings never remounts it. Without an explicit refresh() after a save the
@@ -1555,6 +1576,25 @@ export default function Settings({ onLogout, onNavigate, initialTab = 'profile' 
                       onLabel="Dark theme active"
                       offLabel="Light theme active"
                     />
+                  </div>
+
+                  <div className="setting-card setting-card-full">
+                    <div className="setting-label">Theme Pack</div>
+                    <p className="setting-desc">
+                      Choose the dashboard palette. Pairs with Dark Mode — every
+                      pack has its own light and dark look. School branding
+                      colors, when configured, still override the pack accent.
+                    </p>
+                    <div className="theme-pack-grid">
+                      {THEME_PACKS.map((packDef) => (
+                        <ThemePackCard
+                          key={packDef.id}
+                          packDef={packDef}
+                          selected={pack === packDef.id}
+                          onSelect={() => selectPack(packDef.id)}
+                        />
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>

@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
 import 'app_shape.dart';
 import 'app_tokens.dart';
+import 'theme_pack.dart';
 
-/// Central application theme. [lightTheme] is the original OmniVote look;
-/// [darkTheme] mirrors the admin dashboard's `[data-theme='dark']` palette.
+/// Central application theme. Themes are built from a [ThemePack] palette —
+/// [AppTheme.lightFor]/[AppTheme.darkFor] render the pack's light/dark variants
+/// — and the school's runtime branding accent layered on top via [withAccent].
 class AppTheme {
   /// Font/weight shapes shared by both themes (no colors — those come from
   /// [AppTokens]).
@@ -79,32 +81,33 @@ class AppTheme {
         labelStyle: _secondaryFor(t),
       );
 
-  static ThemeData _build(AppTokens tokens) {
+  static ThemeData _build(AppTokens tokens, Color primary,
+      {Color? secondary}) {
+    final isDark = tokens.brightness == Brightness.dark;
+    final surface = tokens.surface;
     return ThemeData(
       useMaterial3: true,
-      brightness: tokens == AppTokens.dark
-          ? Brightness.dark
-          : Brightness.light,
+      brightness: tokens.brightness,
       scaffoldBackgroundColor: tokens.background,
-      colorScheme: tokens == AppTokens.dark
-          ? const ColorScheme.dark(
-              primary: AppColors.primaryBlue,
-              secondary: AppColors.primaryBlueDark,
-              surface: Color(0xFF131B2E),
+      colorScheme: isDark
+          ? ColorScheme.dark(
+              primary: primary,
+              secondary: secondary ?? primary,
+              surface: surface,
               error: AppColors.errorRed,
             )
           : ColorScheme.fromSeed(
-              seedColor: AppColors.primaryBlue,
-              primary: AppColors.primaryBlue,
-              secondary: AppColors.primaryBlueDark,
-              surface: AppColors.surfaceWhite,
+              seedColor: primary,
+              primary: primary,
+              secondary: secondary ?? primary,
+              surface: surface,
               error: AppColors.errorRed,
             ),
       extensions: [tokens],
       appBarTheme: _appBarThemeFor(tokens),
       cardTheme: _cardThemeFor(tokens),
-      elevatedButtonTheme: _elevatedButtonTheme(),
-      inputDecorationTheme: _inputDecorationThemeFor(tokens),
+      elevatedButtonTheme: _elevatedButtonTheme(primary),
+      inputDecorationTheme: _inputDecorationThemeFor(tokens, primary),
       dividerColor: tokens.border,
       textTheme: TextTheme(
         // Display: hero numerals (countdowns, result percentages).
@@ -132,9 +135,25 @@ class AppTheme {
   static TextStyle _cardTitleFor(AppTokens t) =>
       _cardTitle.copyWith(color: t.textPrimary);
 
-  static ThemeData get lightTheme => _build(AppTokens.light);
+  /// The packed theme's light variant.
+  static ThemeData lightFor(ThemePack pack) => _build(
+        pack.light,
+        pack.primary,
+        secondary: pack.secondary,
+      );
 
-  static ThemeData get darkTheme => _build(AppTokens.dark);
+  /// The packed theme's dark variant.
+  static ThemeData darkFor(ThemePack pack) => _build(
+        pack.dark,
+        pack.primary,
+        secondary: pack.secondary,
+      );
+
+  /// The original OmniVote look: the [ThemePack.classic] light palette.
+  static ThemeData get lightTheme => lightFor(ThemePack.classic);
+
+  /// The admin-dashboard-style dark look: the [ThemePack.classic] dark palette.
+  static ThemeData get darkTheme => darkFor(ThemePack.classic);
 
   /// Returns [base] with the school's runtime branding accent flowing into
   /// every role that defaults to the fallback blue: [ColorScheme.primary],

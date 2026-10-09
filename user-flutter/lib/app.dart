@@ -4,6 +4,7 @@ import 'core/routes/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/brand_accent.dart';
 import 'data/services/theme_mode.dart';
+import 'data/services/theme_pack.dart';
 import 'features/auth/providers/auth_provider.dart';
 
 // The app is split across three files rather than the usual single
@@ -53,19 +54,22 @@ class _OmniVoteAppState extends ConsumerState<OmniVoteApp> {
     });
 
     final themeMode = ref.watch(themeModeProvider);
+    // The theme pack selects the palette (Classic / Ocean / Sunset); the mode
+    // above picks that pack's light or dark variant.
+    final pack = ref.watch(themePackProvider);
     // The school branding accent flows into ColorScheme.primary (and the
-    // button/input roles derived from it) at runtime. With default branding
-    // the accent is the fallback blue, so the themes below are identical to
-    // the static ones. Only `.select()`s the color, so unrelated branding
-    // payload changes don't rebuild the app.
-    final accent = ref.brandAccent();
+    // button/input roles derived from it) at runtime, but only when the backend
+    // actually configured one — otherwise the active theme pack's own accent is
+    // used. Only `.select()`s the color, so unrelated branding payload changes
+    // don't rebuild the app.
+    final accent = ref.brandAccentOrNull() ?? pack.primary;
 
     return MaterialApp.router(
       title: 'OmniVote',
       debugShowCheckedModeBanner: false,
       routerConfig: AppRouter.router,
-      theme: AppTheme.withAccent(AppTheme.lightTheme, accent),
-      darkTheme: AppTheme.withAccent(AppTheme.darkTheme, accent),
+      theme: AppTheme.withAccent(AppTheme.lightFor(pack), accent),
+      darkTheme: AppTheme.withAccent(AppTheme.darkFor(pack), accent),
       themeMode: themeMode,
     );
   }
