@@ -17,6 +17,8 @@ export const DEFAULT_BRANDING = {
   faviconUrl: '',
   headerText: 'Secure Election Platform',
   footerText: 'Powered by OmniVote Administration Console',
+  primaryConfigured: false,
+  secondaryConfigured: false,
 };
 
 let currentBranding = { ...DEFAULT_BRANDING };
@@ -31,7 +33,12 @@ function emit() {
  * The document <title> is deliberately NOT set here — the app shell owns it
  * and composes per-route titles ("Dashboard · OmniVote"), so a late-arriving
  * branding response must not overwrite the current page title with a bare
- * site name. */
+ * site name.
+ *
+ * Colors are applied as inline styles ONLY when the backend actually
+ * configured them. A default (unconfigured) deployment must render the active
+ * theme pack's palette, so the inline override is removed instead of falling
+ * back to the hardcoded blue. */
 function applyToDocument(branding) {
   let icon = document.querySelector('link[rel="icon"]');
   if (icon && branding.faviconUrl) {
@@ -39,8 +46,16 @@ function applyToDocument(branding) {
   }
 
   const root = document.documentElement;
-  if (branding.primaryColor) root.style.setProperty('--brand-primary', branding.primaryColor);
-  if (branding.secondaryColor) root.style.setProperty('--brand-secondary', branding.secondaryColor);
+  if (branding.primaryConfigured) {
+    root.style.setProperty('--brand-primary', branding.primaryColor);
+  } else {
+    root.style.removeProperty('--brand-primary');
+  }
+  if (branding.secondaryConfigured) {
+    root.style.setProperty('--brand-secondary', branding.secondaryColor);
+  } else {
+    root.style.removeProperty('--brand-secondary');
+  }
 }
 
 /** Fetch branding once; failures fall back to the hardcoded defaults. */
@@ -49,9 +64,12 @@ export function loadBranding() {
     loadPromise = api
       .get('/branding')
       .then((res) => {
+        const payload = res.data?.branding ?? {};
         currentBranding = {
           ...DEFAULT_BRANDING,
-          ...(res.data?.branding ?? {}),
+          ...payload,
+          primaryConfigured: Boolean(payload.primaryConfigured),
+          secondaryConfigured: Boolean(payload.secondaryConfigured),
         };
         applyToDocument(currentBranding);
         emit();
