@@ -123,6 +123,7 @@ class ResultsController extends Controller
         $candidates = Candidate::query()
             ->whereIn('candidate_ref', $tallies->flatten(1)->pluck('candidate_ref'))
             ->where('approval_status', 'approved')
+            ->with('position:id,slug,label')
             ->get()
             ->keyBy('candidate_ref');
 
@@ -206,6 +207,48 @@ class ResultsController extends Controller
             $summary['elected'].' candidate(s) elected, '.$summary['tied'].' tied. Winners are certified.',
             '/results',
         );
+
+        // Fan the result out to the student body and to each candidate whose
+        // race was tallied (only refs present in the ledger are loaded, so a
+        // candidate with no votes is not messaged).
+        Notifier::notifyStudents(
+            'success',
+            'Election results published',
+            'The official results are in. Tap to view them.',
+            '/results',
+        );
+
+        foreach ($candidates as $candidate) {
+            if (! $candidate->user_id) {
+                continue;
+            }
+
+            $position = $candidate->position?->label ?? 'your position';
+
+            match ($candidate->election_status) {
+                'elected' => Notifier::notifyUser(
+                    $candidate->user_id,
+                    'success',
+                    'You won!',
+                    "Congratulations — you were elected for {$position}.",
+                    '/results',
+                ),
+                'tied' => Notifier::notifyUser(
+                    $candidate->user_id,
+                    'warning',
+                    'Your race is tied',
+                    "Your {$position} race ended in a tie and is awaiting a decision.",
+                    '/results',
+                ),
+                default => Notifier::notifyUser(
+                    $candidate->user_id,
+                    'info',
+                    'Election results published',
+                    "The {$position} race has been decided. Tap to see the results.",
+                    '/results',
+                ),
+            };
+        }
 
         return response()->json([
             'message' => 'Results finalized. Winners are certified.',

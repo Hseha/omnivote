@@ -7,6 +7,7 @@ use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -187,6 +188,18 @@ class User extends Authenticatable
     public function ballotDraft(): HasOne
     {
         return $this->hasOne(BallotDraft::class);
+    }
+
+    /**
+     * In-app notification rows for this account.
+     *
+     * Named `userNotifications` rather than `notifications` because the
+     * `Notifiable` trait already declares `notifications()` for Laravel's own
+     * polymorphic notifications table; the two are unrelated stores.
+     */
+    public function userNotifications(): HasMany
+    {
+        return $this->hasMany(UserNotification::class);
     }
 
     /**

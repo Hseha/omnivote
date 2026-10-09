@@ -1,0 +1,58 @@
+/* Broadcast composer — lives inside Settings → Notifications. Reuses the
+   Settings.css primitives (.settings-panel, .setting-card, .btn-save, banners)
+   and only styles the form rows + audience footer. */
+
+.notification-broadcast {
+  margin-top: 24px;
+}
+
+.notification-broadcast .notification-broadcast-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.notification-broadcast-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+}
+
+.notification-broadcast-field .setting-label {
+  color: var(--input-color);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.notification-broadcast-field input,
+.notification-broadcast-field textarea,
+.notification-broadcast-field select {
+  width: 100%;
+  padding: 9px 11px;
+  border-radius: 8px;
+  border: 1px solid var(--input-border);
+  background-color: var(--input-bg);
+  color: var(--input-color);
+  font: inherit;
+}
+
+.notification-broadcast-field input:focus,
+.notification-broadcast-field textarea:focus,
+.notification-broadcast-field select:focus {
+  outline: none;
+  border-color: var(--accent-color, #2563eb);
+}
+
+.notification-broadcast-field textarea {
+  resize: vertical;
+}
+
+.notification-broadcast-audience {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--text-secondary, #64748b);
+  font-size: 13px;
+}

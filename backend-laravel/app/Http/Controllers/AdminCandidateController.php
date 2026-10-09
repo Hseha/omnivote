@@ -241,6 +241,22 @@ class AdminCandidateController extends Controller
             false,
         );
 
+        // Tell the applicant themselves. Only the two terminal states are
+        // messaged — an intermediate review status would just be noise.
+        if ($candidate->user_id && in_array($candidate->approval_status, ['approved', 'rejected'], true)) {
+            $approved = $candidate->approval_status === 'approved';
+
+            Notifier::notifyUser(
+                (int) $candidate->user_id,
+                $approved ? 'success' : 'warning',
+                $approved ? 'Your candidacy was approved' : 'Your candidacy was rejected',
+                $approved
+                    ? 'Your name will appear on the ballot. Good luck!'
+                    : 'Your candidacy application was not approved.',
+                '/candidacy',
+            );
+        }
+
         return response()->json([
             'candidate' => [
                 'id' => $candidate->id,
