@@ -12,6 +12,7 @@ import '../../features/voting/screens/vote_now_screen.dart';
 import '../../features/ballot/screens/my_ballot_screen.dart';
 import '../../features/results/screens/results_screen.dart';
 import '../../features/candidacy/screens/candidacy_apply_screen.dart';
+import '../../features/notifications/screens/notifications_screen.dart';
 import '../../features/settings/screens/api_settings_screen.dart';
 import '../../features/settings/screens/my_profile_screen.dart';
 import '../../features/settings/screens/help_faq_screen.dart';
@@ -107,6 +108,11 @@ class AppRouter {
       GoRoute(
         path: '/candidacy',
         builder: (context, state) => const CandidacyApplyScreen(),
+      ),
+      // Notification center, pushed above the shell (bell + Settings entry).
+      GoRoute(
+        path: '/notifications',
+        builder: (context, state) => const NotificationsScreen(),
       ),
       if (kDebugMode)
         // Dev-only runtime base-URL editor. Registered only in debug builds so

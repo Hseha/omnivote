@@ -150,6 +150,11 @@ Route::prefix('admin')->group(function () {
             ->middleware('permission:dashboard.view');
         Route::post('/notifications/read', [NotificationController::class, 'markRead'])
             ->middleware('permission:dashboard.view');
+        // Broadcast composer (Settings → Notifications). Reuses the
+        // announcements permission set — writing a school-wide notice is the
+        // same level of trust as authoring an announcement.
+        Route::post('/notifications/broadcast', [NotificationController::class, 'broadcast'])
+            ->middleware('permission:announcements.create');
 
         // User access management (React User Management screen)
         Route::get('/users', [AdminUserController::class, 'index'])
@@ -278,6 +283,11 @@ Route::prefix('auth')->group(function () {
 Route::middleware(['auth:sanctum', 'role:student', 'passwordChanged'])->group(function () {
     // Dashboard card
     Route::get('/registration/me', [ElectionController::class, 'registrationMe']);
+
+    // In-app notification center (Flutter bell + badge). Scoped to the caller;
+    // no permission middleware — every student sees only their own rows.
+    Route::get('/notifications', [NotificationController::class, 'index']);
+    Route::post('/notifications/read', [NotificationController::class, 'markRead']);
 
     // Candidacy application (registration phase only) + status
     Route::get('/candidacy/me', [CandidacyController::class, 'me']);

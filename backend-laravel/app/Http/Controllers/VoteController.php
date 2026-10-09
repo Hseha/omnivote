@@ -106,6 +106,15 @@ class VoteController extends Controller
             return $result;
         }
 
+        // In-app confirmation (the email above is the optional out-of-band copy).
+        Notifier::notifyUser(
+            $user->id,
+            'success',
+            'Your vote was recorded',
+            'Your ballot was securely recorded. Keep your receipt to verify it later.',
+            '/ballot',
+        );
+
         Notifier::emailUser(
             $user->id,
             'emailOnVote',

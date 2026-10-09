@@ -71,6 +71,73 @@ class Notifier
     }
 
     /**
+     * Write the same in-app notification to every active student, optionally
+     * narrowed to one year level / department / course (admin broadcast and
+     * election-lifecycle fan-out).
+     *
+     * Rows are inserted in chunks so a school-sized roster never builds one
+     * giant insert statement. Best-effort like the rest of this class: a failed
+     * chunk is logged and the loop continues rather than aborting the caller.
+     *
+     * @param  array{year_level?: ?string, department?: ?string, course?: ?string}  $filters
+     * @return int  number of students notified
+     */
+    public static function notifyStudents(
+        string $type,
+        string $title,
+        ?string $body = null,
+        ?string $link = null,
+        array $filters = [],
+    ): int {
+        // The whole routine is best-effort: even the recipient query is wrapped,
+        // because callers (e.g. phase reconciliation) can run against schemas
+        // that do not carry the notification tables and must not fail.
+        try {
+            $query = User::query()
+                ->where('role', 'student')
+                ->where('is_active', true);
+
+            foreach (['year_level', 'department', 'course'] as $field) {
+                $value = $filters[$field] ?? null;
+                if ($value !== null && $value !== '') {
+                    $query->where($field, $value);
+                }
+            }
+
+            $now = now();
+            $count = 0;
+
+            $query->select('id')->chunkById(500, function ($students) use ($type, $title, $body, $link, $now, &$count) {
+                $rows = [];
+                foreach ($students as $student) {
+                    $rows[] = [
+                        'user_id' => $student->id,
+                        'type' => $type,
+                        'title' => $title,
+                        'body' => $body,
+                        'link' => $link,
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ];
+                }
+
+                if ($rows === []) {
+                    return;
+                }
+
+                UserNotification::insert($rows);
+                $count += count($rows);
+            });
+
+            return $count;
+        } catch (\Throwable $e) {
+            Log::warning('Notification broadcast failed: '.$e->getMessage());
+
+            return 0;
+        }
+    }
+
+    /**
      * Send a confirmation email to a single user (e.g. the voter who just cast
      * a ballot). Gated by the named setting; failures never propagate.
      */

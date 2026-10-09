@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Announcement;
+use App\Support\Notifier;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -48,6 +49,10 @@ class AnnouncementController extends Controller
             'published_at' => ($validated['published'] ?? true) ? now() : null,
         ]);
 
+        if ($announcement->published_at !== null) {
+            $this->notifyStudents($announcement);
+        }
+
         return response()->json(['data' => $announcement->load('author:id,name,avatar_url')], 201);
     }
 
@@ -64,6 +69,8 @@ class AnnouncementController extends Controller
             return response()->json(['message' => 'You may only edit your own announcements.'], 403);
         }
 
+        $wasPublished = $announcement->published_at !== null;
+
         $announcement->fill($validated);
         if (array_key_exists('published', $validated)) {
             $announcement->published_at = $validated['published']
@@ -72,7 +79,24 @@ class AnnouncementController extends Controller
         }
         $announcement->save();
 
+        // Only a draft→published transition fans out; an edit to an already
+        // published notice (or unpublishing) must not re-notify the school.
+        if (! $wasPublished && $announcement->published_at !== null) {
+            $this->notifyStudents($announcement);
+        }
+
         return response()->json(['data' => $announcement->fresh()->load('author:id,name,avatar_url')]);
+    }
+
+    /** Push a published announcement to every active student's bell. */
+    private function notifyStudents(Announcement $announcement): void
+    {
+        Notifier::notifyStudents(
+            'info',
+            'New announcement',
+            $announcement->title,
+            '/dashboard',
+        );
     }
 
     public function destroy(Request $request, Announcement $announcement): JsonResponse
