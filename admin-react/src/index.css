@@ -91,6 +91,142 @@
   color-scheme: dark;
 }
 
+/* ===== Theme packs =====
+   A pack (Classic / Ocean / Sunset) pairs with the light/dark switch: the
+   `data-theme` attribute picks the brightness, `data-theme-pack` picks the
+   palette. Each pack supplies its own light and dark token overrides; Classic
+   is the `:root`/`[data-theme='dark']` baseline above. Order matters — the
+   light pack blocks come after `[data-theme='dark']` so they win for light
+   renderings, and the compound `[data-theme='dark'][data-theme-pack='...']`
+   selectors (higher specificity) win for dark renderings. Inline branding
+   styles (configured school colors) override all of these via specificity. */
+
+/* Ocean — light */
+[data-theme-pack='ocean'] {
+  --bg: #f0fdfa;
+  --surface: #ffffff;
+  --surface-2: #f6fdfa;
+  --surface-3: #e6f7f2;
+  --border: #ccfbf1;
+  --border-strong: #99f6e4;
+  --border-subtle: #d5faf0;
+  --text: #134e4a;
+  --text-muted: #5b7a74;
+  --text-faint: #86a39d;
+  --heading: #134e4a;
+  --brand-primary: #14b8a6;
+  --brand-secondary: #0d9488;
+  --header-text: #134e4a;
+  --header-muted: #5b7a74;
+  --input-bg: #ffffff;
+  --input-border: #99d6c9;
+  --input-color: #134e4a;
+  --placeholder: #86a39d;
+  --table-head-bg: #e6f7f2;
+  --table-head-color: #5b7a74;
+  --table-border: #d5faf0;
+  --row-hover: #f0fdfa;
+  --badge-bg: rgba(16, 185, 129, 0.16);
+  --badge-color: #0d9488;
+  --badge-border: rgba(20, 184, 166, 0.35);
+  --modal-bg: #ffffff;
+}
+
+/* Sunset — light */
+[data-theme-pack='sunset'] {
+  --bg: #fff7ed;
+  --surface: #ffffff;
+  --surface-2: #fff4e5;
+  --surface-3: #fbe8d3;
+  --border: #ffedd5;
+  --border-strong: #fed7aa;
+  --border-subtle: #ffedd5;
+  --text: #7c2d12;
+  --text-muted: #8b6e58;
+  --text-faint: #a98c72;
+  --heading: #7c2d12;
+  --brand-primary: #f97316;
+  --brand-secondary: #ea580c;
+  --header-text: #7c2d12;
+  --header-muted: #8b6e58;
+  --input-bg: #ffffff;
+  --input-border: #eec9a4;
+  --input-color: #7c2d12;
+  --placeholder: #a98c72;
+  --table-head-bg: #fff1e0;
+  --table-head-color: #8b6e58;
+  --table-border: #ffedd5;
+  --row-hover: #fff7ed;
+  --badge-bg: rgba(249, 115, 22, 0.14);
+  --badge-color: #c2410c;
+  --badge-border: rgba(249, 115, 22, 0.3);
+  --modal-bg: #ffffff;
+}
+
+/* Ocean — dark */
+[data-theme='dark'][data-theme-pack='ocean'] {
+  --bg: #071412;
+  --surface: #0d241f;
+  --surface-2: #071412;
+  --surface-3: #12332b;
+  --border: rgba(46, 81, 69, 0.7);
+  --border-strong: #2e5145;
+  --border-subtle: rgba(46, 81, 69, 0.4);
+  --text: #ecfdf5;
+  --text-muted: #86b5a8;
+  --text-faint: #5e8a7d;
+  --heading: #ecfdf5;
+  --brand-primary: #14b8a6;
+  --brand-secondary: #2dd4bf;
+  --header-text: #ecfdf5;
+  --header-muted: #86b5a8;
+  --input-bg: #0d241f;
+  --input-border: #2e5145;
+  --input-color: #ecfdf5;
+  --placeholder: #5e8a7d;
+  --table-head-bg: #071412;
+  --table-head-color: #86b5a8;
+  --table-border: rgba(46, 81, 69, 0.4);
+  --row-hover: rgba(20, 184, 166, 0.08);
+  --badge-bg: rgba(20, 184, 166, 0.12);
+  --badge-color: #2dd4bf;
+  --badge-border: rgba(20, 184, 166, 0.25);
+  --shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  --modal-bg: #0d241f;
+}
+
+/* Sunset — dark */
+[data-theme='dark'][data-theme-pack='sunset'] {
+  --bg: #160e08;
+  --surface: #1f150d;
+  --surface-2: #160e08;
+  --surface-3: #2b1d11;
+  --border: rgba(72, 52, 38, 0.7);
+  --border-strong: #4e3b28;
+  --border-subtle: rgba(78, 59, 40, 0.4);
+  --text: #fff7ed;
+  --text-muted: #c4a891;
+  --text-faint: #9c8066;
+  --heading: #fff7ed;
+  --brand-primary: #f97316;
+  --brand-secondary: #fb923c;
+  --header-text: #fff7ed;
+  --header-muted: #c4a891;
+  --input-bg: #1f150d;
+  --input-border: #4e3b28;
+  --input-color: #fff7ed;
+  --placeholder: #9c8066;
+  --table-head-bg: #160e08;
+  --table-head-color: #c4a891;
+  --table-border: rgba(78, 59, 40, 0.4);
+  --row-hover: rgba(249, 115, 22, 0.08);
+  --badge-bg: rgba(249, 115, 22, 0.14);
+  --badge-color: #fb923c;
+  --badge-border: rgba(249, 115, 22, 0.3);
+  --shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  --modal-bg: #1f150d;
+}
+
 body {
   margin: 0;
   background-color: var(--bg);
