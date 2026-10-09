@@ -53,7 +53,6 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
             BrandLogo(
               logoUrl: branding.logoUrl,
               size: 84,
-              tint: branding.primaryColor,
             ),
             AppSpacing.vMd,
             Text(

@@ -8,12 +8,12 @@ import {
   Settings as SettingsIcon,
   ShieldCheck,
   Building2,
-  Vote,
   LogOut,
 } from 'lucide-react';
 import { useAuth } from '../lib/AuthContext';
 import { useBranding } from '../lib/branding';
 import { allowedViews } from '../lib/permissions';
+import OmniVoteMark from './OmniVoteMark';
 import './Sidebar.css';
 
 /*
@@ -74,7 +74,7 @@ export default function Sidebar({
   return (
     <aside className="sidebar">
       <div className="logo-area">
-        <div className="logo-icon">{logoUrl ? <img src={logoUrl} alt="" className="sidebar-logo-img" /> : <Vote size={20} />}</div>
+        <div className="logo-icon">{logoUrl ? <img src={logoUrl} alt="" className="sidebar-logo-img" /> : <OmniVoteMark className="sidebar-logo-img" />}</div>
         <div>
           <h1 className="brand-name">{resolvedName}</h1>
           <p className="brand-sub">{resolvedSub}</p>

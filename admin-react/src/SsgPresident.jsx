@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { LogOut, Megaphone, ShieldCheck, Trash2, Vote } from 'lucide-react';
+import { LogOut, Megaphone, ShieldCheck, Trash2 } from 'lucide-react';
 import api from './lib/api';
 import { useAuth } from './lib/AuthContext';
 import MobileMenuButton from './components/MobileMenuButton';
+import OmniVoteMark from './components/OmniVoteMark';
 import './SsgPresident.css';
 
 function errorMessage(error, fallback) {
@@ -112,7 +113,7 @@ export default function SsgPresident({ onLogout }) {
     <div className="dashboard-container">
       <aside className="sidebar">
         <div className="logo-area">
-          <div className="logo-icon"><Vote size={20} /></div>
+          <div className="logo-icon"><OmniVoteMark className="sidebar-logo-img" /></div>
           <div><h1 className="brand-name">OmniVote</h1><p className="brand-sub">ELECTION CONSOLE</p></div>
         </div>
         <div className="ssg-sidebar-title"><ShieldCheck size={16} /> SSG PRESIDENT</div>
