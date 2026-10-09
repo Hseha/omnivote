@@ -14,7 +14,7 @@ class UpdateCandidateStatusRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'status' => ['required', 'in:pending,approved,rejected'],
+            'status' => ['required', 'in:pending,approved,rejected,withdrawn'],
         ];
     }
 }
