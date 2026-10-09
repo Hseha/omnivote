@@ -14,7 +14,7 @@ use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 use App\Notifications\PasswordResetLink;
 
-#[Fillable(['name', 'email', 'password', 'role', 'student_id', 'has_voted', 'year_level', 'block_number', 'department', 'course', 'is_active', 'needs_review', 'review_reason', 'two_factor_secret', 'two_factor_enabled', 'two_factor_recovery_codes', 'avatar_url', 'must_change_password'])]
+#[Fillable(['name', 'email', 'password', 'role', 'student_id', 'has_voted', 'year_level', 'block_number', 'department', 'course', 'is_active', 'needs_review', 'review_reason', 'two_factor_secret', 'two_factor_enabled', 'two_factor_recovery_codes', 'avatar_url', 'must_change_password', 'archived_at'])]
 #[Hidden(['password', 'remember_token', 'failed_login_attempts', 'two_factor_secret', 'two_factor_enabled', 'two_factor_recovery_codes'])]
 class User extends Authenticatable
 {
@@ -63,6 +63,7 @@ class User extends Authenticatable
             'locked_until' => 'datetime',
             'needs_review' => 'boolean',
             'must_change_password' => 'boolean',
+            'archived_at' => 'datetime',
             'two_factor_secret' => 'encrypted',
             'two_factor_enabled' => 'boolean',
             'two_factor_recovery_codes' => 'array',
