@@ -29,17 +29,20 @@ class ReleaseRepository {
     AppRelease? best;
     for (final release in releases) {
       if (release.version == unparseable) continue;
-      final sameVersionAsBest =
-          best != null && release.version.compareTo(best.version) == 0;
+      if (best == null) {
+        best = release;
+        continue;
+      }
+      final comparison = release.version.compareTo(best.version);
+      if (comparison > 0) {
+        // Newer build wins outright.
+        best = release;
+        continue;
+      }
       // On an X.Y.Z tie prefer a stable build over a device-test prerelease
       // (e.g. both v1.2.0 and v1.2.0-test.3 exist): students should be pointed
       // at the real release, not a test build of the same version.
-      final preferStableOnTie = sameVersionAsBest &&
-          !release.isTestChannel &&
-          best!.isTestChannel;
-      if (best == null ||
-          release.version.compareTo(best.version) > 0 ||
-          preferStableOnTie) {
+      if (comparison == 0 && !release.isTestChannel && best.isTestChannel) {
         best = release;
       }
     }
