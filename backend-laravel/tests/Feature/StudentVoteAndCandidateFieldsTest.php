@@ -135,7 +135,7 @@ class StudentVoteAndCandidateFieldsTest extends TestCase
             ->assertJsonStructure(['receipt']);
     }
 
-    public function test_a_candidate_cannot_vote_for_themselves(): void
+    public function test_a_candidate_may_vote_for_themselves(): void
     {
         $this->openVoting();
 
@@ -144,16 +144,15 @@ class StudentVoteAndCandidateFieldsTest extends TestCase
 
         $this->actingAs($runner, 'sanctum')
             ->postJson('/api/vote', ['selections' => ['president' => 'ref-ana']])
-            ->assertStatus(422)
-            ->assertJsonPath('message', "You cannot vote for yourself in position 'president'.");
+            ->assertStatus(201)
+            ->assertJsonStructure(['receipt']);
 
-        $this->assertFalse($runner->fresh()->has_voted);
+        $this->assertTrue($runner->fresh()->has_voted);
     }
 
-    /* On a 12-seat race a candidate would otherwise take a seat of their own
-       party, and could take every one of them. The self-vote check has to
-       reject the whole batch, not just the offending reference. */
-    public function test_a_candidate_cannot_vote_for_themselves_on_a_multi_seat_race(): void
+    /* On a 12-seat race a candidate may include their own seat in the batch;
+       the whole batch still submits. */
+    public function test_a_candidate_may_vote_for_themselves_on_a_multi_seat_race(): void
     {
         $this->openVoting();
 
@@ -164,10 +163,10 @@ class StudentVoteAndCandidateFieldsTest extends TestCase
 
         $this->actingAs($runner, 'sanctum')
             ->postJson('/api/vote', ['selections' => ['senator' => ['ref-mine', 'ref-theirs']]])
-            ->assertStatus(422)
-            ->assertJsonPath('message', "You cannot vote for yourself in position 'senator'.");
+            ->assertStatus(201)
+            ->assertJsonStructure(['receipt']);
 
-        $this->assertFalse($runner->fresh()->has_voted);
+        $this->assertTrue($runner->fresh()->has_voted);
     }
 
     public function test_voting_for_another_candidate_is_still_allowed(): void
