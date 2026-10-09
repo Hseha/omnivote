@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { ArrowLeft, KeyRound, Mail } from 'lucide-react';
+import { ArrowLeft, Mail } from 'lucide-react';
 import api from './lib/api';
 import { API_BASE_URL } from './lib/api';
 import { useBranding } from './lib/branding';
+import OmniVoteMark from './components/OmniVoteMark';
 import './AdminLogin.css';
 
 /*
@@ -48,7 +49,7 @@ export default function ForgotPassword({ onBack }) {
           </a>
           <div className="brand-wrapper">
             <div className="brand-icon-box">
-              {branding.logoUrl ? <img src={branding.logoUrl} alt="" className="brand-logo-img" /> : <KeyRound size={24} />}
+              {branding.logoUrl ? <img src={branding.logoUrl} alt="" className="brand-logo-img" /> : <OmniVoteMark className="brand-logo-img" />}
             </div>
             <div className="brand-text">
               <h1 className="brand-title">{branding.siteName || 'OmniVote'}</h1>

@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Vote, Lock, Mail, Eye, EyeOff, ShieldCheck, KeyRound, LoaderCircle } from 'lucide-react';
+import { Lock, Mail, Eye, EyeOff, ShieldCheck, KeyRound, LoaderCircle } from 'lucide-react';
 import { useAuth } from './lib/AuthContext';
 import { useBranding } from './lib/branding';
+import OmniVoteMark from './components/OmniVoteMark';
 import './AdminLogin.css';
 
 /* Translate backend responses into non-technical, role-neutral guidance so a
@@ -79,7 +80,7 @@ export default function AdminLogin({ onForgot }) {
         <div className="login-header">
           <div className="brand-wrapper">
             <div className="brand-icon-box">
-              {branding.logoUrl ? <img src={branding.logoUrl} alt="" className="brand-logo-img" /> : <Vote size={24} />}
+              {branding.logoUrl ? <img src={branding.logoUrl} alt="" className="brand-logo-img" /> : <OmniVoteMark className="brand-logo-img" />}
             </div>
             <div className="brand-text">
               <h1 className="brand-title">{branding.siteName || 'OmniVote'}</h1>
