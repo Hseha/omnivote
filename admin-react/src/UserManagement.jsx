@@ -4,6 +4,7 @@ import Header from './components/Header';
 import {
   Search, Eye, EyeOff, KeyRound, X, CheckCircle, AlertTriangle,
   Lock, Unlock, UserPlus, Download, ShieldCheck, Award, Mail,
+  Archive, ArchiveRestore,
 } from 'lucide-react';
 import api from './lib/api';
 import { useAuth } from './lib/AuthContext';
@@ -39,6 +40,7 @@ export default function UserManagement({ onLogout, activeView = 'user_management
   const [statusFilter, setStatusFilter] = useState('');
   const [deptFilter, setDeptFilter] = useState('');
   const [reviewOnly, setReviewOnly] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
   const [srvErr, setSrvErr] = useState('');
   const [okMsg, setOkMsg] = useState('');
 
@@ -60,6 +62,12 @@ export default function UserManagement({ onLogout, activeView = 'user_management
   const [emailSaving, setEmailSaving] = useState(false);
   const [emailError, setEmailError] = useState('');
 
+  // "Archive user" (strict, type-name-to-confirm) modal state
+  const [archiveTarget, setArchiveTarget] = useState(null);
+  const [archiveNameInput, setArchiveNameInput] = useState('');
+  const [archiveBusy, setArchiveBusy] = useState(false);
+  const [archiveError, setArchiveError] = useState('');
+
   const handleLogout = () => { if (typeof onLogout === 'function') return onLogout(); logout(); };
 
   const buildParams = useCallback((page) => {
@@ -70,13 +78,14 @@ export default function UserManagement({ onLogout, activeView = 'user_management
     if (roleFilter) p.role = roleFilter;
     if (deptFilter) p.department = deptFilter;
     if (reviewOnly) p.needs_review = 'true';
+    if (showArchived) p.archived = 'true';
     if (statusFilter === 'active') p.status = 'active';
     else if (statusFilter === 'inactive') p.status = 'inactive';
     else if (statusFilter === 'locked') p.status = 'locked';
     else if (statusFilter === 'enabled') p.is_active = 'true';
     else if (statusFilter === 'disabled') p.is_active = 'false';
     return p;
-  }, [search, roleFilter, deptFilter, reviewOnly, statusFilter]);
+  }, [search, roleFilter, deptFilter, reviewOnly, showArchived, statusFilter]);
 
   const loadUsers = useCallback(async (page = 1) => {
     setLoading(true); setSrvErr('');
@@ -99,10 +108,10 @@ export default function UserManagement({ onLogout, activeView = 'user_management
 
   const doSearch = (e) => { e.preventDefault(); loadUsers(1); };
   const clearFilters = () => {
-    setSearch(''); setRoleFilter(''); setStatusFilter(''); setDeptFilter(''); setReviewOnly(false);
+    setSearch(''); setRoleFilter(''); setStatusFilter(''); setDeptFilter(''); setReviewOnly(false); setShowArchived(false);
     loadUsers(1);
   };
-  const hasFilters = search || roleFilter || statusFilter || deptFilter || reviewOnly;
+  const hasFilters = search || roleFilter || statusFilter || deptFilter || reviewOnly || showArchived;
 
   const flash = (msg) => { setOkMsg(msg); setTimeout(() => setOkMsg(''), 4000); };
 
@@ -203,6 +212,40 @@ export default function UserManagement({ onLogout, activeView = 'user_management
     } finally { setCreating(false); }
   };
 
+  const openArchive = (u) => {
+    setArchiveError('');
+    setArchiveNameInput('');
+    setArchiveTarget(u);
+  };
+
+  const doArchive = async () => {
+    if (!archiveTarget) return;
+    // Strict confirmation: the typed name must match the account's full name
+    // (case-insensitive). The Archive button stays disabled until it does.
+    const typed = archiveNameInput.trim().toLowerCase();
+    const expected = (archiveTarget.name || '').trim().toLowerCase();
+    if (typed !== expected) return;
+    setArchiveBusy(true); setArchiveError('');
+    try {
+      await api.post(`/admin/users/${archiveTarget.id}/archive`);
+      setArchiveTarget(null);
+      flash(`${archiveTarget.name} archived.`);
+      loadUsers(meta.current_page);
+    } catch (e) {
+      setArchiveError(e.response?.data?.message || 'Could not archive the account.');
+    } finally { setArchiveBusy(false); }
+  };
+
+  const doUnarchive = async (u) => {
+    setActionLoading(u.id);
+    try {
+      await api.post(`/admin/users/${u.id}/unarchive`);
+      flash(`${u.name} restored.`);
+      loadUsers(meta.current_page);
+    } catch (e) { setSrvErr(e.response?.data?.message || 'Could not restore the account.'); }
+    finally { setActionLoading(null); }
+  };
+
   // Item 4: load certified winners for the SSG grant dialog.
   const openGrant = async () => {
     setShowGrant(true); setWinnersLoading(true); setSrvErr('');
@@ -292,6 +335,10 @@ export default function UserManagement({ onLogout, activeView = 'user_management
               <input type="checkbox" checked={reviewOnly} onChange={e => setReviewOnly(e.target.checked)} />
               Needs review ({stats?.needs_review ?? 0})
             </label>
+            <label className="um-filter-check" title="Show archived accounts (hidden from totals and the default list) so they can be restored">
+              <input type="checkbox" checked={showArchived} onChange={e => setShowArchived(e.target.checked)} />
+              Show archived ({stats?.archived ?? 0})
+            </label>
             {(stats?.locked ?? 0) > 0 && (
               <button
                 type="button"
@@ -315,6 +362,7 @@ export default function UserManagement({ onLogout, activeView = 'user_management
             <div className="um-stat-card"><div className="um-stat-value">{stats?.by_role?.candidate ?? '—'}</div><div className="um-stat-label">Candidates</div></div>
             <div className="um-stat-card"><div className="um-stat-value">{stats ? (stats.ssg_president.assigned > 0 ? 'Yes' : 'No') : '—'}</div><div className="um-stat-label">SSG President</div></div>
             <div className="um-stat-card"><div className="um-stat-value">{stats?.staff ?? '—'}</div><div className="um-stat-label">Staff</div></div>
+            <div className="um-stat-card"><div className="um-stat-value">{stats?.archived ?? '—'}</div><div className="um-stat-label">Archived</div></div>
           </div>
           {okMsg && <div className="um-banner um-banner-success"><CheckCircle size={16} /> {okMsg}</div>}
           {srvErr && <div className="um-banner um-banner-error"><AlertTriangle size={16} /> {srvErr}</div>}
@@ -327,8 +375,9 @@ export default function UserManagement({ onLogout, activeView = 'user_management
                 users.map(u => {
                   const active = !!u.is_active;
                   const locked = !!u.locked;
+                  const archived = !!u.archived;
                   return (
-                    <tr key={u.id} className={active ? '' : 'um-row-inactive'}>
+                    <tr key={u.id} className={active && !archived ? '' : 'um-row-inactive'}>
                       <td>
                         <div className="um-user-cell">
                           <span className={`um-avatar-initials ${u.needs_review ? 'um-avatar-review' : ''}`} title={u.needs_review ? u.review_reason || 'Needs review' : undefined}>{(u.name || '?')[0]?.toUpperCase()}</span>
@@ -342,7 +391,9 @@ export default function UserManagement({ onLogout, activeView = 'user_management
                       <td className="um-mono-cell" data-label="Student ID">{u.student_id || '—'}</td>
                       <td data-label="Role"><span className={`um-role-badge ${ROLE_CLS[u.role] || 'role-student'}`}>{ROLES[u.role] || u.role}</span></td>
                       <td data-label="Status">
-                        {locked ? (
+                        {archived ? (
+                          <span className="um-status-badge um-status-archived" title={`Archived${u.archived_at_date ? ' ' + u.archived_at_date : ''}`}><Archive size={12} /> Archived</span>
+                        ) : locked ? (
                           <span className="um-status-badge um-status-locked" title={`Locked until ${u.locked_until || 'later'} after failed login attempts`}><Lock size={12} /> Locked</span>
                         ) : (
                           <span className={`um-status-badge ${active ? 'um-status-active' : 'um-status-inactive'}`}>{active ? <CheckCircle size={12} /> : <EyeOff size={12} />}{active ? 'Active' : 'Inactive'}</span>
@@ -352,13 +403,20 @@ export default function UserManagement({ onLogout, activeView = 'user_management
                       <td className="um-muted-cell" data-label="Year / Block">{u.year_level || u.block_number ? `${u.year_level || ''}${u.year_level && u.block_number ? '/' : ''}${u.block_number ? 'Blk ' + u.block_number : ''}` : '—'}</td>
                       <td className="um-muted-cell" data-label="Added">{u.date_added || '—'}</td>
                       <td className="text-right um-actions-td" data-label="Actions"><div className="um-action-btns">
-                        <select className="um-role-select" value={u.role} onChange={e => doRoleChange(u.id, e.target.value)} disabled={actionLoading === u.id || u.id === 1} title="Change this user's role (SSG President is granted separately to certified winners only)">
-                          {ROLE_OPTIONS.map(v => <option key={v} value={v}>{ROLES[v]}</option>)}
-                        </select>
-                        {u.id !== 1 && locked && <button className="um-toggle-btn btn-unlock" onClick={() => doUnlock(u.id)} disabled={actionLoading === u.id} title="Unlock account — clears the failed-login lockout"><Unlock size={14} /> Unlock</button>}
-                        {u.id !== 1 && !locked && <button className={`um-toggle-btn ${active ? 'btn-disable' : 'btn-enable'}`} onClick={() => doStatusToggle(u.id, !active)} disabled={actionLoading === u.id} title={active ? 'Disable user — blocks sign-in without deleting the account' : 'Enable user — restores sign-in'}>{active ? <EyeOff size={14} /> : <Eye size={14} />}</button>}
-                        {u.id !== 1 && <button className="um-action-link-btn" onClick={() => startEmailEdit(u)} disabled={actionLoading === u.id} title="Edit email address — fixes typos so students can still sign in"><Mail size={14} /></button>}
-                        {u.id !== 1 && <button className="um-action-link-btn" onClick={() => doPwReset(u.id)} disabled={actionLoading === u.id} title="Reset password — generates a one-time temporary password and signs this user out everywhere"><KeyRound size={14} /></button>}
+                        {archived ? (
+                          <button className="um-toggle-btn btn-enable" onClick={() => doUnarchive(u)} disabled={actionLoading === u.id} title="Restore this archived account — returns it to the counts and sign-in"><ArchiveRestore size={14} /> Restore</button>
+                        ) : (
+                          <>
+                            <select className="um-role-select" value={u.role} onChange={e => doRoleChange(u.id, e.target.value)} disabled={actionLoading === u.id || u.id === 1} title="Change this user's role (SSG President is granted separately to certified winners only)">
+                              {ROLE_OPTIONS.map(v => <option key={v} value={v}>{ROLES[v]}</option>)}
+                            </select>
+                            {u.id !== 1 && locked && <button className="um-toggle-btn btn-unlock" onClick={() => doUnlock(u.id)} disabled={actionLoading === u.id} title="Unlock account — clears the failed-login lockout"><Unlock size={14} /> Unlock</button>}
+                            {u.id !== 1 && !locked && <button className={`um-toggle-btn ${active ? 'btn-disable' : 'btn-enable'}`} onClick={() => doStatusToggle(u.id, !active)} disabled={actionLoading === u.id} title={active ? 'Disable user — blocks sign-in without deleting the account' : 'Enable user — restores sign-in'}>{active ? <EyeOff size={14} /> : <Eye size={14} />}</button>}
+                            {u.id !== 1 && <button className="um-action-link-btn" onClick={() => startEmailEdit(u)} disabled={actionLoading === u.id} title="Edit email address — fixes typos so students can still sign in"><Mail size={14} /></button>}
+                            {u.id !== 1 && <button className="um-action-link-btn" onClick={() => doPwReset(u.id)} disabled={actionLoading === u.id} title="Reset password — generates a one-time temporary password and signs this user out everywhere"><KeyRound size={14} /></button>}
+                            {u.id !== 1 && <button className="um-toggle-btn btn-archive" onClick={() => openArchive(u)} disabled={actionLoading === u.id} title="Archive user — removes them from Total Users and all stats, hides them from the list, and blocks sign-in. Kept for records; can be restored."><Archive size={14} /> Archive</button>}
+                          </>
+                        )}
                       </div></td>
                     </tr>
                   );
@@ -506,6 +564,52 @@ export default function UserManagement({ onLogout, activeView = 'user_management
                 <button type="submit" className="um-btn-primary" disabled={emailSaving}>{emailSaving ? 'Saving…' : 'Save email'}</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Strict archive confirmation: requires typing the account's full name */}
+      {archiveTarget && (
+        <div className="um-modal-overlay" onClick={() => { if (!archiveBusy) setArchiveTarget(null); }}>
+          <div className="um-modal" onClick={e => e.stopPropagation()} role="dialog" aria-label="Archive user">
+            <h3 className="um-modal-title um-modal-title-danger"><Archive size={18} /> Archive this account?</h3>
+            {archiveError && <div className="um-banner um-banner-error"><AlertTriangle size={14} /> {archiveError}</div>}
+            <p className="um-modal-text">
+              Archiving <strong>{archiveTarget.name || archiveTarget.email}</strong> removes them from
+              <strong> Total Users</strong> and every role/status count, hides them from this list, and
+              blocks them from signing in. Their record is kept — votes, candidacy history, and audit
+              trail stay intact — and the account can be restored from the archived view.
+            </p>
+            <p className="um-modal-text um-modal-danger-note">
+              To prevent archiving the wrong person, type the account&rsquo;s full name exactly:
+            </p>
+            <div className="um-archive-confirm-name">{archiveTarget.name || '—'}</div>
+            <label className="um-field">
+              <span>Type the user&rsquo;s full name to confirm</span>
+              <input
+                type="text"
+                value={archiveNameInput}
+                onChange={e => setArchiveNameInput(e.target.value)}
+                placeholder={archiveTarget.name || ''}
+                autoFocus
+                disabled={archiveBusy}
+              />
+            </label>
+            <div className="um-modal-actions">
+              <button type="button" className="um-btn-ghost" onClick={() => setArchiveTarget(null)} disabled={archiveBusy}>Cancel</button>
+              <button
+                type="button"
+                className="um-btn-danger"
+                onClick={doArchive}
+                disabled={
+                  archiveBusy ||
+                  !(archiveTarget.name || '').trim() ||
+                  archiveNameInput.trim().toLowerCase() !== (archiveTarget.name || '').trim().toLowerCase()
+                }
+              >
+                {archiveBusy ? 'Archiving…' : 'Archive account'}
+              </button>
+            </div>
           </div>
         </div>
       )}

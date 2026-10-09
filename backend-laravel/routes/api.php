@@ -187,6 +187,10 @@ Route::prefix('admin')->group(function () {
             ->middleware('permission:manage_accounts');
         Route::post('/users/bulk-unlock', [AdminUserController::class, 'bulkUnlock'])
             ->middleware('permission:manage_accounts');
+        Route::post('/users/{user}/archive', [AdminUserController::class, 'archive'])
+            ->middleware('permission:manage_accounts');
+        Route::post('/users/{user}/unarchive', [AdminUserController::class, 'unarchive'])
+            ->middleware('permission:manage_accounts');
         Route::post('/users/{user}/grant-ssg', [AdminUserController::class, 'grantSsg'])
             ->middleware('permission:manage_accounts');
 
