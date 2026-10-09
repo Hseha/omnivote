@@ -11,6 +11,7 @@ import '../../../core/widgets/section_header.dart';
 import '../../../core/widgets/top_bar.dart';
 import '../../../data/models/branding_model.dart';
 import '../../../data/services/theme_mode.dart';
+import '../../app_update/providers/app_update_provider.dart';
 import '../providers/branding_provider.dart';
 
 /// User-facing Settings (reachable from the avatar menu).
@@ -26,6 +27,11 @@ class SettingsScreen extends ConsumerWidget {
     final themeMode = ref.watch(themeModeProvider);
     final branding = ref.watch(
       brandingProvider.select((state) => state.valueOrNull ?? const Branding()),
+    );
+    // Real installed version from package_info_plus (via the app-update
+    // provider), used in the About dialog and the App Updates entry.
+    final installedVersion = ref.watch(
+      appUpdateProvider.select((state) => state.installed?.toString()),
     );
     final scheme = Theme.of(context).colorScheme;
     final appText = AppTextStyles.of(context);
@@ -134,6 +140,24 @@ class SettingsScreen extends ConsumerWidget {
           AppCard(
             padding: EdgeInsets.zero,
             child: ListTile(
+              leading: Icon(
+                Icons.system_update_alt,
+                color: scheme.primary,
+              ),
+              title: const Text('App Updates'),
+              subtitle: Text(
+                installedVersion == null
+                    ? 'Check for new versions and what\'s new'
+                    : 'Installed v$installedVersion — what\'s new',
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => context.push('/app-update'),
+            ),
+          ),
+          AppSpacing.vSm,
+          AppCard(
+            padding: EdgeInsets.zero,
+            child: ListTile(
               leading: Icon(Icons.info_outline, color: branding.primaryColor),
               title: const Text('About'),
               subtitle: Text(
@@ -145,7 +169,8 @@ class SettingsScreen extends ConsumerWidget {
                 showAboutDialog(
                   context: context,
                   applicationName: branding.siteName,
-                  applicationVersion: '1.0.0',
+                  applicationVersion:
+                      installedVersion == null ? '—' : 'v$installedVersion',
                   applicationIcon: Icon(
                     Icons.how_to_vote,
                     size: 40,
