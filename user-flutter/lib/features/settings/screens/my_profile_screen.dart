@@ -140,19 +140,21 @@ class _InfoRow extends StatelessWidget {
           vertical: AppMetrics.rowPaddingV,
         ),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Icon(icon, size: 20, color: Theme.of(context).colorScheme.primary),
             AppSpacing.hSm,
+            Text(
+              label,
+              style: appText.bodySmall,
+            ),
+            AppSpacing.hMd,
             Expanded(
               child: Text(
-                label,
-                style: appText.bodySmall,
+                value == null || value!.isEmpty ? '—' : value!,
+                textAlign: TextAlign.end,
+                style: appText.labelLarge,
               ),
-            ),
-            Text(
-              value == null || value!.isEmpty ? '—' : value!,
-              textAlign: TextAlign.end,
-              style: appText.labelLarge,
             ),
           ],
         ),
