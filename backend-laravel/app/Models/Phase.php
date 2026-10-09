@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Notifier;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Carbon;
@@ -218,11 +219,40 @@ class Phase extends Model
     {
         $phase = static::where('name', $name)->firstOrFail();
 
+        $previous = static::where('is_active', true)->value('name');
+
         DB::transaction(function () use ($phase) {
             static::query()->update(['is_active' => false]);
             $phase->forceFill(['is_active' => true])->save();
         });
 
+        // Physical transitions are the only moments worth a notification. The
+        // no-op guard matters: `current()` already short-circuits an unchanged
+        // phase, but a manual call with the same name must not re-notify.
+        if ($previous !== $name) {
+            static::announce($name);
+        }
+
         return $phase->fresh();
+    }
+
+    /**
+     * Fan a lifecycle notification out to students when the active phase
+     * reaches a milestone. Best-effort — `Notifier` swallows failures so a
+     * transient DB issue can never break phase reconciliation.
+     */
+    private static function announce(string $name): void
+    {
+        [$title, $body, $link] = match ($name) {
+            'voting_open' => ['Voting is now open', 'Cast your ballot before the polls close.', '/vote-now'],
+            'voting_closed' => ['Voting has closed', 'Thank you for voting. Results will be published soon.', '/results'],
+            default => [null, null, null],
+        };
+
+        if ($title === null) {
+            return;
+        }
+
+        Notifier::notifyStudents('info', $title, $body, $link);
     }
 }

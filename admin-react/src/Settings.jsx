@@ -27,6 +27,7 @@ import { useTheme } from './lib/ThemeContext';
 import { refreshBranding } from './lib/branding';
 import { useElectionStatus } from './lib/ElectionStatusContext';
 import TwoFactorSetup from './TwoFactorSetup';
+import NotificationBroadcast from './components/NotificationBroadcast';
 import './Settings.css';
 
 const STORAGE_KEY = 'omnivote:admin:settings';
@@ -1554,6 +1555,10 @@ export default function Settings({ onLogout, onNavigate, initialTab = 'profile' 
                 </div>
               </div>
             </section>
+          )}
+
+          {activeTab === 'notifications' && (
+            <NotificationBroadcast />
           )}
 
           {activeTab === 'appearance' && (

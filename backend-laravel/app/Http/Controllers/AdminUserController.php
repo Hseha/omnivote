@@ -647,6 +647,21 @@ class AdminUserController extends Controller
             '/users',
         );
 
+        // Tell the account owner their eligibility changed. Best-effort: a
+        // disabled student cannot sign in to read it, but the row is waiting
+        // if the account is later re-enabled.
+        if ($user->role === 'student') {
+            Notifier::notifyUser(
+                $user->id,
+                $validated['is_active'] ? 'success' : 'warning',
+                $validated['is_active'] ? 'Your account was activated' : 'Your account was disabled',
+                $validated['is_active']
+                    ? 'You can now vote in the election.'
+                    : 'Contact your registrar if you believe this is a mistake.',
+                '/profile',
+            );
+        }
+
         return response()->json(['data' => $this->present($user)]);
     }
 
