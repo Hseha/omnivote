@@ -49,6 +49,7 @@ class AdminUserController extends Controller
             'status' => ['nullable', 'string', 'in:active,inactive,locked'],
             'department' => ['nullable', 'string', 'max:100'],
             'needs_review' => ['nullable', 'string', 'in:true,false,1,0'],
+            'archived' => ['nullable', 'string', 'in:true,false,1,0'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
 
@@ -80,6 +81,7 @@ class AdminUserController extends Controller
                 'status' => $request->query('status'),
                 'department' => $request->query('department'),
                 'needs_review' => $request->query('needs_review'),
+                'archived' => $request->query('archived'),
             ],
             // Global, unpaginated aggregates so the stat row never depends on
             // which slice of users happens to be on screen.
@@ -157,6 +159,7 @@ class AdminUserController extends Controller
     private function stats(): array
     {
         $roleCounts = User::query()
+            ->whereNull('archived_at')
             ->select('role', DB::raw('COUNT(*) as total'))
             ->groupBy('role')
             ->pluck('total', 'role');
@@ -165,10 +168,14 @@ class AdminUserController extends Controller
 
         return [
             'total' => array_sum($roleCounts->all()),
-            'active' => User::where('is_active', true)->count(),
-            'inactive' => User::where('is_active', false)->count(),
-            'locked' => User::where('locked_until', '>', now())->count(),
-            'needs_review' => User::where('needs_review', true)->count(),
+            'active' => User::where('is_active', true)->whereNull('archived_at')->count(),
+            'inactive' => User::where('is_active', false)->whereNull('archived_at')->count(),
+            'locked' => User::where('locked_until', '>', now())->whereNull('archived_at')->count(),
+            'needs_review' => User::where('needs_review', true)->whereNull('archived_at')->count(),
+            // Archived accounts are hidden from Total Users and every role/status
+            // card above — they are separate, viewable only through the
+            // "Show archived" toggle.
+            'archived' => User::whereNotNull('archived_at')->count(),
             'by_role' => [
                 'admin' => $count('admin'),
                 'teacher' => $count('teacher'),
@@ -461,8 +468,16 @@ class AdminUserController extends Controller
         $isActive = $request->has('is_active')
             ? filter_var($request->query('is_active'), FILTER_VALIDATE_BOOLEAN)
             : null;
+        $archived = $request->has('archived')
+            ? filter_var($request->query('archived'), FILTER_VALIDATE_BOOLEAN)
+            : null;
 
         return User::query()
+            // Archived accounts are excluded from the default listing; they are
+            // only visible (and restorable) through the explicit archived filter.
+            ->when($archived !== null, fn ($q) => $archived
+                ? $q->whereNotNull('archived_at')
+                : $q->whereNull('archived_at'), fn ($q) => $q->whereNull('archived_at'))
             ->when($request->query('search'), function ($q, $search) {
                 $q->where(fn ($inner) => $inner
                     ->where('name', 'like', "%{$search}%")
@@ -507,6 +522,8 @@ class AdminUserController extends Controller
             'course' => $user->course,
             'needs_review' => (bool) $user->needs_review,
             'review_reason' => $user->review_reason,
+            'archived' => $user->archived_at !== null,
+            'archived_at_date' => $user->archived_at?->format('M d, Y'),
             'date_added' => $user->created_at?->format('M d, Y'),
         ];
     }
@@ -661,6 +678,104 @@ class AdminUserController extends Controller
                 '/profile',
             );
         }
+
+        return response()->json(['data' => $this->present($user)]);
+    }
+
+    /**
+     * POST /api/admin/users/{user}/archive — soft-archive an account.
+     *
+     * Archive removes a departed user (graduated, dropped, transferred) from
+     * Total Users and every role/status stat and hides them from the listing
+     * by default, without deleting the row that candidates, votes,
+     * notifications, and audit history still point at.
+     *
+     * Guardrails mirror updateStatus() and add a candidacy hold:
+     *   - you cannot archive yourself
+     *   - you cannot archive the final active administrator
+     *   - a pending/approved candidacy or certified-winner record must be
+     *     resolved first (otherwise an archived candidate would vanish from
+     *     the ballot/leaderboard mid-election)
+     *
+     * Archiving flips is_active off, so every existing sign-in and
+     * /me is_active gate already locks the account out; tokens are revoked.
+     */
+    public function archive(Request $request, User $user): JsonResponse
+    {
+        $acting = $request->user();
+        if ($acting->id === $user->id) {
+            return response()->json(['message' => 'You cannot archive your own account.'], 422);
+        }
+        if ($user->archived_at !== null) {
+            return response()->json(['message' => 'This account is already archived.'], 409);
+        }
+        if ($user->role === 'admin') {
+            $remaining = User::where('role', 'admin')
+                ->where('is_active', true)
+                ->whereNull('archived_at')
+                ->count();
+            if ($remaining <= 1) {
+                return response()->json(['message' => 'Cannot archive the final active administrator.'], 409);
+            }
+        }
+
+        $hasActiveCandidacy = Candidate::where('user_id', $user->id)
+            ->where(function ($q) {
+                $q->whereIn('approval_status', ['pending', 'approved'])
+                    ->orWhere('certified_winner', true);
+            })
+            ->exists();
+        if ($hasActiveCandidacy) {
+            return response()->json([
+                'message' => 'This user has a pending/approved candidacy or a certified-winner record. Resolve it before archiving the account.',
+            ], 409);
+        }
+
+        $user->update([
+            'is_active' => false,
+            'archived_at' => now(),
+        ]);
+        $user->tokens()->delete();
+
+        $this->audit($request, 'user_archived', "Archived {$user->name}'s account.", 'user');
+
+        Notifier::toAdmins(
+            'emailOnAdminAction',
+            'warning',
+            'User account archived',
+            "{$acting->name} archived {$user->name}'s account.",
+            '/users',
+        );
+
+        return response()->json(['data' => $this->present($user)]);
+    }
+
+    /**
+     * POST /api/admin/users/{user}/unarchive — restore an archived account.
+     *
+     * Clears the archived_at marker and re-activates the account so the user
+     * can sign in again and reappears in counts and the listing.
+     */
+    public function unarchive(Request $request, User $user): JsonResponse
+    {
+        if ($user->archived_at === null) {
+            return response()->json(['message' => 'This account is not archived.'], 409);
+        }
+
+        $user->update([
+            'archived_at' => null,
+            'is_active' => true,
+        ]);
+
+        $this->audit($request, 'user_unarchived', "Restored {$user->name}'s account.", 'user');
+
+        Notifier::toAdmins(
+            'emailOnAdminAction',
+            'success',
+            'User account restored',
+            "{$request->user()?->name} restored {$user->name}'s account.",
+            '/users',
+        );
 
         return response()->json(['data' => $this->present($user)]);
     }

@@ -102,6 +102,14 @@
 .btn-unlock { background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.3); color: #fbbf24; }
 .btn-unlock:hover { background: rgba(245,158,11,0.2); }
 
+/* Archived accounts — softer/greyer than "Inactive" since the account is retired */
+.um-status-archived { background: rgba(100,116,139,0.18); color: #94a3b8; border: 1px solid rgba(148,163,184,0.3); }
+.btn-archive { background: rgba(100,116,139,0.1); border: 1px solid rgba(148,163,184,0.3); color: #cbd5e1; }
+.btn-archive:hover { background: rgba(100,116,139,0.22); }
+.um-modal-title-danger { color: #f87171; }
+.um-modal-danger-note { font-weight: 600; color: #fca5a5; }
+.um-archive-confirm-name { font-weight: 700; color: var(--heading); background: var(--surface-2); border: 1px dashed rgba(148,163,184,0.4); border-radius: 8px; padding: 10px 12px; text-align: center; margin-bottom: 12px; letter-spacing: 0.01em; }
+
 /* Needs-review flag on the name cell (item 5) */
 .um-review-flag { display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; color: #fbbf24; font-size: 0.68rem; font-weight: 600; white-space: nowrap; }
 .um-avatar-review { background: rgba(245,158,11,0.2); color: #fbbf24; border: 1px solid rgba(245,158,11,0.4); }
@@ -126,6 +134,9 @@
 .um-btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 .um-btn-ghost { background: transparent; border: 1px solid var(--border-strong); color: var(--text-muted); border-radius: 8px; padding: 8px 16px; font-size: 0.85rem; font-weight: 500; cursor: pointer; }
 .um-btn-ghost:hover { color: var(--text); background: var(--surface-3); }
+.um-btn-danger { background: rgba(239,68,68,0.9); border: 1px solid #ef4444; color: #fff; border-radius: 8px; padding: 8px 16px; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: background 0.15s; }
+.um-btn-danger:hover:not(:disabled) { background: #dc2626; }
+.um-btn-danger:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .um-temp-password { background: var(--surface-2); border: 1px dashed rgba(16,185,129,0.5); border-radius: 8px; padding: 12px; text-align: center; margin-bottom: 4px; }
 .um-temp-password code { color: #34d399; font-size: 1.05rem; font-weight: 700; letter-spacing: 0.06em; }
