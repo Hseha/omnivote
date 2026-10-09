@@ -294,6 +294,13 @@ Route::middleware(['auth:sanctum', 'role:student', 'passwordChanged'])->group(fu
     Route::post('/candidate/apply', [CandidateController::class, 'store'])
         ->middleware('checkPhase:registration');
 
+    // Editing the campaign and withdrawing/forfeiting a candidacy are allowed
+    // through voting (until polls close) so an approved candidate can still
+    // change their mind. The phase gate for these lives in the controller:
+    // `registration` and `voting_open` only.
+    Route::put('/candidate/apply', [CandidateController::class, 'update']);
+    Route::post('/candidate/withdraw', [CandidateController::class, 'withdraw']);
+
     // Ballot draft + submission (voting_open only)
     Route::get('/ballot/me', [BallotController::class, 'me']);
     Route::put('/ballot/me', [BallotController::class, 'saveDraft'])
