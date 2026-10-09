@@ -11,7 +11,7 @@ import {
   Eye,
 } from 'lucide-react';
 import { useState } from 'react';
-import { fallbackAvatarOnError } from '../lib/avatar';
+import { fallbackAvatarOnError, initialsAvatarDataUri } from '../lib/avatar';
 import './DashboardWidgets.css';
 
 /*
@@ -421,10 +421,7 @@ export default function DashboardWidgets({
 }
 
 function authorAvatarFor(author) {
-  return (
-    (author && author.avatar_url) ||
-    `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent((author && author.name) || 'U')}&backgroundColor=2563eb`
-  );
+  return (author && author.avatar_url) || initialsAvatarDataUri((author && author.name) || 'U');
 }
 
 function getTimeAgo(value) {

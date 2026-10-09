@@ -21,6 +21,7 @@ import {
   Upload,
 } from 'lucide-react';
 import api from './lib/api';
+import { fallbackAvatarOnError } from './lib/avatar';
 import { writeLocalAvatar } from './lib/auth';
 import { useAuth } from './lib/AuthContext';
 import { useTheme } from './lib/ThemeContext';
@@ -201,24 +202,10 @@ function roleLabel(role) {
 }
 
 /* ------------------------------------------------------------------------
-   Pixel-art avatar presets.
-   The panel shell already falls back to DiceBear for the header avatar, so
-   the preset gallery uses the same pixel-art service (seeded per choice).
+   Avatar upload.
    Uploaded images are cropped square and exported as a PNG data URL so the
    value can be stored in one `avatar_url` string column.
    ------------------------------------------------------------------------ */
-
-const PIXEL_AVATAR_PALETTE = '2563eb,7c3aed,059669,db2777,d97706,dc2626,0ea5e9,475569';
-
-const PIXEL_AVATAR_SEEDS = [
-  'Admin', 'Nova', 'Blaze', 'Rex', 'Ace', 'Bolt',
-  'Zoe', 'Kai', 'Juno', 'Max', 'Luna', 'Ivy',
-  'Ivo', 'Dex', 'Miko', 'Pixel',
-];
-
-function pixelAvatarUrl(seed) {
-  return `https://api.dicebear.com/7.x/pixel-art/svg?seed=${encodeURIComponent(seed)}&backgroundColor=${PIXEL_AVATAR_PALETTE}&radius=20`;
-}
 
 /* Reads a device image, cover-crops it square, and (optionally) pixelates it
  * by drawing at a tiny resolution then upscaling with nearest-neighbour
@@ -588,15 +575,11 @@ export default function Settings({ onLogout, onNavigate, initialTab = 'profile' 
   const [creatingBackup, setCreatingBackup] = useState(false);
   const [restoreDialog, setRestoreDialog] = useState(null);
 
-  // Avatar picker state. The chosen value (DiceBear pixel-art URL or an
-  // uploaded PNG data URL) is the same avatar_url the Header renders.
+  // Avatar state. The chosen value (a saved avatar URL or an uploaded PNG
+  // data URL) is the same avatar_url the Header renders.
   const [avatar, setAvatar] = useState(user?.avatar_url || '');
   const [avatarSaving, setAvatarSaving] = useState(false);
   const [pixelateUpload, setPixelateUpload] = useState(false);
-
-  const handlePickAvatar = (seed) => {
-    setAvatar(pixelAvatarUrl(seed));
-  };
 
   const handleAvatarFile = async (e) => {
     const file = e.target.files?.[0];
@@ -640,7 +623,7 @@ export default function Settings({ onLogout, onNavigate, initialTab = 'profile' 
     }
   };
 
-  // Clear the avatar: PATCH null back to the initials/DiceBear fallback. On an
+  // Clear the avatar: PATCH null back to the initials fallback. On an
   // pre-avatar server just reflect it locally.
   const clearAvatar = async () => {
     if (avatarSaving) return;
@@ -932,28 +915,18 @@ export default function Settings({ onLogout, onNavigate, initialTab = 'profile' 
                     <div className="avatar-picker-head">
                       <div>
                         <h4>Avatar</h4>
-                        <p className="muted-text">Pick a pixel avatar or upload one from your device</p>
+                        <p className="muted-text">Upload a photo from your device</p>
                       </div>
                       {avatar ? (
-                        <img src={avatar} alt="Avatar preview" className="avatar-preview-img" />
+                        <img
+                          src={avatar}
+                          alt="Avatar preview"
+                          className="avatar-preview-img"
+                          onError={fallbackAvatarOnError(profile?.name)}
+                        />
                       ) : (
                         <div className="avatar-preview-img avatar-preview-initials">{initials(profile?.name)}</div>
                       )}
-                    </div>
-
-                    <div className="avatar-presets" role="group" aria-label="Pixel avatar choices">
-                      {PIXEL_AVATAR_SEEDS.map((seed) => (
-                        <button
-                          key={seed}
-                          type="button"
-                          className={`avatar-option ${avatar === pixelAvatarUrl(seed) ? 'avatar-option-active' : ''}`}
-                          onClick={() => handlePickAvatar(seed)}
-                          aria-label={`Use the ${seed} pixel avatar`}
-                          title={seed}
-                        >
-                          <img src={pixelAvatarUrl(seed)} alt={seed} loading="lazy" />
-                        </button>
-                      ))}
                     </div>
 
                     <div className="avatar-device-row">
