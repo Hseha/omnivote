@@ -129,10 +129,12 @@ jobs:
         env:
           START_TAG: archive/user-flutter
           RELEASE_CHANNEL: ${{ inputs.release_channel }}
+          REPOSITORY: ${{ github.repository }}
         run: |
           set -Eeuo pipefail
           git rev-parse --verify "$START_TAG^{commit}" >/dev/null
           python - <<'PY'
+          import os
           import re
           import subprocess
           from pathlib import Path
@@ -158,6 +160,18 @@ jobs:
               if items:
                   notes.extend(["", f"## {section}"])
                   notes.extend(f"- {item}" for item in items)
+          repository = os.environ["REPOSITORY"]
+          notes.extend(
+              [
+                  "",
+                  "## How to download",
+                  "",
+                  "- Most phones: **`app-arm64-v8a-release.apk`** (try this first)",
+                  "- If the phone says \"not compatible\": **`app-armeabi-v7a-release.apk`**",
+                  "- `app-x86_64-release.apk` is for PC emulators only, not phones",
+                  f"- Full step-by-step guide (unknown sources, Vivo/iQOO, Samsung, Play Protect, ADB): [APP_DOWNLOAD_GUIDE.md](https://github.com/{repository}/blob/main/docs/APP_DOWNLOAD_GUIDE.md)",
+              ]
+          )
           Path("RELEASE_NOTES.md").write_text("\n".join(notes) + "\n", encoding="utf-8")
           PY
 
