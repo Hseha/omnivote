@@ -8,18 +8,37 @@ class VotingState {
   final VoteReceipt? receipt;
   final String? errorMessage;
 
-  const VotingState({this.isSubmitting = false, this.receipt, this.errorMessage});
+  /// True when the server reported this ballot was already recorded (409).
+  /// The client may have lost the original submit response, so the vote DID
+  /// happen even though no fresh receipt token came back — this lets the UI
+  /// show a confirmation instead of an error.
+  final bool alreadyVoted;
+
+  /// Server time the ballot was recorded, from the 409 body (`voted_at`).
+  final String? votedAt;
+
+  const VotingState({
+    this.isSubmitting = false,
+    this.receipt,
+    this.errorMessage,
+    this.alreadyVoted = false,
+    this.votedAt,
+  });
 
   VotingState copyWith({
     bool? isSubmitting,
     VoteReceipt? receipt,
     String? errorMessage,
     bool clearError = false,
+    bool? alreadyVoted,
+    String? votedAt,
   }) {
     return VotingState(
       isSubmitting: isSubmitting ?? this.isSubmitting,
       receipt: receipt ?? this.receipt,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
+      alreadyVoted: alreadyVoted ?? this.alreadyVoted,
+      votedAt: votedAt ?? this.votedAt,
     );
   }
 }
@@ -35,24 +54,43 @@ class VotingNotifier extends StateNotifier<VotingState> {
 
   /// Submits a ballot. `selections` is a map of `position_key -> candidate_ref`
   /// (or a list of refs). On success the receipt token is stored.
+  ///
+  /// A `409 Already voted` from the server is NOT an error: it means the
+  /// ballot was recorded by an earlier attempt (e.g. the submit response was
+  /// lost on school Wi-Fi). It resolves to `true` with [VotingState.alreadyVoted]
+  /// set so the UI shows a confirmation rather than a failure.
   Future<bool> submitBallot(Map<String, dynamic> selections) async {
+    // Double-tap guard: a submission is already in flight. The UI disables the
+    // control via isSubmitting; this is the state-level safety net so a stray
+    // second call can never start another POST.
+    if (state.isSubmitting) return false;
+
     state = state.copyWith(isSubmitting: true, clearError: true);
     try {
       final receipt = await _repository.submit(selections: selections);
       state = state.copyWith(isSubmitting: false, receipt: receipt);
       return true;
-    } catch (e) {
-      final response = e is DioException ? e.response : null;
-      final statusCode = response?.statusCode;
-      final data = response?.data;
-      final serverMessage =
-          data is Map ? data['message']?.toString() : null;
+    } on DioException catch (e) {
+      final statusCode = e.response?.statusCode;
+      final data = e.response?.data;
+      if (statusCode == 409) {
+        final votedAt = data is Map ? data['voted_at']?.toString() : null;
+        state = state.copyWith(
+          isSubmitting: false,
+          alreadyVoted: true,
+          votedAt: votedAt,
+          clearError: true,
+        );
+        return true;
+      }
+      final serverMessage = data is Map ? data['message']?.toString() : null;
       state = state.copyWith(
         isSubmitting: false,
-        errorMessage: statusCode == 409
-            ? 'Your ballot was already submitted.'
-            : (serverMessage ?? e.toString()),
+        errorMessage: serverMessage ?? e.toString(),
       );
+      return false;
+    } catch (e) {
+      state = state.copyWith(isSubmitting: false, errorMessage: e.toString());
       return false;
     }
   }

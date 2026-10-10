@@ -11,7 +11,9 @@ import 'package:dio/dio.dart';
 ///
 ///  * **GET only.** A retried `POST /vote`, `/auth/login` or
 ///    `/auth/change-password` is how a student ends up submitting twice or
-///    seeing a phantom error, so those are never replayed automatically.
+///    seeing a phantom error, so those are never replayed automatically. The
+///    ballot submit additionally sets [IdempotentRetryInterceptor.noRetryKey]
+///    as an explicit opt-out.
 ///  * **Bounded added latency.** A retry only happens when the failure came
 ///    back quickly ([slowFailureCutoff]), which is what a refusal or an
 ///    immediate reset looks like. A 10 s connect timeout is *not* retried, so a
@@ -44,6 +46,12 @@ class IdempotentRetryInterceptor extends Interceptor {
 
   static const String _attemptKey = 'omnivote_retry_attempt';
   static const String _startedKey = 'omnivote_retry_started_at';
+
+  /// Requests marked with this flag are never replayed, whatever the method or
+  /// failure type. Vote submission sets it explicitly so a ballot POST can
+  /// never be re-sent even if the method-based GET-only rule above is ever
+  /// relaxed.
+  static const String noRetryKey = 'omnivote_no_retry';
 
   @override
   void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
@@ -93,6 +101,10 @@ class IdempotentRetryInterceptor extends Interceptor {
 
   /// Read requests whose failure looks transient.
   bool _isRetryable(DioException err) {
+    // Explicit opt-out wins over everything: vote submission sets this so a
+    // ballot POST is never replayed even indirectly.
+    if (err.requestOptions.extra[noRetryKey] == true) return false;
+
     // Never replay anything that changes server state.
     final method = err.requestOptions.method.toUpperCase();
     if (method != 'GET' && method != 'HEAD') return false;
