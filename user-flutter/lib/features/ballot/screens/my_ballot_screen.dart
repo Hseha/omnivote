@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_text_styles.dart';
+import '../../../core/providers/auth_event_provider.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/error_message.dart';
@@ -111,6 +112,15 @@ class _DraftBallot extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // A 401 during the ballot submit is NOT a silent sign-out: the session
+    // listener keeps the student's account and we prompt a re-login, so the
+    // ballot draft (saved server-side by the Vote Now flow) is not lost.
+    ref.listen<AuthEvent?>(authEventProvider, (previous, next) {
+      if (next != null && next.isVoteReauth) {
+        _showReauthDialog(context);
+      }
+    });
+
     final positionsAsync = ref.watch(positionsProvider);
     final candidatesAsync = ref.watch(allApprovedCandidatesProvider);
     final receiptToken = ref.watch(
@@ -351,6 +361,38 @@ class _DraftBallot extends ConsumerWidget {
         style: notice,
       ),
     );
+  }
+
+  /// Session-expired prompt shown when a ballot submit hits a 401. The vote
+  /// keeps the draft (saved server-side) and prompts re-login instead of
+  /// silently tearing down the session — no selections are lost.
+  static void _showReauthDialog(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!context.mounted) return;
+      showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Session expired'),
+          content: const Text(
+            'Your session has expired. Sign in again to finish your ballot — '
+            'your saved selections are still waiting.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Later'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                context.go('/login');
+              },
+              child: const Text('Sign in'),
+            ),
+          ],
+        ),
+      );
+    });
   }
 
   Future<void> _submit(BuildContext context, WidgetRef ref) async {

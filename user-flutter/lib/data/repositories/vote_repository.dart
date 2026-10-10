@@ -1,5 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../models/election_status_model.dart';
 import '../models/vote_receipt_model.dart';
+import '../services/election_status_service.dart';
 import '../services/secure_storage_service.dart';
 import '../services/vote_service.dart';
 
@@ -7,15 +9,17 @@ final voteRepositoryProvider = Provider<VoteRepository>((ref) {
   return VoteRepository(
     ref.read(voteServiceProvider),
     ref.read(secureStorageServiceProvider),
+    ref.read(electionStatusServiceProvider),
   );
 });
 
 class VoteRepository {
   final VoteService _voteService;
   final SecureStorageService _storage;
+  final ElectionStatusService _electionStatusService;
   static const String _receiptKey = 'vote_receipt_token';
 
-  VoteRepository(this._voteService, this._storage);
+  VoteRepository(this._voteService, this._storage, this._electionStatusService);
 
   /// Submits a ballot and returns the receipt token. The token is persisted
   /// in secure storage (it never reveals candidate choices).
@@ -26,6 +30,20 @@ class VoteRepository {
 
     await saveReceipt(receipt.receiptToken);
     return receipt;
+  }
+
+  /// Reads the election phase to determine whether a timed-out submission was
+  /// recorded before any retry option is shown.
+  ///
+  /// Returns the [ElectionStatus] or null when the status endpoint itself is
+  /// unreachable (the caller then treats the submit as not recorded).
+  Future<ElectionStatus?> checkStatus() async {
+    final response = await _electionStatusService.getStatus();
+    final data = response.data;
+    if (data is Map) {
+      return ElectionStatus.fromJson(Map<String, dynamic>.from(data));
+    }
+    return null;
   }
 
   /// Persists the in-progress selections for the current user (GET/PUT /ballot/me).

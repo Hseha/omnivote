@@ -13,6 +13,10 @@ class ElectionStatusService {
   ElectionStatusService(this._dio);
 
   Future<Response> getStatus() async {
-    return await _dio.get(ApiConstants.electionStatus);
+    return await _dio.get(
+      ApiConstants.electionStatus,
+      // A background 30 s poll: never flash the global loading overlay for it.
+      options: Options(extra: {noLoadingOverlayKey: true}),
+    );
   }
 }

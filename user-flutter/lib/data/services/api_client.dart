@@ -4,9 +4,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/constants/api_constants.dart';
 import '../../core/providers/auth_event_provider.dart';
+import '../../core/services/loading_service.dart';
 import 'api_config.dart';
 import 'retry_interceptor.dart';
 import 'secure_storage_service.dart';
+
+/// Requests marked with this extra flag never show the global loading overlay.
+/// Used for background/polling calls (the 30 s election-status poll, the
+/// splash `GET /me`) whose own UI already communicates their state.
+const String noLoadingOverlayKey = 'omnivote_no_loading_overlay';
 
 /// A short-lived in-memory token store used on web so that Bearer tokens are
 /// never persisted to localStorage/shared_preferences. On native platforms the
@@ -70,6 +76,33 @@ final Provider<Dio> apiClientProvider = Provider<Dio>((ref) {
   // global 401 handling exactly once.
   dio.interceptors.add(IdempotentRetryInterceptor(dio: dio));
 
+  // A single full-screen loading overlay for every user-initiated request.
+  // Background/polling calls (election status, the splash /me) opt out with
+  // [noLoadingOverlayKey] so a 30 s phase poll never flashes a modal spinner.
+  final loading = ref.read(loadingServiceProvider.notifier);
+  dio.interceptors.add(
+    InterceptorsWrapper(
+      onRequest: (options, handler) {
+        if (options.extra[noLoadingOverlayKey] != true) {
+          loading.begin(options.path);
+        }
+        return handler.next(options);
+      },
+      onResponse: (response, handler) {
+        if (response.requestOptions.extra[noLoadingOverlayKey] != true) {
+          loading.end(response.requestOptions.path);
+        }
+        return handler.next(response);
+      },
+      onError: (DioException e, handler) {
+        if (e.requestOptions.extra[noLoadingOverlayKey] != true) {
+          loading.end(e.requestOptions.path);
+        }
+        return handler.next(e);
+      },
+    ),
+  );
+
   dio.interceptors.add(
     InterceptorsWrapper(
       onRequest: (options, handler) async {
@@ -92,8 +125,14 @@ final Provider<Dio> apiClientProvider = Provider<Dio>((ref) {
         final statusCode = e.response?.statusCode;
 
         if (statusCode == 401 && !isLogin) {
-          // Signal unauthorized event to break circular dependency
-          ref.read(authEventProvider.notifier).state = AuthEvent.unauthorized;
+          // A 401 from a ballot submit is not a silent sign-out: the vote
+          // screen keeps the selections in memory and prompts re-login.
+          final isVoteSubmit = path.contains('/ballot/me/submit') ||
+              path.contains('/vote') ||
+              path.contains('/ballot');
+          ref.read(authEventProvider.notifier).state = AuthEvent.unauthorized(
+            isVoteSubmit ? 'vote' : 'session',
+          );
         }
 
         // A disabled account is rejected with 403 ("Your account has been
@@ -105,7 +144,8 @@ final Provider<Dio> apiClientProvider = Provider<Dio>((ref) {
         if (statusCode == 403 &&
             e.response?.data is Map &&
             e.response?.data['message'] == 'Your account has been disabled.') {
-          ref.read(authEventProvider.notifier).state = AuthEvent.unauthorized;
+          ref.read(authEventProvider.notifier).state =
+              const AuthEvent.unauthorized();
         }
 
         return handler.next(e);
