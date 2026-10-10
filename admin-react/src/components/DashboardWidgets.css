@@ -189,6 +189,46 @@
   color: var(--heading);
 }
 
+/* ===== Server health checks (System Status card) ===== */
+.health-checks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.health-check {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  font-size: 0.74rem;
+  line-height: 1.4;
+  min-width: 0;
+}
+
+.health-check-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.health-check-label {
+  font-weight: 600;
+  color: var(--heading);
+  white-space: nowrap;
+}
+
+.health-check-msg {
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ===== Turnout ring + legend ===== */
 .turnout-chart-box {
   display: flex;

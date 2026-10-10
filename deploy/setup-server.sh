@@ -170,6 +170,10 @@ cat <<EOF
   9. Set up HTTPS (Let's Encrypt or self-signed) — see README §SSL
  10. Verify:  curl -k https://$APP_URL/up
 
+ Optional: install the health-check timer (5-minute interval, admin alerts):
+     sudo cp deploy/omnivote-health.service deploy/omnivote-health.timer /etc/systemd/system/
+     sudo systemctl daemon-reload && sudo systemctl enable --now omnivote-health.timer
+
  The dedicated $DEPLOY_USER owns the checkout; PHP-FPM and workers run as
  www-data. Later releases are deployed by deploy/deploy.sh. (Do not put backticks in this heredoc:
  it is unquoted so that \$APP_URL expands, and backticks would be executed.)

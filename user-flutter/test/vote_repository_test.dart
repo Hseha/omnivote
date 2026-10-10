@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnivote/data/repositories/vote_repository.dart';
+import 'package:omnivote/data/services/election_status_service.dart';
 import 'package:omnivote/data/services/secure_storage_service.dart';
 import 'package:omnivote/data/services/vote_service.dart';
 
@@ -45,6 +46,22 @@ class _FakeStorage extends SecureStorageService {
   Future<String?> readValue(String key) async => _store[key];
 }
 
+
+class _FakeElectionStatusService extends ElectionStatusService {
+  _FakeElectionStatusService() : super(Dio());
+
+  String phase = 'voting_open';
+
+  @override
+  Future<Response> getStatus() async {
+    return Response(
+      data: {'phase': phase},
+      statusCode: 200,
+      requestOptions: RequestOptions(path: '/election/status'),
+    );
+  }
+}
+
 void main() {
   test('getMyBallot preserves the full submitted envelope', () async {
     final service = _FakeVoteService()
@@ -53,7 +70,7 @@ void main() {
         'selections': {'president': 'ref-1'},
         'receipt_token': 'receipt-9',
       };
-    final repo = VoteRepository(service, _FakeStorage());
+    final repo = VoteRepository(service, _FakeStorage(), _FakeElectionStatusService());
 
     final ballot = await repo.getMyBallot();
 
@@ -72,7 +89,7 @@ void main() {
           'president': ['ref-a', 'ref-b'],
         },
       };
-    final repo = VoteRepository(service, _FakeStorage());
+    final repo = VoteRepository(service, _FakeStorage(), _FakeElectionStatusService());
 
     final ballot = await repo.getMyBallot();
 
@@ -83,7 +100,7 @@ void main() {
   test('submit persists the receipt so it can be recovered after relaunch',
       () async {
     final storage = _FakeStorage();
-    final repo = VoteRepository(_FakeVoteService(), storage);
+    final repo = VoteRepository(_FakeVoteService(), storage, _FakeElectionStatusService());
 
     final receipt = await repo.submit(selections: {'president': 'ref-x'});
     final saved = await repo.getSavedReceipt();
@@ -94,7 +111,7 @@ void main() {
 
   test('getMyBallot returns null for a non-map payload', () async {
     final service = _FakeVoteService();
-    final repo = VoteRepository(service, _FakeStorage());
+    final repo = VoteRepository(service, _FakeStorage(), _FakeElectionStatusService());
     final ballot = await repo.getMyBallot();
     expect(ballot, isNotNull);
   });

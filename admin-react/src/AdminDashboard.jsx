@@ -45,6 +45,8 @@ export default function AdminDashboard({ onLogout, activeView = 'dashboard', onN
   const [loading, setLoading] = useState(true);
   // Real connectivity signal from the overview fetch (drives System Status).
   const [apiOk, setApiOk] = useState(true);
+  // Latest cached server-health snapshot (admins only; null for other roles).
+  const [systemHealth, setSystemHealth] = useState(null);
   // Live phase from the shared poller (every 30 s) so the dashboard phase card
   // flips on its own when a configured window boundary is crossed.
   const { phase: livePhase } = useElectionStatus();
@@ -103,6 +105,7 @@ export default function AdminDashboard({ onLogout, activeView = 'dashboard', onN
         if (data.announcements) setAnnouncements(data.announcements);
         if (data.recent_actions) setRecentActions(data.recent_actions);
         if (data.election_phase) setElectionPhase(data.election_phase);
+        setSystemHealth(data.system_health || null);
         setApiOk(true);
       } catch (error) {
         console.warn('Backend API connection pending or unavailable:', error.message);
@@ -232,6 +235,7 @@ export default function AdminDashboard({ onLogout, activeView = 'dashboard', onN
           recentActions={recentActions}
           loading={loading}
           apiOk={apiOk}
+          systemHealth={systemHealth}
           onNavigate={onNavigate}
           permittedViews={allowedViews(currentUser?.role ?? '')}
         />

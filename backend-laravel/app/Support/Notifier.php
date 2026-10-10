@@ -59,6 +59,39 @@ class Notifier
         }
     }
 
+    /**
+     * Write an in-app notification to every active administrator (no email).
+     *
+     * Used by operational alerting (e.g. the server health check) where only
+     * the admin role should be paged — not every panel user. Best-effort like
+     * the rest of this class.
+     *
+     * @return int  number of administrators notified
+     */
+    public static function toAdminUsersInApp(
+        string $type,
+        string $title,
+        ?string $body = null,
+        ?string $link = null,
+    ): int {
+        try {
+            $admins = User::query()
+                ->where('role', 'admin')
+                ->where('is_active', true)
+                ->get();
+
+            foreach ($admins as $admin) {
+                self::store($admin->id, $type, $title, $body, $link);
+            }
+
+            return $admins->count();
+        } catch (\Throwable $e) {
+            Log::warning('Admin notification failed: '.$e->getMessage());
+
+            return 0;
+        }
+    }
+
     /** Write an in-app row for a single recipient (no email). */
     public static function notifyUser(
         int $userId,

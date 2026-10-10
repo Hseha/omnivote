@@ -1,5 +1,6 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/utils/network_error.dart';
 import '../../../data/models/vote_receipt_model.dart';
 import '../../../data/repositories/vote_repository.dart';
 
@@ -59,6 +60,12 @@ class VotingNotifier extends StateNotifier<VotingState> {
   /// ballot was recorded by an earlier attempt (e.g. the submit response was
   /// lost on school Wi-Fi). It resolves to `true` with [VotingState.alreadyVoted]
   /// set so the UI shows a confirmation rather than a failure.
+  ///
+  /// A *timeout* during submission is also verified before any retry is
+  /// offered: the status endpoint is consulted, and only a still-open ballot
+  /// yields a retryable error message. The offline message ("You're offline.
+  /// Your vote was not sent. Reconnect and try again.") is shown directly,
+  /// because a timeout is the only case where the outcome is genuinely unknown.
   Future<bool> submitBallot(Map<String, dynamic> selections) async {
     // Double-tap guard: a submission is already in flight. The UI disables the
     // control via isSubmitting; this is the state-level safety net so a stray
@@ -71,6 +78,10 @@ class VotingNotifier extends StateNotifier<VotingState> {
       state = state.copyWith(isSubmitting: false, receipt: receipt);
       return true;
     } on DioException catch (e) {
+      final failure = classifyNetworkError(
+        e,
+        context: NetworkErrorContext.vote,
+      );
       final statusCode = e.response?.statusCode;
       final data = e.response?.data;
       if (statusCode == 409) {
@@ -83,14 +94,41 @@ class VotingNotifier extends StateNotifier<VotingState> {
         );
         return true;
       }
-      final serverMessage = data is Map ? data['message']?.toString() : null;
+      if (failure.needsStatusCheck) {
+        // The submit timed out: the ballot may or may not have been recorded.
+        // Consult the status endpoint BEFORE showing any retry option. The
+        // spinner stays up (isSubmitting) until the answer is known.
+        final status = await _repository.checkStatus();
+        if (status != null && status.isVotingClosed) {
+          // The ballot field is closed — the timed-out submit was recorded.
+          // Confirmation, not error; no retry is offered.
+          state = state.copyWith(
+            isSubmitting: false,
+            alreadyVoted: true,
+            clearError: true,
+          );
+          return true;
+        }
+        // The ballot is still open: the submit did not land. Show the
+        // plain-language message and let the student retry.
+        state = state.copyWith(
+          isSubmitting: false,
+          errorMessage: failure.message,
+        );
+        return false;
+      }
+      // Offline / server / auth failures: the classifier's message is the
+      // user-facing one.
       state = state.copyWith(
         isSubmitting: false,
-        errorMessage: serverMessage ?? e.toString(),
+        errorMessage: failure.message,
       );
       return false;
     } catch (e) {
-      state = state.copyWith(isSubmitting: false, errorMessage: e.toString());
+      state = state.copyWith(
+        isSubmitting: false,
+        errorMessage: 'Something went wrong. Please try again.',
+      );
       return false;
     }
   }

@@ -24,7 +24,11 @@ class AuthService {
   }
 
   Future<Response> getMe() async {
-    return await _dio.get(ApiConstants.me);
+    return await _dio.get(
+      ApiConstants.me,
+      // Splash/startup check: the splash screen owns its own loading UI.
+      options: Options(extra: {noLoadingOverlayKey: true}),
+    );
   }
 
   Future<Response> changePassword({

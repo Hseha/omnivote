@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app.dart';
+import 'core/widgets/loading_overlay.dart';
 import 'data/services/api_config.dart';
 import 'data/services/theme_mode.dart';
 import 'data/services/theme_pack.dart';
@@ -45,7 +46,15 @@ Future<void> main() async {
         themeModeProvider.overrideWith((ref) => storedThemeMode),
         themePackProvider.overrideWith((ref) => storedThemePack),
       ],
-      child: const OmniVoteApp(),
+      child: Stack(
+        children: [
+          const OmniVoteApp(),
+          // A global spinner for every network call, with a timeout that ends
+          // the spinner and offers a dismissal so a stuck request can never
+          // leave the student on a blank screen.
+          const LoadingOverlay(),
+        ],
+      ),
     ),
   );
 }
