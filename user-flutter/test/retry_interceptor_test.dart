@@ -94,6 +94,40 @@ void main() {
         reason: 'ballot submission must never be sent twice');
   });
 
+  test('a ballot submit POST is never replayed on a connection error',
+      () async {
+    // The exact failure the fix targets: the server committed the vote, the
+    // client lost the response, and a retry would otherwise hit 409. The live
+    // path marks the request no-retry; assert the marker holds even for the
+    // failure type the interceptor WOULD retry for a GET.
+    final dio = _clientWith(['connection-error', 201]);
+
+    await expectLater(
+      dio.post<dynamic>(
+        '/ballot/me/submit',
+        data: const {'selections': {'president': 'ref-ana'}},
+        options: Options(extra: {IdempotentRetryInterceptor.noRetryKey: true}),
+      ),
+      throwsA(isA<DioException>()),
+    );
+    expect(_adapterOf(dio).calls, 1,
+        reason: 'a vote POST must never be transmitted twice');
+  });
+
+  test('a GET carrying the no-retry marker is never replayed', () async {
+    final dio = _clientWith(['connection-error', 200]);
+
+    await expectLater(
+      dio.get<dynamic>(
+        '/election/status',
+        options: Options(extra: {IdempotentRetryInterceptor.noRetryKey: true}),
+      ),
+      throwsA(isA<DioException>()),
+    );
+    expect(_adapterOf(dio).calls, 1,
+        reason: 'the explicit no-retry opt-out wins over the retry policy');
+  });
+
   test('a failure that took a full timeout to arrive is not retried',
       () async {
     // Failures slower than the cutoff are real outages, not blips; the client

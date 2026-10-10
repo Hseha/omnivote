@@ -9,7 +9,6 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
-use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
 /**
@@ -199,6 +198,43 @@ class StudentVoteAndCandidateFieldsTest extends TestCase
         $this->assertSame(1, DB::table('vote_ledger')->count());
         $this->assertSame('submitted', BallotDraft::where('user_id', $voter->id)->value('status'));
         $this->assertTrue($voter->fresh()->has_voted);
+    }
+
+    /**
+     * A second submit is a 409, but it must read back as confirmation, not
+     * error: the mobile client commonly lost the first response on school
+     * Wi-Fi and retries. The body carries the recording time and nothing else —
+     * the receipt is returned exactly once, and echoing it (or any choice
+     * reference) in the 409 would re-attach the ballot to the voter (H-1).
+     */
+    public function test_repeat_submit_returns_already_voted_with_time_but_no_choices_or_receipt(): void
+    {
+        $this->openVoting();
+
+        $this->makeApprovedCandidate('ref-ana', 'Ana', 'president');
+
+        $voter = $this->makeUser();
+        $this->actingAs($voter, 'sanctum')
+            ->postJson('/api/vote', ['selections' => ['president' => 'ref-ana']])
+            ->assertStatus(201);
+
+        // Exactly one ledger row exists — the repeat must not cast again.
+        $this->assertSame(1, DB::table('vote_ledger')->count());
+
+        $response = $this->actingAs($voter->fresh(), 'sanctum')
+            ->postJson('/api/vote', ['selections' => ['president' => 'ref-ana']]);
+
+        $response->assertStatus(409)
+            ->assertJsonPath('message', 'Already voted')
+            ->assertJsonPath('voted_at', $voter->fresh()->voted_at?->toIso8601String());
+
+        // The 409 reveals the recording time only — no receipt, no selections,
+        // no candidate reference, so a dropped-response retry still confirms
+        // the vote without ever linking the voter to their choices.
+        $this->assertSame(['message', 'voted_at'], array_keys($response->json()));
+
+        $this->assertSame(1, DB::table('vote_ledger')->count());
+        $this->assertSame(1, DB::table('ballot_drafts')->where('user_id', $voter->id)->count());
     }
 
     /**

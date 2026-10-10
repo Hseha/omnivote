@@ -58,7 +58,20 @@ class VoteController extends Controller
             }
 
             if ($voter->has_voted) {
-                return response()->json(['message' => 'Already voted'], 409);
+                // The vote is already on the ledger. The client may be a
+                // double-tap or, more commonly in this school-Wi-Fi setup, a
+                // retry after the first response was lost — the ballot WAS
+                // recorded, so this must read as "confirmed" to the voter, not
+                // as an error. `voted_at` lets the client show that
+                // confirmation, but the receipt is deliberately NOT echoed
+                // back here: it is returned exactly once at submit time and
+                // echoing it would give a database-reader a way to attach this
+                // HMAC to a voter. Nothing in this body references choices or
+                // the ledger (anonymity H-1).
+                return response()->json([
+                    'message' => 'Already voted',
+                    'voted_at' => $voter->voted_at?->toIso8601String(),
+                ], 409);
             }
 
             foreach ($payload as $item) {
