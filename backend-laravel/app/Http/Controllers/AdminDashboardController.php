@@ -7,6 +7,7 @@ use App\Models\Candidate;
 use App\Models\Phase;
 use App\Models\User;
 use App\Models\UserNotification;
+use App\Support\SystemHealth;
 use App\Support\TermArchive;
 use Illuminate\Http\JsonResponse;
 
@@ -69,6 +70,9 @@ class AdminDashboardController extends Controller
                     default => 'SSG Adviser',
                 },
             ],
+            // Latest cached health snapshot (written by omnivote:health).
+            // Admin-only: teachers / SSG president see the plain API-ok card.
+            'system_health' => auth()->user()->role === 'admin' ? SystemHealth::stored() : null,
         ]);
     }
 

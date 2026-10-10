@@ -1,28 +1,21 @@
 import 'package:dio/dio.dart';
 
+import 'network_error.dart';
+
 /// Maps a thrown error to a user-safe message.
 ///
-/// Mirrors the categorization previously inlined in `auth_provider`; raw
-/// `DioException`/`StateError` internals (URIs, hosts, server payloads) never
-/// leak into the UI.
-String apiErrorMessage(Object error, {String fallback = 'Request failed'}) {
+/// Delegates to the single classification helper in [network_error.dart] so
+/// every screen, provider and repository resolves a DioException through
+/// one mapping. Raw `DioException`/`StateError` internals (URIs, hosts,
+/// server payloads) never leak into the UI.
+String apiErrorMessage(
+  Object error, {
+  String fallback = 'Request failed',
+  NetworkErrorContext context = NetworkErrorContext.general,
+}) {
   if (error is DioException) {
-    final data = error.response?.data;
-    if (data is Map && data['message'] is String) {
-      return data['message'] as String;
-    }
-    switch (error.type) {
-      case DioExceptionType.connectionTimeout:
-      case DioExceptionType.sendTimeout:
-      case DioExceptionType.receiveTimeout:
-      case DioExceptionType.connectionError:
-        return 'Cannot reach the API server. Check that the backend is running.';
-      case DioExceptionType.badCertificate:
-        return 'Server certificate could not be trusted.';
-      default:
-        return '$fallback (HTTP ${error.response?.statusCode ?? 'error'})';
-    }
+    return classifyNetworkError(error, context: context).message;
   }
   if (error is StateError) return error.message;
-  return '$fallback: $error';
+  return fallback;
 }
