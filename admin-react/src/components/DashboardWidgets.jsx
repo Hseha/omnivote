@@ -72,6 +72,18 @@ const DEFAULT_PHASE = {
 };
 
 /*
+ * Server-health presentation (from the cached `system_health` snapshot written
+ * by the backend `omnivote:health` timer; admin-only, may be null).
+ */
+const HEALTH_META = {
+  ok: { color: '#10b981', label: 'Operational' },
+  warn: { color: '#f59e0b', label: 'Degraded' },
+  fail: { color: '#f87171', label: 'Down' },
+};
+
+const CHECK_DOT = { ok: '#10b981', warn: '#f59e0b', fail: '#f87171' };
+
+/*
  * Quick-action shortcuts. `target` matches the view ids defined in
  * `lib/permissions.js`, so the buttons navigate to real views.
  */
@@ -97,6 +109,7 @@ export default function DashboardWidgets({
   recentActions = [],
   loading = false,
   apiOk = true,
+  systemHealth = null,
   onNavigate,
   permittedViews,
 }) {
@@ -111,6 +124,13 @@ export default function DashboardWidgets({
   // The announcement being read in full (dashboard overview sends title +
   // body + author; the modal shows the whole thing).
   const [selected, setSelected] = useState(null);
+
+  // Prefer the richer server-health snapshot when the backend sent one;
+  // otherwise fall back to the coarse API-reachability signal.
+  const healthMeta = systemHealth?.overall ? HEALTH_META[systemHealth.overall] : null;
+  const healthChecks = systemHealth?.checks ? Object.values(systemHealth.checks) : [];
+  const statusColor = healthMeta ? healthMeta.color : (apiOk ? '#10b981' : '#f87171');
+  const statusLabel = healthMeta ? healthMeta.label : (apiOk ? 'Connected' : 'Unreachable');
 
   /*
    * `/admin/dashboard-overview` returns `total_voters` / `votes_cast` /
@@ -295,34 +315,53 @@ export default function DashboardWidgets({
                 <span
                   className="widget-icon-badge"
                   style={{
-                    background: (apiOk ? '#10b981' : '#f87171') + '20',
-                    color: apiOk ? '#10b981' : '#f87171',
+                    background: statusColor + '20',
+                    color: statusColor,
                   }}
                 >
                   <Activity size={18} />
                 </span>
                 <div>
                   <div className="widget-title">System Status</div>
-                  <div className="widget-sub">API connectivity</div>
+                  <div className="widget-sub">{healthMeta ? 'Server health' : 'API connectivity'}</div>
                 </div>
               </div>
               <span
                 className="widget-pill"
                 style={{
-                  color: apiOk ? '#10b981' : '#f87171',
-                  background: (apiOk ? '#10b981' : '#f87171') + '1a',
-                  borderColor: (apiOk ? '#10b981' : '#f87171') + '33',
+                  color: statusColor,
+                  background: statusColor + '1a',
+                  borderColor: statusColor + '33',
                 }}
               >
-                <span className="pill-dot" style={{ background: apiOk ? '#10b981' : '#f87171' }} />
-                {apiOk ? 'Connected' : 'Unreachable'}
+                <span className="pill-dot" style={{ background: statusColor }} />
+                {statusLabel}
               </span>
             </div>
-            <p className="widget-desc">
-              {apiOk
-                ? 'Dashboard data is live from the election API.'
-                : 'Could not reach the election API. Metrics may be stale.'}
-            </p>
+
+            {healthMeta ? (
+              <>
+                <ul className="health-checks">
+                  {healthChecks.map((check, idx) => (
+                    <li key={check.label || idx} className="health-check">
+                      <span
+                        className="health-check-dot"
+                        style={{ background: CHECK_DOT[check.status] || '#64748b' }}
+                      />
+                      <span className="health-check-label">{check.label}</span>
+                      <span className="health-check-msg">{check.message}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="widget-desc">Last checked {getTimeAgo(systemHealth.checked_at)}</p>
+              </>
+            ) : (
+              <p className="widget-desc">
+                {apiOk
+                  ? 'Dashboard data is live from the election API.'
+                  : 'Could not reach the election API. Metrics may be stale.'}
+              </p>
+            )}
           </div>
         </div>
 

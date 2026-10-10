@@ -1,0 +1,35 @@
+# ============================================================================
+# OmniVote — server health check (one-shot)
+# ----------------------------------------------------------------------------
+# Runs `omnivote:health`, which probes the database, disk, storage, queue,
+# backups, election phase and pending migrations, caches a snapshot for the
+# admin dashboard, and writes an in-app alert to administrators when the
+# overall state changes. Driven by omnivote-health.timer.
+#
+# Install:
+#   sudo cp deploy/omnivote-health.service /etc/systemd/system/
+#   sudo cp deploy/omnivote-health.timer   /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now omnivote-health.timer
+#
+# Verify:
+#   systemctl list-timers omnivote-health.timer
+#   journalctl -u omnivote-health -n 20
+# ============================================================================
+
+[Unit]
+Description=OmniVote server health check
+After=network.target mysql.service mariadb.service
+Wants=mysql.service mariadb.service
+
+[Service]
+Type=oneshot
+User=www-data
+Group=www-data
+
+# Pin php8.4; adjust to the installed PHP 8.x version if different.
+ExecStart=/usr/bin/php8.4 /var/www/omnivote/backend-laravel/artisan omnivote:health
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=omnivote-health
