@@ -7,6 +7,7 @@ import '../../../core/constants/app_text_styles.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/error_message.dart';
+import '../../../core/utils/relative_time.dart';
 import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/empty_state.dart';
@@ -120,6 +121,11 @@ class _DraftBallot extends ConsumerWidget {
     final isSubmitting = ref.watch(
       votingProvider.select((state) => state.isSubmitting),
     );
+    // A 409 "Already voted" means an earlier submit was recorded but its
+    // response was lost — show a confirmation instead of the ballot form.
+    final alreadyVoted = ref.watch(
+      votingProvider.select((state) => state.alreadyVoted),
+    );
     // Read the phase (and its label) rather than the AsyncValue: the 30 s poll
     // re-runs the provider through a loading state, and `when`/orElse would
     // report "voting closed" and grey out the submit button mid-poll. Selecting
@@ -138,6 +144,12 @@ class _DraftBallot extends ConsumerWidget {
 
     if (receiptToken != null) {
       return _SubmittedBallot(receiptToken: receiptToken);
+    }
+
+    if (alreadyVoted) {
+      return _AlreadyVotedBallot(
+        votedAt: ref.read(votingProvider).votedAt,
+      );
     }
 
     return Column(
@@ -342,6 +354,11 @@ class _DraftBallot extends ConsumerWidget {
   }
 
   Future<void> _submit(BuildContext context, WidgetRef ref) async {
+    // Double-tap guard (state-level): the button is also disabled via
+    // isSubmitting, but a tap that slipped through before the rebuild must not
+    // start a second POST.
+    if (ref.read(votingProvider).isSubmitting) return;
+
     final electionStatus = ref.read(electionStatusProvider).value;
     if (electionStatus == null || !electionStatus.isVotingOpen) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -360,11 +377,20 @@ class _DraftBallot extends ConsumerWidget {
         .submitBallot(Map<String, dynamic>.from(selections));
     if (!context.mounted) return;
 
-    final receipt = ref.read(votingProvider).receipt;
-    if (success && receipt != null) {
+    final voting = ref.read(votingProvider);
+    if (success && voting.receipt != null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Ballot submitted. Keep your receipt token!'),
+        ),
+      );
+      ref.invalidate(myBallotProvider);
+    } else if (success && voting.alreadyVoted) {
+      // The server recorded this ballot on an earlier attempt whose response
+      // we never saw (dropped connection/timeout). Confirmation, not error.
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Your ballot was already recorded for this election.'),
         ),
       );
       ref.invalidate(myBallotProvider);
@@ -372,8 +398,7 @@ class _DraftBallot extends ConsumerWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            ref.read(votingProvider).errorMessage ??
-                'Ballot submission failed.',
+            voting.errorMessage ?? 'Ballot submission failed.',
           ),
         ),
       );
@@ -476,6 +501,54 @@ class _SubmittedBallot extends StatelessWidget {
                 fontWeight: FontWeight.bold,
                 color: appText.bodyMedium.color,
               ),
+            ),
+            AppSpacing.vLg,
+            AppButton.primary(
+              label: 'View Results & Verify',
+              icon: Icons.bar_chart,
+              onPressed: () => context.go('/results'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Confirmation shown when the server reports this ballot was already recorded
+/// (409), i.e. the original submit response was lost on a flaky connection.
+/// The receipt was returned only once at submit time, so there is no token to
+/// show here — the message is unambiguous that the vote counted.
+class _AlreadyVotedBallot extends StatelessWidget {
+  final String? votedAt;
+
+  const _AlreadyVotedBallot({this.votedAt});
+
+  @override
+  Widget build(BuildContext context) {
+    final appText = AppTextStyles.of(context);
+    final when = relativeTimeFromIso(votedAt);
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.xl),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.verified, size: 72, color: AppColors.successGreen),
+            AppSpacing.vMd,
+            Text(
+              'Your Vote Is Recorded',
+              style: appText.headlineMedium,
+            ),
+            AppSpacing.vSm,
+            Text(
+              when.isEmpty
+                  ? 'Our records show you have already voted in this election. '
+                      'No further action is needed.'
+                  : 'Our records show you already voted in this election '
+                      '($when). No further action is needed.',
+              textAlign: TextAlign.center,
+              style: appText.bodySmall,
             ),
             AppSpacing.vLg,
             AppButton.primary(
