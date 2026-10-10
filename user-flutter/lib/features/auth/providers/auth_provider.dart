@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/providers/auth_event_provider.dart';
 import '../../../core/utils/error_message.dart';
+import '../../../core/utils/network_error.dart';
 import '../../../data/models/student_model.dart';
 import '../../../data/repositories/auth_repository.dart';
 
@@ -10,8 +11,8 @@ final StateNotifierProvider<AuthNotifier, AuthState> authProvider = StateNotifie
 
   // Listen for unauthorized events from the API client
   ref.listen(authEventProvider, (previous, next) {
-    if (next == AuthEvent.unauthorized) {
-      notifier.handleUnauthorized();
+    if (next is AuthEvent) {
+      notifier.handleUnauthorized(next.reason);
       // Reset the event
       ref.read(authEventProvider.notifier).state = null;
     }
@@ -140,7 +141,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
     } catch (e) {
       state = state.copyWith(
         isLoading: false,
-        errorMessage: apiErrorMessage(e, fallback: 'Login failed'),
+        errorMessage: apiErrorMessage(
+          e,
+          fallback: 'Login failed',
+          context: NetworkErrorContext.login,
+        ),
         retryAfterSeconds: retryAfterSecondsFrom(e),
       );
       return false;
@@ -215,7 +220,13 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   /// Logs out programmatically (e.g. server 401 without clearing during an
   /// active login attempt). Used by the global unauthorized listener.
-  Future<void> handleUnauthorized() async {
+  ///
+  /// A `vote` reason means the 401 arrived during a ballot submit: the vote
+  /// screen keeps the selections held in memory and shows a re-login prompt,
+  /// so this must NOT tear down the session or the student would lose the
+  /// in-flight ballot before being asked to sign in.
+  Future<void> handleUnauthorized(String reason) async {
+    if (reason == 'vote') return;
     if (state.student == null) return;
     await logout();
   }
