@@ -161,6 +161,75 @@ class PositionScopeTest extends TestCase
             ->assertStatus(403);
     }
 
+    public function test_a_two_dimension_seat_requires_every_dimension_to_match(): void
+    {
+        // The Year Level Representative is scoped by department AND year level:
+        // each college elects its own representative for every year level.
+        $this->position(
+            'year_level_representative',
+            scopeType: 'department',
+            scopeType2: 'year_level',
+        );
+
+        $this->makeCandidate('ref-ccs-1', 'year_level_representative', '1', 'CCS');
+        $this->makeCandidate('ref-ccs-2', 'year_level_representative', '2', 'CCS');
+
+        // A CCS first-year student may vote for the CCS first-year nominee…
+        $this->actingAs($this->makeUser(['year_level' => '1', 'department' => 'CCS']), 'sanctum')
+            ->postJson('/api/vote', ['selections' => ['year_level_representative' => 'ref-ccs-1']])
+            ->assertStatus(201);
+
+        // …but not the CCS second-year nominee, even though the college matches:
+        // the voter is in scope, the picked candidate is not.
+        $this->actingAs($this->makeUser(['year_level' => '1', 'department' => 'CCS']), 'sanctum')
+            ->postJson('/api/vote', ['selections' => ['year_level_representative' => 'ref-ccs-2']])
+            ->assertStatus(422);
+
+        // A different college, same year, likewise cannot vote for the CCS
+        // nominee — its own first-year seat is a different contest entirely.
+        $this->actingAs($this->makeUser(['year_level' => '1', 'department' => 'COE']), 'sanctum')
+            ->postJson('/api/vote', ['selections' => ['year_level_representative' => 'ref-ccs-1']])
+            ->assertStatus(422);
+
+        // A voter with no college on file is refused outright (403), not quietly
+        // dropped into an empty electorate.
+        $this->actingAs($this->makeUser(['year_level' => '1', 'department' => null]), 'sanctum')
+            ->postJson('/api/vote', ['selections' => ['year_level_representative' => 'ref-ccs-1']])
+            ->assertStatus(403);
+
+        $this->assertSame(1, DB::table('vote_ledger')->count());
+    }
+
+    public function test_scope_grouping_separates_each_college_and_year(): void
+    {
+        $position = $this->position(
+            'year_level_representative',
+            scopeType: 'department',
+            scopeType2: 'year_level',
+        );
+
+        $ccs1 = $this->makeUser(['year_level' => '1', 'department' => 'CCS']);
+        $ccs2 = $this->makeUser(['year_level' => '2', 'department' => 'CCS']);
+        $coe1 = $this->makeUser(['year_level' => '1', 'department' => 'COE']);
+
+        // Each (college, year) is its own contested group…
+        $this->assertSame('department=ccs|year_level=1', $position->groupKeyFor($ccs1));
+        $this->assertSame('department=ccs|year_level=2', $position->groupKeyFor($ccs2));
+        $this->assertSame('department=coe|year_level=1', $position->groupKeyFor($coe1));
+        $this->assertCount(3, array_unique([
+            $position->groupKeyFor($ccs1),
+            $position->groupKeyFor($ccs2),
+            $position->groupKeyFor($coe1),
+        ]));
+
+        // …and each group gets a human label for the announcement.
+        $this->assertSame('CCS · Year 1', $position->scopeLabelFor($ccs1));
+
+        // A global seat collapses to a single (empty) group with no label.
+        $this->assertSame('', $this->position('president')->groupKeyFor($ccs1));
+        $this->assertNull($this->position('senator')->scopeLabelFor($ccs1));
+    }
+
     public function test_scope_enforcement_does_not_reject_a_mixed_ballot_of_legal_positions(): void
     {
         $this->position('president');
@@ -242,24 +311,31 @@ class PositionScopeTest extends TestCase
     /* Helpers                                                              */
     /* ------------------------------------------------------------------ */
 
-    private function position(string $slug, string $scopeType = 'global', ?string $scopeValue = null): Position
-    {
+    private function position(
+        string $slug,
+        string $scopeType = 'global',
+        ?string $scopeValue = null,
+        ?string $scopeType2 = null,
+        ?string $scopeValue2 = null,
+    ): Position {
         return Position::create([
             'slug' => $slug,
             'label' => ucwords(str_replace('_', ' ', $slug)),
             'tier' => 'national',
             'scope_type' => $scopeType,
             'scope_value' => $scopeValue,
+            'scope_type_2' => $scopeType2,
+            'scope_value_2' => $scopeValue2,
             'seat_count' => 1,
             'sort_order' => 10,
             'is_active' => true,
         ]);
     }
 
-    private function makeCandidate(string $ref, string $positionSlug, ?string $year): Candidate
+    private function makeCandidate(string $ref, string $positionSlug, ?string $year, ?string $department = null): Candidate
     {
         return Candidate::create([
-            'user_id' => $this->makeUser(['year_level' => $year])->id,
+            'user_id' => $this->makeUser(['year_level' => $year, 'department' => $department])->id,
             'position_id' => DB::table('positions')->where('slug', $positionSlug)->value('id'),
             'candidate_ref' => $ref,
             'approval_status' => 'approved',
@@ -338,6 +414,8 @@ class PositionScopeTest extends TestCase
             $table->string('tier')->default('national');
             $table->string('scope_type', 32)->default('global');
             $table->string('scope_value')->nullable();
+            $table->string('scope_type_2', 32)->nullable();
+            $table->string('scope_value_2')->nullable();
             $table->unsignedTinyInteger('seat_count')->default(1);
             $table->unsignedTinyInteger('sort_order')->default(0);
             $table->boolean('is_active')->default(true);

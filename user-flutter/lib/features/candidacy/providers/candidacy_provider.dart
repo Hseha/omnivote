@@ -8,23 +8,31 @@ import '../../../data/repositories/candidacy_repository.dart';
 class CandidacyState {
   final bool isSubmitting;
   final String? errorMessage;
+
+  /// Machine-readable failure code from the server, when one was sent
+  /// (`seat_taken`, `application_exists`). The screen shows the "Seat taken"
+  /// popup for `seat_taken`; everything else keeps its snackbar.
+  final String? errorCode;
   final CandidacyApplication? submittedApplication;
 
   const CandidacyState({
     this.isSubmitting = false,
     this.errorMessage,
+    this.errorCode,
     this.submittedApplication,
   });
 
   CandidacyState copyWith({
     bool? isSubmitting,
     String? errorMessage,
+    String? errorCode,
     CandidacyApplication? submittedApplication,
     bool clearError = false,
   }) {
     return CandidacyState(
       isSubmitting: isSubmitting ?? this.isSubmitting,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
+      errorCode: clearError ? null : (errorCode ?? this.errorCode),
       submittedApplication: submittedApplication ?? this.submittedApplication,
     );
   }
@@ -33,6 +41,16 @@ class CandidacyState {
 final candidacyProvider = StateNotifierProvider<CandidacyNotifier, CandidacyState>(
   (ref) => CandidacyNotifier(ref.read(candidacyRepositoryProvider)),
 );
+
+/// Per-party application counts per position (position id → party → count),
+/// consumed by the apply screen to label seats a party has already filled.
+///
+/// A failure is non-fatal: the screen falls back to "everything selectable"
+/// and still relies on the server's authoritative 409.
+final candidacyAvailabilityProvider =
+    FutureProvider<Map<int, Map<String, int>>>((ref) async {
+  return await ref.watch(candidacyRepositoryProvider).getAvailability();
+});
 
 class CandidacyNotifier extends StateNotifier<CandidacyState> {
   final CandidacyRepository _repository;
@@ -59,6 +77,13 @@ class CandidacyNotifier extends StateNotifier<CandidacyState> {
       );
       state = state.copyWith(isSubmitting: false, submittedApplication: application);
       return true;
+    } on CandidacyException catch (e) {
+      state = state.copyWith(
+        isSubmitting: false,
+        errorMessage: _candidacyErrorMessage(e),
+        errorCode: e.code,
+      );
+      return false;
     } catch (e) {
       state = state.copyWith(
         isSubmitting: false,
@@ -88,6 +113,13 @@ class CandidacyNotifier extends StateNotifier<CandidacyState> {
       );
       state = state.copyWith(isSubmitting: false, submittedApplication: application);
       return true;
+    } on CandidacyException catch (e) {
+      state = state.copyWith(
+        isSubmitting: false,
+        errorMessage: _candidacyErrorMessage(e),
+        errorCode: e.code,
+      );
+      return false;
     } catch (e) {
       state = state.copyWith(
         isSubmitting: false,
@@ -105,6 +137,13 @@ class CandidacyNotifier extends StateNotifier<CandidacyState> {
       await _repository.withdraw();
       state = state.copyWith(isSubmitting: false);
       return true;
+    } on CandidacyException catch (e) {
+      state = state.copyWith(
+        isSubmitting: false,
+        errorMessage: _candidacyErrorMessage(e),
+        errorCode: e.code,
+      );
+      return false;
     } catch (e) {
       state = state.copyWith(
         isSubmitting: false,
@@ -127,6 +166,14 @@ class CandidacyNotifier extends StateNotifier<CandidacyState> {
   /// phase rejection (403), and duplicate application (409) each get a
   /// distinct, actionable message (audit §2 #9).
   String _candidacyErrorMessage(Object error) {
+    if (error is CandidacyException) {
+      // A coded rejection carries its own message. `application_exists` keeps
+      // the established phrasing; `seat_taken` uses the server's "seat already
+      // taken" sentence, which the screen repeats inside the popup.
+      return error.code == 'application_exists'
+          ? 'You already have a candidacy application under review.'
+          : error.message;
+    }
     if (error is DioException) {
       final statusCode = error.response?.statusCode;
       final data = error.response?.data;

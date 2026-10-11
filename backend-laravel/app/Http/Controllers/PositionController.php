@@ -36,6 +36,10 @@ class PositionController extends Controller
                 // them fill in a ballot the server will reject.
                 'scope_type' => $p->scope_type ?? Position::SCOPE_GLOBAL,
                 'scope_value' => $p->scope_value,
+                // Optional second dialect of the electorate (e.g. the Year Level
+                // Representative is scoped by college AND year level).
+                'scope_type_2' => $p->scope_type_2,
+                'scope_value_2' => $p->scope_value_2,
             ]);
 
         return response()->json($positions);
@@ -64,9 +68,14 @@ class PositionController extends Controller
             'is_active' => ['sometimes', 'boolean'],
             'scope_type' => ['sometimes', 'required', 'string', Rule::in(Position::SCOPE_TYPES)],
             'scope_value' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'scope_type_2' => ['sometimes', 'nullable', 'string', Rule::in(Position::SCOPE_TYPES)],
+            'scope_value_2' => ['sometimes', 'nullable', 'string', 'max:255'],
         ]);
 
-        $scopeChanging = array_key_exists('scope_type', $validated) || array_key_exists('scope_value', $validated);
+        $scopeChanging = array_key_exists('scope_type', $validated)
+            || array_key_exists('scope_value', $validated)
+            || array_key_exists('scope_type_2', $validated)
+            || array_key_exists('scope_value_2', $validated);
 
         if ($scopeChanging && $this->hasRecordedBallots($position)) {
             return response()->json([
@@ -96,6 +105,14 @@ class PositionController extends Controller
                 ? trim($validated['scope_value'])
                 : null;
         }
+        if (array_key_exists('scope_type_2', $validated)) {
+            $position->scope_type_2 = $validated['scope_type_2'];
+        }
+        if (array_key_exists('scope_value_2', $validated)) {
+            $position->scope_value_2 = $validated['scope_value_2'] !== null
+                ? trim($validated['scope_value_2'])
+                : null;
+        }
         $position->save();
 
         return response()->json([
@@ -110,6 +127,8 @@ class PositionController extends Controller
                 'active' => $position->is_active,
                 'scope_type' => $position->scope_type ?? Position::SCOPE_GLOBAL,
                 'scope_value' => $position->scope_value,
+                'scope_type_2' => $position->scope_type_2,
+                'scope_value_2' => $position->scope_value_2,
             ],
         ]);
     }
