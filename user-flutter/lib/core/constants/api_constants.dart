@@ -38,6 +38,10 @@ class ApiConstants {
   static const String candidacyUpdate = '/candidate/apply';
   static const String candidacyWithdraw = '/candidate/withdraw';
 
+  // Per-party application counts per position, so the apply screen can flag
+  // seats a party has already filled (candidacy seat-cap enforcement).
+  static const String candidacyAvailability = '/candidacy/availability';
+
   // Ballot endpoints
   static const String ballotMe = '/ballot/me';
   static const String ballotSubmit = '/ballot/me/submit';

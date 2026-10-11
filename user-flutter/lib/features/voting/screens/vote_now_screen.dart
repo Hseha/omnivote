@@ -960,14 +960,22 @@ class _OutOfElectorate extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final reason = switch (position.scopeType) {
-      'year_level' =>
-        'This seat is decided by year level, and no nominee is filed for your year yet.',
-      'department' =>
-        'Provincial races are decided within your own college, and no nominee is filed for it yet.',
-      'course' => 'No nominee is filed for your course yet.',
-      _ => 'You are not part of the electorate for this seat.',
+    final dims = <String>{
+      if (position.scopeType != 'global') position.scopeType,
+      if (position.scopeType2 != null && position.scopeType2 != 'global')
+        position.scopeType2!,
     };
+
+    final reason = dims.contains('department') && dims.contains('year_level')
+        ? 'This seat is decided within your own college and year level, and no nominee is filed for it yet.'
+        : switch (position.scopeType) {
+            'year_level' =>
+              'This seat is decided by year level, and no nominee is filed for your year yet.',
+            'department' =>
+              'Provincial races are decided within your own college, and no nominee is filed for it yet.',
+            'course' => 'No nominee is filed for your course yet.',
+            _ => 'You are not part of the electorate for this seat.',
+          };
 
     return EmptyState(
       message: 'You cannot vote in ${position.label}',

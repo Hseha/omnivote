@@ -15,6 +15,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -83,6 +84,7 @@ class RegistrarImportController extends Controller
         $rows = [];
         $seenStudentIds = [];
         $duplicateInFile = 0;
+        $duplicateLines = [];
         $rejectedRows = [];
         // Accounts may only carry departments that already exist (the catalog
         // of Colleges plus values already present on users or in the
@@ -99,8 +101,22 @@ class RegistrarImportController extends Controller
                 continue;
             }
 
+            $formatProblem = self::studentIdFormatProblem($studentId);
+            if ($formatProblem !== null) {
+                $rejectedRows[] = [
+                    'line' => $line,
+                    'column' => 'Student ID',
+                    'student_id' => $studentId,
+                    'reason' => $formatProblem,
+                ];
+                $line++;
+
+                continue;
+            }
+
             if (isset($seenStudentIds[$studentId])) {
                 $duplicateInFile++;
+                $duplicateLines[] = $line;
                 $line++;
 
                 continue;
@@ -115,6 +131,7 @@ class RegistrarImportController extends Controller
             if ($blockResult['error'] !== null) {
                 $rejectedRows[] = [
                     'line' => $line,
+                    'column' => 'Block Number',
                     'student_id' => $studentId,
                     'reason' => $blockResult['error'],
                 ];
@@ -145,26 +162,26 @@ class RegistrarImportController extends Controller
             // usernameFromName), so a missing name can never be assigned one.
             $reviewReasons = [];
             if ($fullName === '') {
-                $reviewReasons[] = 'Missing student name in registrar CSV.';
+                $reviewReasons[] = "Line {$line}, column 'Student Name': missing student name in registrar CSV.";
             }
             if ($yearLevel === '') {
-                $reviewReasons[] = 'Missing year level in registrar CSV.';
+                $reviewReasons[] = "Line {$line}, column 'Year Level': missing year level in registrar CSV.";
             }
             if ($department === '') {
-                $reviewReasons[] = 'Missing department in registrar CSV.';
+                $reviewReasons[] = "Line {$line}, column 'Department': missing department in registrar CSV.";
             }
             if ($department !== '' && ! in_array($department, $knownDepartments, true)) {
-                $reviewReasons[] = "Department '{$rawDepartment}' is not in the current department list.";
+                $reviewReasons[] = "Line {$line}, column 'Department': department '{$rawDepartment}' is not in the current department list.";
             }
             if ($course !== '') {
                 if ($department === '') {
-                    $reviewReasons[] = 'A course was given but the department is missing.';
+                    $reviewReasons[] = "Line {$line}, column 'Course': a course was given but the department is missing.";
                 } elseif (! in_array($department, $knownDepartments, true)) {
-                    $reviewReasons[] = "Cannot resolve course '{$course}' for an unknown department.";
+                    $reviewReasons[] = "Line {$line}, column 'Course': cannot resolve course '{$course}' for an unknown department.";
                 }
             }
             if ($blockResult['value'] === null) {
-                $reviewReasons[] = 'Missing block number in registrar CSV.';
+                $reviewReasons[] = "Line {$line}, column 'Block Number': missing block number in registrar CSV.";
             }
 
             // An unrecognised course is deliberately NOT a review reason: those
@@ -385,6 +402,9 @@ class RegistrarImportController extends Controller
                 'updated_eligibility_rows' => $updated,
                 'accounts_provisioned' => $accountsProvisioned,
                 'duplicates_within_file' => $duplicateInFile,
+                // Exact CSV lines (including the header offset) dropped as
+                // in-file duplicate IDs, so the registrar can find them.
+                'duplicate_lines' => array_values($duplicateLines),
                 // Incomplete rows (missing required cell) — feed-only, never provisioned.
                 'skipped_incomplete' => $skipped,
                 // Rows whose department isn't in the current department list —
@@ -530,6 +550,62 @@ class RegistrarImportController extends Controller
         }
 
         return $slug;
+    }
+
+    /**
+     * Student-ID integrity gate for the eligibility feed.
+     *
+     * The cell is read with fgetcsv and kept as a trimmed string everywhere
+     * (never cast, never used arithmetically), but a spreadsheet round-trip
+     * can still silently mangle it *before* it reaches us — Excel drops
+     * leading zeros ("00123" → "123") and converts long digit runs to
+     * exponential notation ("202400000123" → "2.024E+11"). Once mangled there
+     * is no way to recover the original, so the only safe response is to
+     * reject the row and ask the registrar to re-export as text.
+     *
+     * Rule: the value must match `config('registrar.student_id_pattern')`.
+     * The default is deliberately permissive (printable ASCII, no
+     * whitespace-only values); tighten it to the school's real ID scheme
+     * (e.g. `^\d{4}-\d{4}$`) once that is confirmed — see OPEN QUESTION below.
+     *
+     * OPEN QUESTION: the expected student_id format/length is NOT defined
+     * anywhere in this codebase (migrations use plain string(255), samples
+     * like '2024-0001' are 9 chars but no rule enforces it). Until it is,
+     * leading-zero loss is only *detectable* (all-zero-prefix collapse on a
+     * known length), not enforceable — so this gate rejects obvious
+     * corruption (exponents, spaces, control characters) and the length check
+     * below is the part to tighten.
+     *
+     * @return string|null human-readable reason, or null when acceptable
+     */
+    public static function studentIdFormatProblem(string $studentId): ?string
+    {
+        if ($studentId === '') {
+            return 'Student ID is empty.';
+        }
+
+        if (preg_match('/[\s\x00-\x1F\x7F]/', $studentId) === 1) {
+            return "Student ID '{$studentId}' contains whitespace or control characters — check for wrapped cells or stray spaces.";
+        }
+
+        if (preg_match('/[eE][+-]?\d+\s*$/', $studentId) === 1) {
+            return "Student ID '{$studentId}' looks like spreadsheet exponential notation (e.g. 2.024E+11) — leading digits were lost in Excel. Re-export the ID column as text.";
+        }
+
+        $pattern = (string) config('registrar.student_id_pattern', '/^[\x20-\x7E]+$/');
+        $delimiter = $pattern[0] ?? '';
+
+        if ($delimiter === '' || @preg_match($pattern, '') === false) {
+            Log::warning('registrar.student_id_pattern is not a valid PCRE pattern; skipping format gate.');
+
+            return null;
+        }
+
+        if (preg_match($pattern, $studentId) !== 1) {
+            return "Student ID '{$studentId}' does not match the expected format. If the ID had leading zeros, Excel may have dropped them — re-export the ID column as text.";
+        }
+
+        return null;
     }
 
     /**

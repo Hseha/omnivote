@@ -102,6 +102,14 @@ class ElectionController extends Controller
                 'tier' => $p->tier,
                 'seat_count' => $p->seat_count,
                 'active' => $p->is_active,
+                // The admin edit form reads these to prefill its scope selects;
+                // omitting them made every position open as 'global', so saving
+                // an unrelated edit (e.g. the title) silently reset a scoped
+                // seat — reopening the provincial tier and the YLR seat.
+                'scope_type' => $p->scope_type ?? Position::SCOPE_GLOBAL,
+                'scope_value' => $p->scope_value,
+                'scope_type_2' => $p->scope_type_2,
+                'scope_value_2' => $p->scope_value_2,
                 'candidates' => "{$p->candidates_count} candidates approved",
             ]);
 

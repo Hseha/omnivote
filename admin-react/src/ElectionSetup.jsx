@@ -47,6 +47,8 @@ export default function ElectionSetup({ activeView = 'setup', onNavigate, onLogo
     active: true,
     scope_type: 'global',
     scope_value: '',
+    scope_type_2: 'none',
+    scope_value_2: '',
   });
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
@@ -125,6 +127,10 @@ export default function ElectionSetup({ activeView = 'setup', onNavigate, onLogo
       // rather than rendering a blank select.
       scope_type: pos.scope_type ?? 'global',
       scope_value: pos.scope_value ?? '',
+      // The optional second dimension. 'none' means the seat is scoped by one
+      // axis only; the server stores null in that case.
+      scope_type_2: pos.scope_type_2 ?? 'none',
+      scope_value_2: pos.scope_value_2 ?? '',
     });
     setEditError('');
   };
@@ -151,6 +157,8 @@ export default function ElectionSetup({ activeView = 'setup', onNavigate, onLogo
     // single value and locks every other group out, so it is optional and
     // never required.
     const scopeValue = editForm.scope_value.trim();
+    const scopeType2 = editForm.scope_type_2 === 'none' ? null : editForm.scope_type_2;
+    const scopeValue2 = editForm.scope_value_2.trim();
 
     setEditSaving(true);
     setEditError('');
@@ -164,6 +172,9 @@ export default function ElectionSetup({ activeView = 'setup', onNavigate, onLogo
         // voter" rather than an empty string.
         scope_type: editForm.scope_type,
         scope_value: scopeValue || null,
+        // The optional second dimension. `none` clears it.
+        scope_type_2: scopeType2,
+        scope_value_2: scopeType2 === null ? null : (scopeValue2 || null),
       });
 
       const updated = {
@@ -175,6 +186,8 @@ export default function ElectionSetup({ activeView = 'setup', onNavigate, onLogo
         active: editForm.active,
         scope_type: editForm.scope_type,
         scope_value: scopeValue || null,
+        scope_type_2: scopeType2,
+        scope_value_2: scopeType2 === null ? null : (scopeValue2 || null),
       };
 
       if (updated.tier === 'national') {
@@ -424,6 +437,56 @@ export default function ElectionSetup({ activeView = 'setup', onNavigate, onLogo
                     onChange={(e) => setEditForm((prev) => ({ ...prev, scope_value: e.target.value }))}
                   />
                   <datalist id="scope-values-year">
+                    {['7', '8', '9', '10', '11', '12'].map((y) => (
+                      <option key={y} value={y} />
+                    ))}
+                  </datalist>
+                </div>
+              )}
+
+              <div className="form-group">
+                <label className="form-label">
+                  Second dimension
+                  <span className="form-hint-inline"> (optional)</span>
+                </label>
+                <select
+                  className="form-input"
+                  value={editForm.scope_type_2}
+                  onChange={(e) => setEditForm((prev) => ({ ...prev, scope_type_2: e.target.value }))}
+                >
+                  <option value="none">None — scope on one axis only</option>
+                  <option value="year_level">Year level</option>
+                  <option value="department">College</option>
+                  <option value="course">Course</option>
+                </select>
+                <p className="form-hint">
+                  Combine with the scope above to restrict a seat on two axes at
+                  once — e.g. Year Level Representative = College + Year level,
+                  giving each college its own race in every year level.
+                </p>
+              </div>
+
+              {editForm.scope_type_2 !== 'none' && (
+                <div className="form-group">
+                  <label className="form-label">
+                    Restricted to (second dimension)
+                    <span className="form-hint-inline"> (optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    list={editForm.scope_type_2 === 'year_level' ? 'scope-values-year-2' : undefined}
+                    placeholder={
+                      editForm.scope_type_2 === 'year_level'
+                        ? 'Blank = each voter uses their own year level'
+                        : editForm.scope_type_2 === 'department'
+                          ? 'Blank = each voter uses their own college'
+                          : 'Blank = each voter uses their own course'
+                    }
+                    value={editForm.scope_value_2}
+                    onChange={(e) => setEditForm((prev) => ({ ...prev, scope_value_2: e.target.value }))}
+                  />
+                  <datalist id="scope-values-year-2">
                     {['7', '8', '9', '10', '11', '12'].map((y) => (
                       <option key={y} value={y} />
                     ))}

@@ -7,6 +7,7 @@ use App\Http\Requests\UpdateCandidateStatusRequest;
 use App\Models\Candidate;
 use App\Models\Department;
 use App\Models\Party;
+use App\Models\Position;
 use App\Models\User;
 use App\Support\DepartmentCatalog;
 use App\Support\Notifier;
@@ -228,7 +229,39 @@ class AdminCandidateController extends Controller
 
     public function update(UpdateCandidateStatusRequest $request, Candidate $candidate): JsonResponse
     {
-        $candidate->update(['approval_status' => $request->validated('status')]);
+        $status = $request->validated('status');
+
+        // Seat-cap approval guard: refuse to approve a candidate when the
+        // position+party already holds `seat_count` candidates (pending or
+        // approved) — without this, two pending applications could both be
+        // approved past the cap. See docs/HANDOFF_CANDIDACY_SEAT_CAP.md §1.5.
+        if ($status === 'approved') {
+            $position = $candidate->position;
+            $party = $candidate->party_name;
+
+            $others = Candidate::query()
+                ->where('position_id', $candidate->position_id)
+                ->where('id', '!=', $candidate->id)
+                ->whereIn('approval_status', ['pending', 'approved']);
+
+            if ($party === null) {
+                $others->whereNull('party_name');
+            } else {
+                $others->whereRaw('UPPER(TRIM(party_name)) = ?', [strtoupper($party)]);
+            }
+
+            if ($position !== null && $others->count() >= $position->seat_count) {
+                return response()->json([
+                    'message' => 'Cannot approve — the '.($party ?? 'independent').' seat for '.$position->label
+                        .' already has '.$others->count().' candidate(s).',
+                    'code' => 'seat_taken',
+                    'position_id' => $candidate->position_id,
+                    'party_name' => $party,
+                ], 422);
+            }
+        }
+
+        $candidate->update(['approval_status' => $status]);
 
         $candidateName = $candidate->user?->name ?? $candidate->candidate_ref;
 
