@@ -16,11 +16,17 @@ class Position {
   /// the seat to one electorate, and [scopeValue] pins it to a literal value or
   /// stays null to mean "each voter's own value for that attribute".
   ///
+  /// A seat may carry a SECOND dimension — [scopeType2] / [scopeValue2] — e.g.
+  /// the Year Level Representative is scoped by `department` AND `year_level`,
+  /// so each college runs its own race in every year level.
+  ///
   /// The server is authoritative on this and re-checks every submission; the
   /// client copies it only so the ballot can hide seats and candidates the
   /// voter has no business seeing, instead of offering a row that 422s.
   final String scopeType;
   final String? scopeValue;
+  final String? scopeType2;
+  final String? scopeValue2;
 
   Position({
     required this.id,
@@ -31,6 +37,8 @@ class Position {
     required this.description,
     this.scopeType = 'global',
     this.scopeValue,
+    this.scopeType2,
+    this.scopeValue2,
   });
 
   factory Position.fromJson(Map<String, dynamic> json) {
@@ -43,6 +51,8 @@ class Position {
       description: (json['description'] ?? '').toString(),
       scopeType: _parseScopeType(json['scope_type'] ?? json['scopeType']),
       scopeValue: _parseScopeValue(json['scope_value'] ?? json['scopeValue']),
+      scopeType2: _parseOptionalScopeType(json['scope_type_2'] ?? json['scopeType2']),
+      scopeValue2: _parseScopeValue(json['scope_value_2'] ?? json['scopeValue2']),
     );
   }
 
@@ -57,6 +67,17 @@ class Position {
       }
     }
     return 'global';
+  }
+
+  /// The optional second dimension: null when absent or unrecognised.
+  static String? _parseOptionalScopeType(Object? raw) {
+    if (raw is String) {
+      final value = raw.trim().toLowerCase();
+      if (const {'year_level', 'department', 'course'}.contains(value)) {
+        return value;
+      }
+    }
+    return null;
   }
 
   static String? _parseScopeValue(Object? raw) {
@@ -82,6 +103,8 @@ class Position {
       'description': description,
       'scope_type': scopeType,
       'scope_value': scopeValue,
+      'scope_type_2': scopeType2,
+      'scope_value_2': scopeValue2,
     };
   }
 }

@@ -110,14 +110,19 @@ class TestBallotSeeder extends Seeder
     private const YEAR_LEVELS = ['1', '2', '3', '4'];
 
     /**
-     * Minimum students per year level.
+     * Minimum students per (college, year) electorate.
+     *
+     * The Year Level Representative is scoped by department AND year level, so
+     * each (college, year) pair is its own contest and needs its own voters —
+     * a year that exists only inside one college leaves the other colleges'
+     * seats for that year uncontested and invisible.
      *
      * A fixed floor, deliberately NOT derived from the current student count:
      * a "share of the school" target reads its own output, so each run would
      * see a larger total, raise the bar, and add students forever. A constant
-     * makes re-running a no-op once every year is at or above it.
+     * makes re-running a no-op once every group is at or above it.
      */
-    private const MIN_VOTERS_PER_YEAR = 30;
+    private const MIN_VOTERS_PER_GROUP = 8;
 
     public function run(): void
     {
@@ -212,29 +217,26 @@ class TestBallotSeeder extends Seeder
 
         $this->ensureEveryYearLevelHasVoters($studentIdSeq, $counters);
 
-        // ---- Year Level Representative: one nominee per YEAR per party ----
-        // The position is scoped to `year_level`, so the field is a per-year
-        // race, not a per-college one: a 1st-year student votes for the 1st-year
-        // nominee of either party, and never for any other year's nominee.
-        // Filing only one nominee per party (as before) left each year with at
-        // most one party on the ballot and years with no candidate at all.
+        // ---- Year Level Representative: one nominee per college per year, per
+        // party. The seat is scoped to `department` + `year_level`, so every
+        // college runs its own race in every year level (1 ASLE + 1 SVEA), and
+        // only that college's students of that year vote in it. Five colleges ×
+        // four years × two parties = 40 nominees.
         $ylrPositionId = DB::table('positions')->where('slug', 'year_level_representative')->value('id');
         if ($ylrPositionId !== null) {
-            $colleges = DepartmentCatalog::collegeNames();
-
-            foreach (self::YEAR_LEVELS as $i => $year) {
-                foreach (['ASLE', 'SVEA'] as $partyOffset => $party) {
-                    $this->createCandidateFor(
-                        $ylrPositionId,
-                        'year_level_representative',
-                        $party,
-                        // Rotate colleges so the year-level bench spans the
-                        // colleges; the seat itself is not college-bound.
-                        $colleges[($i * 2 + $partyOffset) % count($colleges)],
-                        $studentIdSeq,
-                        $counters,
-                        yearLevel: $year,
-                    );
+            foreach (self::YEAR_LEVELS as $year) {
+                foreach (DepartmentCatalog::collegeNames() as $college) {
+                    foreach (['ASLE', 'SVEA'] as $party) {
+                        $this->createCandidateFor(
+                            $ylrPositionId,
+                            'year_level_representative',
+                            $party,
+                            $college,
+                            $studentIdSeq,
+                            $counters,
+                            yearLevel: $year,
+                        );
+                    }
                 }
             }
         }
@@ -252,40 +254,42 @@ class TestBallotSeeder extends Seeder
     }
 
     /**
-     * Guarantees every year level has enough students to elect its own
-     * representative.
+     * Guarantees every (college, year) electorate has enough students to elect
+     * its own representative.
      *
-     * The year-level representative seat is scoped to `year_level`, so a year
-     * with no students is a seat that can never be contested. Earlier runs
-     * only ever produced years 11/12 — 2 of the 4 levels — leaving the 3rd- and
-     * 4th-year seats permanently uncontested and invisible to a voter.
+     * The Year Level Representative is scoped by department AND year level, so
+     * each (college, year) pair is an independent contest. A group with too few
+     * students is a seat that can never be properly contested — or, with only
+     * the two nominees in it, one that can only tie — so each pair is topped up
+     * to a floor.
      *
      * This adds plain students (no candidacy attached) rather than re-assigning
-     * the ones already on the ballot. Two reasons: a candidate's year level is
-     * exactly what qualifies them for a year-level seat, so moving one would
-     * silently change the field; and a real school has far more voters than
-     * candidates, so 110 candidates and 0 ordinary students was never a
-     * representative shape to begin with.
+     * the ones already on the ballot. Two reasons: a student's college and year
+     * are exactly what place them in an electorate, so moving one would silently
+     * change the field; and a real school has far more voters than candidates.
      *
-     * Idempotent — it only tops a year up to a fixed floor, and a re-run
-     * finds every year already at or above it.
+     * Idempotent — it only tops a group up to a fixed floor, and a re-run finds
+     * every group already at or above it.
      */
     private function ensureEveryYearLevelHasVoters(int &$studentIdSeq, array &$counters): void
     {
-        $years = self::YEAR_LEVELS;
-        $colleges = DepartmentCatalog::collegeNames();
+        foreach (self::YEAR_LEVELS as $year) {
+            foreach (DepartmentCatalog::collegeNames() as $college) {
+                $have = User::query()
+                    ->where('role', 'student')
+                    ->where('year_level', $year)
+                    ->where('department', $college)
+                    ->count();
 
-        foreach ($years as $i => $year) {
-            $have = User::where('role', 'student')->where('year_level', $year)->count();
-
-            for ($n = $have; $n < self::MIN_VOTERS_PER_YEAR; $n++) {
-                $this->provisionStudent(
-                    $colleges[$i % count($colleges)],
-                    $studentIdSeq,
-                    $counters,
-                    requireNew: true,
-                    yearLevel: $year,
-                );
+                for ($n = $have; $n < self::MIN_VOTERS_PER_GROUP; $n++) {
+                    $this->provisionStudent(
+                        $college,
+                        $studentIdSeq,
+                        $counters,
+                        requireNew: true,
+                        yearLevel: $year,
+                    );
+                }
             }
         }
     }
@@ -302,20 +306,21 @@ class TestBallotSeeder extends Seeder
     ): void {
         $position = DB::table('positions')->where('id', $positionId)->first();
 
-        // A candidate already exists for this college under this party → skip
-        // (idempotent re-runs). Keyed via the student's college. Multi-nominee
-        // seats call with $force and do their own party-level counting instead.
-        // A year-level seat keys on the year instead of the college, because it
-        // is contested across the whole school.
+        // A candidate already exists for this college (and, for year-scoped
+        // seats, this year) under this party → skip (idempotent re-runs). Keyed
+        // via the student's own college/year, which is exactly what decides the
+        // candidate's electorate group. Multi-nominee seats call with $force and
+        // do their own party-level counting instead.
         if (! $force) {
             $existing = Candidate::query()
                 ->where('position_id', $positionId)
                 ->whereRaw('LOWER(party_name) = ?', [mb_strtolower($party)])
-                ->when(
-                    $yearLevel !== null,
-                    fn ($q) => $q->whereHas('user', fn ($u) => $u->where('year_level', $yearLevel)),
-                    fn ($q) => $q->whereHas('user', fn ($u) => $u->where('department', $college)),
-                )
+                ->whereHas('user', function ($u) use ($college, $yearLevel) {
+                    $u->where('department', $college);
+                    if ($yearLevel !== null) {
+                        $u->where('year_level', $yearLevel);
+                    }
+                })
                 ->exists();
             if ($existing) {
                 return;

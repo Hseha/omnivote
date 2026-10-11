@@ -94,6 +94,39 @@ class PublicResultsTest extends TestCase
         $this->assertSame('ref-retired', $retired['candidates'][0]['name']);
     }
 
+    public function test_results_are_split_into_one_group_per_college_and_year(): void
+    {
+        $this->closeVoting();
+
+        // Two nominees in the same contested seat (CCS, year 1) and one in
+        // another (COE, year 1): the tallies must not bleed across groups.
+        $this->makeCandidate('ref-ccs1-a', 'Ana', 'year_level_representative', votes: 3, department: 'CCS', yearLevel: '1');
+        $this->makeCandidate('ref-ccs1-b', 'Ben', 'year_level_representative', votes: 1, department: 'CCS', yearLevel: '1');
+        $this->makeCandidate('ref-coe1-a', 'Cara', 'year_level_representative', votes: 2, department: 'COE', yearLevel: '1');
+
+        $groups = collect($this->results()->json('results'))
+            ->where('position_key', 'year_level_representative')
+            ->values();
+
+        $this->assertCount(2, $groups);
+
+        // Each group is labelled with its college and year, and carries only its
+        // own candidates, highest first.
+        $byLabel = $groups->keyBy('position_label');
+
+        $this->assertTrue($byLabel->has('Year Level Representative — CCS · Year 1'));
+        $this->assertSame(
+            ['Ana', 'Ben'],
+            collect($byLabel['Year Level Representative — CCS · Year 1']['candidates'])->pluck('name')->all(),
+        );
+
+        $this->assertTrue($byLabel->has('Year Level Representative — COE · Year 1'));
+        $this->assertSame(
+            ['Cara'],
+            collect($byLabel['Year Level Representative — COE · Year 1']['candidates'])->pluck('name')->all(),
+        );
+    }
+
     public function test_public_results_are_refused_until_voting_closes(): void
     {
         // No election window configured at all: nothing is published yet.
@@ -303,9 +336,16 @@ class PublicResultsTest extends TestCase
         string $positionSlug,
         int $votes,
         bool $elected = false,
+        ?string $department = null,
+        ?string $yearLevel = null,
     ): Candidate {
         $candidate = Candidate::create([
-            'user_id' => $this->makeUser(['name' => $name, 'role' => 'student'])->id,
+            'user_id' => $this->makeUser([
+                'name' => $name,
+                'role' => 'student',
+                'department' => $department,
+                'year_level' => $yearLevel,
+            ])->id,
             'position_id' => DB::table('positions')->where('slug', $positionSlug)->value('id'),
             'candidate_ref' => $ref,
             'approval_status' => 'approved',
@@ -395,6 +435,8 @@ class PublicResultsTest extends TestCase
             $table->string('tier')->default('national');
             $table->string('scope_type', 32)->default('global');
             $table->string('scope_value')->nullable();
+            $table->string('scope_type_2', 32)->nullable();
+            $table->string('scope_value_2')->nullable();
             $table->unsignedTinyInteger('seat_count')->default(1);
             $table->unsignedTinyInteger('sort_order')->default(0);
             $table->boolean('is_active')->default(true);
@@ -402,14 +444,34 @@ class PublicResultsTest extends TestCase
         });
 
         DB::table('positions')->insert([
-            'slug' => 'president',
-            'label' => 'President',
-            'tier' => 'national',
-            'seat_count' => 1,
-            'sort_order' => 10,
-            'is_active' => true,
-            'created_at' => now(),
-            'updated_at' => now(),
+            [
+                'slug' => 'president',
+                'label' => 'President',
+                'tier' => 'national',
+                'scope_type' => 'global',
+                'scope_value' => null,
+                'scope_type_2' => null,
+                'scope_value_2' => null,
+                'seat_count' => 1,
+                'sort_order' => 10,
+                'is_active' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'slug' => 'year_level_representative',
+                'label' => 'Year Level Representative',
+                'tier' => 'national',
+                'scope_type' => 'department',
+                'scope_value' => null,
+                'scope_type_2' => 'year_level',
+                'scope_value_2' => null,
+                'seat_count' => 1,
+                'sort_order' => 20,
+                'is_active' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
         ]);
 
         Schema::create('candidates', function (Blueprint $table) {

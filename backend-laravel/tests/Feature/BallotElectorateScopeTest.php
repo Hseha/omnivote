@@ -90,6 +90,8 @@ class BallotElectorateScopeTest extends TestCase
             $table->string('tier');
             $table->string('scope_type', 32)->default('global');
             $table->string('scope_value')->nullable();
+            $table->string('scope_type_2', 32)->nullable();
+            $table->string('scope_value_2')->nullable();
             $table->unsignedTinyInteger('seat_count')->default(1);
             $table->unsignedTinyInteger('sort_order')->default(0);
             // resolveSelections() only loads seats with is_active = true, so a
@@ -212,8 +214,12 @@ class BallotElectorateScopeTest extends TestCase
             'slug' => 'year_level_representative',
             'label' => 'Year Level Representative',
             'tier' => 'national',
-            'scope_type' => 'year_level',
+            // Scoped on TWO axes since 2026_10_11_000001: each college elects
+            // its own representative for every year level.
+            'scope_type' => 'department',
             'scope_value' => null,
+            'scope_type_2' => 'year_level',
+            'scope_value_2' => null,
         ]);
 
         foreach ($provincial as $slug) {
@@ -305,28 +311,25 @@ class BallotElectorateScopeTest extends TestCase
         }
     }
 
-    public function test_year_level_representative_is_scoped_to_the_students_own_year(): void
+    public function test_year_level_representative_is_scoped_to_the_students_own_college_and_year(): void
     {
         $ylr = $this->position('year_level_representative');
         $this->assertSame('national', $ylr->tier, 'It stays a national-tier seat.');
-        $this->assertSame('year_level', $ylr->scope_type);
+        $this->assertSame('department', $ylr->scope_type);
+        $this->assertSame('year_level', $ylr->scope_type_2);
 
-        $firstYear = $this->student('College of Arts and Sciences', '1');
+        $voter = $this->student('College of Arts and Sciences', '1');
         $svc = app(VoteController::class);
 
-        $ownYear = $this->candidateFor($ylr, $this->student('College of Computer Studies', '1'));
-        $otherYear = $this->candidateFor($ylr, $this->student('College of Computer Studies', '2'));
+        $ownSeat = $this->candidateFor($ylr, $this->student('College of Arts and Sciences', '1'));
+        $wrongYear = $this->candidateFor($ylr, $this->student('College of Arts and Sciences', '2'));
+        $wrongCollege = $this->candidateFor($ylr, $this->student('College of Computer Studies', '1'));
 
-        $this->assertTrue($this->mayVoteFor($svc, $ylr, $ownYear, $firstYear));
-        $this->assertFalse($this->mayVoteFor($svc, $ylr, $otherYear, $firstYear));
-
-        // Year is the axis, not college: a nominee from another college is fine.
-        $this->assertTrue($this->mayVoteFor(
-            $svc,
-            $ylr,
-            $ownYear,
-            $this->student('College of Criminal Justice Education', '1')
-        ));
+        // Both axes must agree: a first-year Arts and Sciences student elects
+        // only the first-year Arts and Sciences representative.
+        $this->assertTrue($this->mayVoteFor($svc, $ylr, $ownSeat, $voter));
+        $this->assertFalse($this->mayVoteFor($svc, $ylr, $wrongYear, $voter));
+        $this->assertFalse($this->mayVoteFor($svc, $ylr, $wrongCollege, $voter));
     }
 
     public function test_national_seats_remain_open_to_every_student(): void

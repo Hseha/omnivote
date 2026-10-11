@@ -71,6 +71,13 @@ class CandidacyService {
     return await _dio.post(ApiConstants.candidacyWithdraw);
   }
 
+  /// Fetches per-party application counts for every position
+  /// (`GET /candidacy/availability`) so the apply screen can flag seats a
+  /// party has already filled before the student submits.
+  Future<Response> getAvailability() async {
+    return await _dio.get(ApiConstants.candidacyAvailability);
+  }
+
   FormData _buildForm({
     required String positionId,
     String? slogan,

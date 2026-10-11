@@ -44,7 +44,7 @@ class CandidacyApplyScreen extends ConsumerStatefulWidget {
 class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
   final _formKey = GlobalKey<FormState>();
   String? _positionId;
-  final _partyController = TextEditingController();
+  String? _partyName;
   final _sloganController = TextEditingController();
   final _platformController = TextEditingController();
   bool _certify = false;
@@ -58,7 +58,6 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
 
   @override
   void dispose() {
-    _partyController.dispose();
     _sloganController.dispose();
     _platformController.dispose();
     super.dispose();
@@ -83,7 +82,9 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
         _positionId = application.positionId.isEmpty
             ? null
             : application.positionId;
-        _partyController.text = application.partyName ?? '';
+        _partyName = (application.partyName ?? '').trim().isEmpty
+            ? null
+            : application.partyName!.trim();
         _sloganController.text = application.slogan ?? '';
         _platformController.text = application.platformStatement;
       }
@@ -110,9 +111,7 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
             positionId: _positionId!,
             slogan: _sloganController.text,
             platformStatement: _platformController.text.trim(),
-            partyName: _partyController.text.trim().isEmpty
-                ? null
-                : _partyController.text.trim(),
+            partyName: _partyName,
             photoBytes: _photoBytes,
             photoName: _photoName,
           )
@@ -120,9 +119,7 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
             positionId: _positionId!,
             slogan: _sloganController.text,
             platformStatement: _platformController.text.trim(),
-            partyName: _partyController.text.trim().isEmpty
-                ? null
-                : _partyController.text.trim(),
+            partyName: _partyName,
             photoBytes: _photoBytes,
             photoName: _photoName,
           );
@@ -142,14 +139,36 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
         ),
       );
     } else if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            ref.read(candidacyProvider).errorMessage ?? 'Request failed.',
+      final failure = ref.read(candidacyProvider);
+      if (failure.errorCode == 'seat_taken') {
+        // A party already holds this seat. The server's sentence explains it
+        // ("the ASLE seat for President is already taken."); counts may have
+        // moved, so refresh the availability labels behind the dialog.
+        ref.invalidate(candidacyAvailabilityProvider);
+        await showDialog<void>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('Seat taken'),
+            content: Text(
+              failure.errorMessage ??
+                  'That seat is already taken by another candidate.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('OK'),
+              ),
+            ],
           ),
-          backgroundColor: AppColors.errorRed,
-        ),
-      );
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(failure.errorMessage ?? 'Request failed.'),
+            backgroundColor: AppColors.errorRed,
+          ),
+        );
+      }
     }
   }
 
@@ -300,6 +319,8 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
   Widget _buildForm(List<Position> positions) {
     final student = ref.watch(authProvider.select((state) => state.student));
     final positionLocked = _application?.status == 'approved';
+    final availabilityAsync = ref.watch(candidacyAvailabilityProvider);
+    final availability = availabilityAsync.valueOrNull;
 
     return ListView(
       padding: AppSpacing.screenPadding,
@@ -337,7 +358,15 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
                     .map(
                       (p) => DropdownMenuItem<String>(
                         value: p.id,
-                        child: Text('${p.label} (${_tierLabel(p)})'),
+                        // A seat this party already fills is disabled and
+                        // labelled, unless it is the one already chosen (an
+                        // applicant editing their own candidacy keeps it).
+                        enabled: !(_seatTaken(p, availability) &&
+                            p.id != _positionId),
+                        child: Text(
+                          '${p.label} (${_tierLabel(p)})'
+                          '${_seatTaken(p, availability) ? ' — $_partyDisplay seat taken' : ''}',
+                        ),
                       ),
                     )
                     .toList(),
@@ -346,6 +375,20 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
                     : (v) => setState(() => _positionId = v),
                 validator: (v) => v == null ? 'Select a position' : null,
               ),
+              if (availabilityAsync.isLoading) ...[
+                AppSpacing.vSm,
+                Text(
+                  'Checking seat availability…',
+                  style: AppTextStyles.of(context).labelSmall,
+                ),
+              ] else if (availabilityAsync.hasError) ...[
+                AppSpacing.vSm,
+                Text(
+                  'Seat availability could not be loaded; the server will '
+                  'still confirm your seat on submit.',
+                  style: AppTextStyles.of(context).labelSmall,
+                ),
+              ],
               if (positionLocked) ...[
                 AppSpacing.vSm,
                 Text(
@@ -356,10 +399,7 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
                 ),
               ],
               AppSpacing.vMd,
-              AppTextField(
-                controller: _partyController,
-                label: 'Party / Platform Name',
-              ),
+              _partyField(),
               AppTextField.fieldGap,
               AppTextField(
                 controller: _sloganController,
@@ -430,6 +470,67 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
 
   static String _tierLabel(Position p) =>
       p.tier == PositionTier.provincial ? 'Provincial' : 'National';
+
+  /// The availability key for the current pick: the server reports the
+  /// null-party ("No party") bucket under the reserved `_none` key.
+  String get _partyKey => _partyName ?? '_none';
+
+  /// Human label for the current pick, used in the "seat taken" wording.
+  String get _partyDisplay => _partyName ?? 'No party';
+
+  /// Whether the selected party already fills [position]'s seat, per the
+  /// authoritative `party_counts` from `GET /candidacy/availability`.
+  ///
+  /// Returns false when availability is missing (endpoint failed or not yet
+  /// deployed) so the picker stays fully usable and the server still enforces
+  /// the cap on submit.
+  bool _seatTaken(Position p, Map<int, Map<String, int>>? availability) {
+    if (availability == null) return false;
+    final id = int.tryParse(p.id);
+    if (id == null) return false;
+    final counts = availability[id];
+    if (counts == null) return false;
+    return (counts[_partyKey] ?? 0) >= p.seatCount;
+  }
+
+  /// Official party picker, populated from GET /api/parties (ASLE, SVEA).
+  ///
+  /// The field stays optional — a candidate may run without a party — so the
+  /// null "No party" choice is always offered. A previously saved value that is
+  /// no longer in the official list is kept as an option, so editing a legacy
+  /// campaign never silently drops the party it was submitted with.
+  Widget _partyField() {
+    final partiesAsync = ref.watch(partiesProvider);
+    final parties = partiesAsync.valueOrNull ?? const <String>[];
+    final legacy = _partyName?.trim();
+    final options = <String>{
+      ...parties,
+      if (legacy != null && legacy.isNotEmpty) legacy,
+    }.toList();
+
+    return DropdownButtonFormField<String>(
+      initialValue: _partyName,
+      isExpanded: true,
+      decoration: InputDecoration(
+        labelText: 'Party',
+        helperText: partiesAsync.hasError
+            ? 'Could not load the party list.'
+            : partiesAsync.isLoading
+                ? 'Loading parties…'
+                : 'Optional — pick your official party.',
+      ),
+      items: [
+        const DropdownMenuItem<String>(
+          value: null,
+          child: Text('No party'),
+        ),
+        ...options.map(
+          (p) => DropdownMenuItem<String>(value: p, child: Text(p)),
+        ),
+      ],
+      onChanged: (value) => setState(() => _partyName = value),
+    );
+  }
 
   Widget _photoSection() {
     final appText = AppTextStyles.of(context);

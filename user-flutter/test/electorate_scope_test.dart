@@ -8,6 +8,8 @@ Position _position({
   required String tier,
   String scopeType = 'global',
   String? scopeValue,
+  String? scopeType2,
+  String? scopeValue2,
   String slug = 'governor',
 }) {
   return Position.fromJson({
@@ -18,6 +20,8 @@ Position _position({
     'seat_count': 1,
     'scope_type': scopeType,
     'scope_value': scopeValue,
+    'scope_type_2': scopeType2,
+    'scope_value_2': scopeValue2,
   });
 }
 
@@ -202,6 +206,83 @@ void main() {
           position: ylr,
           candidate: _candidate(gradeLine: '1'),
           voter: _voter(yearLevel: '11'),
+        ),
+        isFalse,
+      );
+    });
+  });
+
+  group('the year-level representative is decided per college AND year', () {
+    final ylr = _position(
+      tier: 'national',
+      scopeType: 'department',
+      scopeType2: 'year_level',
+      slug: 'year_level_representative',
+    );
+
+    test('the second dimension is parsed from the wire', () {
+      expect(ylr.scopeType, 'department');
+      expect(ylr.scopeType2, 'year_level');
+      expect(ylr.scopeValue2, isNull);
+    });
+
+    test('a 1st-year CCS student sees only the 1st-year CCS nominee', () {
+      final voter = _voter(
+        department: 'College of Computer Studies',
+        yearLevel: '1',
+      );
+
+      expect(
+        ElectorateScope.candidateIsOnBallot(
+          position: ylr,
+          candidate: _candidate(
+            department: 'College of Computer Studies',
+            gradeLine: '1',
+          ),
+          voter: voter,
+        ),
+        isTrue,
+      );
+
+      // Same college, wrong year.
+      expect(
+        ElectorateScope.candidateIsOnBallot(
+          position: ylr,
+          candidate: _candidate(
+            department: 'College of Computer Studies',
+            gradeLine: '2',
+          ),
+          voter: voter,
+        ),
+        isFalse,
+      );
+
+      // Same year, wrong college — a different college's race entirely.
+      expect(
+        ElectorateScope.candidateIsOnBallot(
+          position: ylr,
+          candidate: _candidate(
+            department: 'College of Teacher Education',
+            gradeLine: '1',
+          ),
+          voter: voter,
+        ),
+        isFalse,
+      );
+    });
+
+    test('a student missing either dimension cannot take the seat', () {
+      expect(
+        ElectorateScope.voterMayVote(
+          ylr,
+          _voter(department: 'College of Computer Studies', yearLevel: null),
+        ),
+        isFalse,
+      );
+      expect(
+        ElectorateScope.voterMayVote(
+          ylr,
+          _voter(department: null, yearLevel: '1'),
         ),
         isFalse,
       );

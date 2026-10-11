@@ -265,42 +265,15 @@ class VoteController extends Controller
     }
 
     /**
-     * Whether a candidate is in a scoped seat's electorate.
-     *
-     * A global seat accepts anyone. For a scoped seat the candidate's own
-     * account must carry the required value — otherwise the voters of one year
-     * level could elect the representative of another.
-     */
-    /**
      * Whether a candidate is standing in the same electorate as the voter.
      *
-     * The required value MUST be derived from the voter, not from the candidate.
-     * `Position::requiredValueFor()` falls back to "whatever value you pass it",
-     * so feeding it the candidate's own value makes the check compare the
-     * candidate against itself and always pass — which is precisely the
-     * year-level-representative case the check exists to stop.
+     * Delegates to {@see Position::candidateIsInScope()}, which evaluates every
+     * scope dimension (a seat may be scoped by college AND year level). The
+     * required value is always derived from the VOTER, never the candidate, so
+     * one electorate cannot elect another's representative.
      */
     private function candidateIsInScope(Position $position, Candidate $candidate, ?User $voter): bool
     {
-        if ($position->isGloballyScoped()) {
-            return true;
-        }
-
-        $attribute = $position->scopeAttribute();
-        $owner = $candidate->user;
-
-        if ($attribute === null || $owner === null) {
-            return false;
-        }
-
-        $ownerValue = $owner->{$attribute};
-        $voterValue = $voter?->{$attribute};
-        $required = $position->requiredValueFor($voterValue !== null ? (string) $voterValue : null);
-
-        if ($required === null || $ownerValue === null || $ownerValue === '') {
-            return false;
-        }
-
-        return $position->valuesMatch((string) $ownerValue, $required);
+        return $position->candidateIsInScope($candidate->user, $voter);
     }
 }

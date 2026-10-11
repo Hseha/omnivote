@@ -212,7 +212,6 @@ class RegistrarImportTest extends TestCase
         $this->assertSame('Ana Flores Updated', $row->full_name, 'the rest of the row still updates');
     }
 
-
     public function test_same_name_for_two_different_ids_gets_suffixed_logins(): void
     {
         $this->makeUser(['role' => 'teacher', 'department' => 'BSIT']);
@@ -344,6 +343,152 @@ class RegistrarImportTest extends TestCase
         $this->assertSame(1, User::where('student_id', '2024-1001')->count());
         $this->assertSame('teacher', User::where('student_id', '2024-1001')->firstOrFail()->role, 'role upgrade safety preserved');
         $this->assertSame('faculty@school.edu', User::where('student_id', '2024-1001')->firstOrFail()->email, 'existing login untouched');
+    }
+
+    public function test_leading_zero_ids_are_preserved_as_strings(): void
+    {
+        $this->makeUser(['role' => 'teacher', 'department' => 'BSIT']);
+
+        $response = $this->import($this->csv([
+            ['00123', 'Zero Lead', '11', 'BSIT', 'Block 1'],
+        ]));
+
+        $response->assertStatus(201)
+            ->assertJsonPath('summary.accounts_provisioned', 1)
+            ->assertJsonPath('summary.rejected_rows', []);
+
+        // The ID survives byte-for-byte: trim() only strips the edges, and no
+        // cast or arithmetic ever touches it.
+        $this->assertSame('00123', User::where('student_id', '00123')->firstOrFail()->student_id);
+        $this->assertSame('00123', RegistrarImport::where('student_id', '00123')->firstOrFail()->student_id);
+    }
+
+    public function test_spreadsheet_corrupted_ids_are_rejected_with_line_and_column(): void
+    {
+        $this->makeUser(['role' => 'teacher', 'department' => 'BSIT']);
+
+        $response = $this->import($this->csv([
+            ['2024-0001', 'Ana Flores', '11', 'BSIT', 'Block 1'],
+            ['2.024E+11', 'Corrupted Row', '11', 'BSIT', 'Block 1'],
+        ]));
+
+        $response->assertStatus(201)
+            ->assertJsonPath('summary.accounts_provisioned', 1)
+            ->assertJsonCount(1, 'summary.rejected_rows');
+
+        $rejected = $response->json('summary.rejected_rows.0');
+        $this->assertSame(3, $rejected['line'], 'line counts the header row');
+        $this->assertSame('Student ID', $rejected['column']);
+        $this->assertSame('2.024E+11', $rejected['student_id']);
+        $this->assertStringContainsString('exponential notation', $rejected['reason']);
+
+        // The corrupt row reaches neither the feed nor the accounts.
+        $this->assertNull(RegistrarImport::where('student_id', '2.024E+11')->first());
+        $this->assertNull(User::where('student_id', '2.024E+11')->first());
+        $this->assertSame('2024-0001', User::where('email', 'ana.flores')->firstOrFail()->student_id);
+    }
+
+    public function test_mid_file_db_failure_rolls_back_the_whole_import(): void
+    {
+        $this->makeUser(['role' => 'teacher', 'department' => 'BSIT']);
+
+        // Force the transaction to fail on the SECOND row's feed write. The
+        // exception escapes the controller (Laravel turns it into a 500 in
+        // the feature-test client), which is exactly the transaction
+        // semantics under test: the exception unwinds DB::transaction().
+        $seen = 0;
+        DB::listen(function ($query) use (&$seen) {
+            if (str_starts_with($query->sql, 'insert into "registrar_imports"')
+                || str_starts_with($query->sql, 'insert into `registrar_imports`')) {
+                $seen++;
+
+                if ($seen === 2) {
+                    throw new \RuntimeException('simulated mid-file failure');
+                }
+            }
+        });
+
+        $response = $this->import($this->csv([
+            ['2024-0001', 'Ana Flores', '11', 'BSIT', 'Block 1'],
+            ['2024-0002', 'Bryan Cruz', '12', 'BSIT', 'Block 2'],
+        ]));
+
+        $this->assertSame(
+            500,
+            $response->getStatusCode(),
+            'the mid-file failure must surface as a 500, not a silent 201'
+        );
+
+        // Nothing from either row survives: no feed rows, no accounts, no codes.
+        $this->assertSame(0, RegistrarImport::count());
+        $this->assertSame(0, User::where('role', 'student')->count());
+    }
+
+    public function test_identical_reimport_changes_nothing_sensitive(): void
+    {
+        $this->makeUser(['role' => 'teacher', 'department' => 'BSIT']);
+
+        $this->import($this->csv([
+            ['2024-0001', 'Ana Flores', '11', 'BSIT', 'Block 1'],
+        ]))->assertStatus(201);
+
+        $before = User::where('student_id', '2024-0001')->firstOrFail();
+        $passwordBefore = $before->password;
+        $before->update(['has_voted' => true]);
+        $before->refresh();
+
+        $response = $this->import($this->csv([
+            ['2024-0001', 'Ana Flores', '11', 'BSIT', 'Block 1'],
+        ]));
+
+        $response->assertStatus(201)
+            ->assertJsonPath('summary.accounts_provisioned', 0)
+            // One eligibility-feed update + one existing-account metadata
+            // update per row: the counter covers both, and neither creates a
+            // duplicate or touches credentials/vote state.
+            ->assertJsonPath('summary.updated_eligibility_rows', 2);
+
+        $this->assertSame(1, User::where('student_id', '2024-0001')->count(), 'no duplicate account');
+
+        $after = User::where('student_id', '2024-0001')->firstOrFail();
+        $this->assertSame($passwordBefore, $after->password, 'password hash untouched');
+        $this->assertTrue((bool) $after->has_voted, 'has_voted untouched');
+        $this->assertSame(1, RegistrarImport::where('student_id', '2024-0001')->count(), 'no duplicate feed row');
+    }
+
+    public function test_duplicate_ids_report_lines_and_first_row_wins(): void
+    {
+        $this->makeUser(['role' => 'teacher', 'department' => 'BSIT']);
+
+        $response = $this->import($this->csv([
+            ['2024-0001', 'Ana Flores', '11', 'BSIT', 'Block 1'],
+            ['2024-0002', 'Bryan Cruz', '12', 'BSIT', 'Block 2'],
+            ['2024-0001', 'Ana Flores Again', '11', 'BSIT', 'Block 1'],
+        ]));
+
+        $response->assertStatus(201)
+            ->assertJsonPath('summary.duplicates_within_file', 1)
+            ->assertJsonPath('summary.duplicate_lines', [4], 'the dropped copy is on CSV line 4')
+            ->assertJsonPath('summary.accounts_provisioned', 2);
+
+        $user = User::where('student_id', '2024-0001')->firstOrFail();
+        $this->assertSame('Ana Flores', $user->name, 'the first occurrence wins, the duplicate is ignored');
+    }
+
+    public function test_unicode_names_import_cleanly(): void
+    {
+        $this->makeUser(['role' => 'teacher', 'department' => 'BSIT']);
+
+        $response = $this->import($this->csv([
+            ['2024-0001', "Peña O'Brien-Smith", '11', 'BSIT', 'Block 1'],
+        ]));
+
+        $response->assertStatus(201)
+            ->assertJsonPath('summary.accounts_provisioned', 1)
+            ->assertJsonPath('summary.rejected_rows', []);
+
+        $user = User::where('student_id', '2024-0001')->firstOrFail();
+        $this->assertSame("Peña O'Brien-Smith", $user->name, 'unicode name stored byte-for-byte');
     }
 
     // ------------------------------------------------------------------

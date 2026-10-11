@@ -40,7 +40,7 @@ class SsgOfficerController extends Controller
         $candidateRefs = $tallies->flatten(1)->pluck('candidate_ref');
         $candidates = Candidate::query()
             ->whereIn('candidate_ref', $candidateRefs)
-            ->with('user:id,name')
+            ->with('user:id,name,year_level,department,course')
             ->get()
             ->keyBy('candidate_ref');
 
@@ -64,9 +64,10 @@ class SsgOfficerController extends Controller
                 ->where('election_status', 'elected')
                 ->whereNull('archived_at')
                 ->whereIn('position_id', $positions->pluck('id'))
-                // `position` is read below for the slug lookup, so it has to be
-                // eager loaded too or each elected officer costs an extra query.
-                ->with(['user:id,name', 'position:id,slug'])
+                // `position` is read below for the slug lookup and its scope, so
+                // it has to be eager loaded too or each elected officer costs an
+                // extra query.
+                ->with(['user:id,name,year_level,department,course', 'position'])
                 ->orderBy('position_id')
                 ->orderBy('winner_rank')
                 ->get()
@@ -76,9 +77,11 @@ class SsgOfficerController extends Controller
                         return;
                     }
 
+                    $scope = $position->scopeLabelFor($candidate->user);
+
                     $officers->push([
                         'position_key' => $position->slug,
-                        'position_label' => $position->label,
+                        'position_label' => $scope ? "{$position->label} — {$scope}" : $position->label,
                         'candidate_ref' => $candidate->candidate_ref,
                         'name' => $candidate->user?->name ?? $candidate->candidate_ref,
                         'votes' => (int) $candidate->vote_total,
@@ -96,21 +99,29 @@ class SsgOfficerController extends Controller
             }
 
             $seatCount = max(1, (int) $position->seat_count);
-            foreach ($rows->take($seatCount) as $row) {
-                // Archived winners are from a past term and are not returned by
-                // the fallback either, even if they still lead the raw tally.
-                if ($archivedRefs->contains($row->candidate_ref)) {
-                    continue;
-                }
 
-                $officers->push([
-                    'position_key' => $positionKey,
-                    'position_label' => $position->label,
-                    'candidate_ref' => $row->candidate_ref,
-                    'name' => $candidates->get($row->candidate_ref)?->user?->name ?? $row->candidate_ref,
-                    'votes' => (int) $row->votes,
-                    'seat_count' => $seatCount,
-                ]);
+            // Group by electorate: a scoped seat (e.g. Year Level Representative,
+            // scoped by college and year) has one leader per group, not one
+            // overall. Archived winners are dropped from their group too.
+            $groups = $rows
+                ->reject(fn ($row) => $archivedRefs->contains($row->candidate_ref))
+                ->groupBy(fn ($row) => $position->groupKeyFor($candidates->get($row->candidate_ref)?->user));
+
+            foreach ($groups as $groupRows) {
+                $owner = $candidates->get($groupRows->first()->candidate_ref)?->user;
+                $scope = $position->scopeLabelFor($owner);
+                $label = $scope ? "{$position->label} — {$scope}" : $position->label;
+
+                foreach ($groupRows->take($seatCount) as $row) {
+                    $officers->push([
+                        'position_key' => $positionKey,
+                        'position_label' => $label,
+                        'candidate_ref' => $row->candidate_ref,
+                        'name' => $candidates->get($row->candidate_ref)?->user?->name ?? $row->candidate_ref,
+                        'votes' => (int) $row->votes,
+                        'seat_count' => $seatCount,
+                    ]);
+                }
             }
         }
 

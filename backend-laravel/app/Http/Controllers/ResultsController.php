@@ -38,54 +38,80 @@ class ResultsController extends Controller
             ->whereNotNull('archived_at')
             ->pluck('candidate_ref');
 
-        $tallies = DB::table('vote_ledger')
+        $ledger = DB::table('vote_ledger')
             ->select('position_key', 'candidate_ref', DB::raw('COUNT(*) as votes'))
             ->groupBy('position_key', 'candidate_ref')
             ->orderBy('position_key')
             ->orderByDesc('votes')
-            ->get()
-            ->groupBy('position_key')
-            ->map(fn ($rows) => $rows->reject(fn ($row) => $archivedRefs->contains($row->candidate_ref))->values());
+            ->get();
 
         $candidates = Candidate::query()
-            ->whereIn('candidate_ref', $tallies->flatten(1)->pluck('candidate_ref'))
-            // Eager load the author once: the loop below reads `->user->name`
-            // per tally row, which without this fires one users query per
-            // candidate (N+1) on this public endpoint. `position` is deliberately
-            // not loaded — labels come from the slug→label map below.
-            ->with('user:id,name')
+            ->whereIn('candidate_ref', $ledger->pluck('candidate_ref'))
+            // The own account is needed to resolve each candidate's scope group
+            // (its college and year level), and `->user->name` is read per row.
+            ->with('user:id,name,year_level,department,course')
             ->get()
             ->keyBy('candidate_ref');
 
-        $labels = Position::query()
-            ->whereIn('slug', $tallies->keys())
-            ->pluck('label', 'slug');
+        $positions = Position::query()
+            ->whereIn('slug', $ledger->pluck('position_key')->unique()->values())
+            ->get()
+            ->keyBy('slug');
 
-        $results = $tallies->map(function ($rows, $positionKey) use ($candidates, $labels) {
-            return [
-                'position_key' => $positionKey,
-                'position_label' => $labels->get($positionKey) ?? str_replace('_', ' ', ucfirst($positionKey)),
-                'candidates' => $rows->map(function ($row) use ($candidates, $positionKey) {
-                    // A ledger row can outlive its candidate (withdrawn, deleted)
-                    // and a position_key can outlive its Position row. Array
-                    // access on a keyed Collection throws for a missing key, which
-                    // turned this public endpoint into a 500 with a stale ledger —
-                    // look both up safely and fall back to the opaque ref.
-                    $candidate = $candidates->get($row->candidate_ref);
+        // One result group per contested seat. A global position yields a single
+        // group; a scoped position yields one per electorate (e.g. every college
+        // per year level for the Year Level Representative).
+        //
+        // The groups are pushed (never collapsed into a keyed map): two different
+        // positions can share a group key (every global seat groups under ''), and
+        // keyed merging would silently drop all but the last. A position is kept
+        // even when every one of its candidates has been archived, so the public
+        // feed shows an empty seat rather than vanishing mid-term.
+        $results = collect();
 
-                    return [
-                        'id' => $candidate?->id,
-                        'name' => $candidate?->user?->name ?? $row->candidate_ref,
-                        'position_key' => $positionKey,
-                        'votes' => (int) $row->votes,
-                        'candidate_ref' => $row->candidate_ref,
-                        'election_status' => $candidate?->election_status ?? 'pending',
-                        'winner_rank' => $candidate?->winner_rank,
-                        'certified_winner' => (bool) ($candidate?->certified_winner ?? false),
-                    ];
-                })->values(),
-            ];
-        })->values();
+        $ledger
+            ->groupBy('position_key')
+            ->each(function ($rows, $positionKey) use ($results, $candidates, $positions, $archivedRefs) {
+                $position = $positions->get($positionKey);
+                $baseLabel = $position?->label ?? str_replace('_', ' ', ucfirst($positionKey));
+
+                $rows
+                    ->groupBy(fn ($row) => $position?->groupKeyFor($candidates->get($row->candidate_ref)?->user) ?? '')
+                    ->each(function ($groupRows, $groupKey) use ($results, $positionKey, $position, $baseLabel, $candidates, $archivedRefs) {
+                        $owner = $candidates->get($groupRows->first()->candidate_ref)?->user;
+                        $scopeLabel = $position?->scopeLabelFor($owner);
+
+                        $results->push([
+                            'position_key' => $positionKey,
+                            'position_label' => $scopeLabel ? "{$baseLabel} — {$scopeLabel}" : $baseLabel,
+                            'scope_label' => $scopeLabel,
+                            'candidates' => $groupRows
+                                ->reject(fn ($row) => $archivedRefs->contains($row->candidate_ref))
+                                ->sortByDesc(fn ($row) => (int) $row->votes)
+                                ->values()
+                                ->map(function ($row) use ($candidates, $positionKey) {
+                                    // A ledger row can outlive its candidate
+                                    // (withdrawn, deleted) and a position_key can
+                                    // outlive its Position row. Look both up
+                                    // safely and fall back to the opaque ref.
+                                    $candidate = $candidates->get($row->candidate_ref);
+
+                                    return [
+                                        'id' => $candidate?->id,
+                                        'name' => $candidate?->user?->name ?? $row->candidate_ref,
+                                        'position_key' => $positionKey,
+                                        'votes' => (int) $row->votes,
+                                        'candidate_ref' => $row->candidate_ref,
+                                        'election_status' => $candidate?->election_status ?? 'pending',
+                                        'winner_rank' => $candidate?->winner_rank,
+                                        'certified_winner' => (bool) ($candidate?->certified_winner ?? false),
+                                    ];
+                                }),
+                        ]);
+                    });
+            });
+
+        return response()->json(['results' => $results->values()]);
 
         return response()->json(['results' => $results]);
     }
@@ -123,7 +149,7 @@ class ResultsController extends Controller
         $candidates = Candidate::query()
             ->whereIn('candidate_ref', $tallies->flatten(1)->pluck('candidate_ref'))
             ->where('approval_status', 'approved')
-            ->with('position:id,slug,label')
+            ->with(['position:id,slug,label', 'user:id,year_level,department,course'])
             ->get()
             ->keyBy('candidate_ref');
 
@@ -148,43 +174,51 @@ class ResultsController extends Controller
 
             $seatCount = max(1, (int) $position->seat_count);
 
-            $rowsForPosition = $rows
+            // One contest per electorate. A global seat is a single group; a
+            // scoped seat (department, year level, or both) yields one group per
+            // electorate, and each group elects its own `seat_count` winners.
+            $groups = $rows
                 ->filter(fn ($row) => $candidates->has($row->candidate_ref))
-                ->map(fn ($row) => [
-                    'candidate_ref' => $row->candidate_ref,
-                    'votes' => (int) $row->votes,
-                ])
-                ->values()
-                ->all();
+                ->groupBy(fn ($row) => $position->groupKeyFor($candidates->get($row->candidate_ref)?->user));
 
-            $verdict = ElectionTally::resolve($rowsForPosition, $seatCount);
+            foreach ($groups as $groupRows) {
+                $rowsForSeat = $groupRows
+                    ->map(fn ($row) => [
+                        'candidate_ref' => $row->candidate_ref,
+                        'votes' => (int) $row->votes,
+                    ])
+                    ->values()
+                    ->all();
 
-            // Apply verdict to candidate rows (ordered by votes so ranks are
-            // awarded to the actual leaders).
-            $byVotes = collect($rowsForPosition)
-                ->sortByDesc('votes')
-                ->pluck('candidate_ref');
+                $verdict = ElectionTally::resolve($rowsForSeat, $seatCount);
 
-            foreach ($byVotes as $ref) {
-                if (array_key_exists($ref, $verdict['elected']) && $candidates->has($ref)) {
-                    $candidates[$ref]->forceFill([
-                        'election_status' => 'elected',
-                        'winner_rank' => $verdict['elected'][$ref],
-                        'vote_total' => $this->votesForRef($rowsForPosition, $ref),
+                // Apply verdict to candidate rows (ordered by votes so ranks are
+                // awarded to the actual leaders of THIS electorate).
+                $byVotes = collect($rowsForSeat)
+                    ->sortByDesc('votes')
+                    ->pluck('candidate_ref');
+
+                foreach ($byVotes as $ref) {
+                    if (array_key_exists($ref, $verdict['elected']) && $candidates->has($ref)) {
+                        $candidates->get($ref)->forceFill([
+                            'election_status' => 'elected',
+                            'winner_rank' => $verdict['elected'][$ref],
+                            'vote_total' => $this->votesForRef($rowsForSeat, $ref),
+                        ])->save();
+                        $summary['elected']++;
+                    }
+                }
+
+                foreach ($verdict['tied'] as $ref) {
+                    if (! $candidates->has($ref)) {
+                        continue;
+                    }
+                    $candidates->get($ref)->forceFill([
+                        'election_status' => 'tied',
+                        'vote_total' => $this->votesForRef($rowsForSeat, $ref),
                     ])->save();
-                    $summary['elected']++;
+                    $summary['tied']++;
                 }
-            }
-
-            foreach ($verdict['tied'] as $ref) {
-                if (! $candidates->has($ref)) {
-                    continue;
-                }
-                $candidates[$ref]->forceFill([
-                    'election_status' => 'tied',
-                    'vote_total' => $this->votesForRef($rowsForPosition, $ref),
-                ])->save();
-                $summary['tied']++;
             }
         }
 
@@ -272,14 +306,14 @@ class ResultsController extends Controller
         $winners = Candidate::query()
             ->where('election_status', 'elected')
             ->whereNull('archived_at')
-            ->with(['user:id,name', 'position:id,slug,label'])
+            ->with(['user:id,name,year_level,department,course', 'position'])
             ->orderBy('position_id')
             ->get();
 
         $tied = Candidate::query()
             ->where('election_status', 'tied')
             ->whereNull('archived_at')
-            ->with(['user:id,name', 'position:id,slug,label'])
+            ->with(['user:id,name,year_level,department,course', 'position'])
             ->orderBy('position_id')
             ->get();
 
@@ -292,7 +326,7 @@ class ResultsController extends Controller
 
         foreach ($winners as $winner) {
             $positions->push([
-                'label' => $winner->position?->label ?: $winner->position?->slug,
+                'label' => $this->positionAnnouncementLabel($winner),
                 'name' => $winner->user?->name ?: $winner->candidate_ref,
                 'rank' => $winner->winner_rank,
             ]);
@@ -300,7 +334,7 @@ class ResultsController extends Controller
 
         foreach ($tied as $candidate) {
             $positions->push([
-                'label' => $candidate->position?->label ?: $candidate->position?->slug,
+                'label' => $this->positionAnnouncementLabel($candidate),
                 'name' => $candidate->user?->name ?: $candidate->candidate_ref,
                 'tie' => true,
             ]);
@@ -350,6 +384,19 @@ class ResultsController extends Controller
         }
 
         return $announcement;
+    }
+
+    /**
+     * Position label for the results announcement. Scoped seats are suffixed
+     * with the electorate so twenty Year Level Representative winners read as
+     * twenty distinct races instead of one line of names.
+     */
+    private function positionAnnouncementLabel(Candidate $candidate): string
+    {
+        $base = $candidate->position?->label ?: $candidate->position?->slug ?: 'Position';
+        $scope = $candidate->position?->scopeLabelFor($candidate->user);
+
+        return $scope ? "{$base} ({$scope})" : $base;
     }
 
     private function votesForRef(array $rows, string $ref): int
