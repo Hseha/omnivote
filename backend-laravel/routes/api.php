@@ -190,6 +190,10 @@ Route::prefix('admin')->group(function () {
             ->middleware('permission:manage_accounts');
         Route::post('/users/{user}/grant-ssg', [AdminUserController::class, 'grantSsg'])
             ->middleware('permission:manage_accounts');
+        Route::post('/users/{user}/archive', [AdminUserController::class, 'archive'])
+            ->middleware('permission:manage_accounts');
+        Route::post('/users/{user}/unarchive', [AdminUserController::class, 'unarchive'])
+            ->middleware('permission:manage_accounts');
 
         // Certified-winner ratification (drives the SSG President grant flow).
         Route::post('/candidates/{candidate}/certify', [AdminCandidateController::class, 'certify'])
@@ -297,6 +301,13 @@ Route::middleware(['auth:sanctum', 'role:student', 'passwordChanged'])->group(fu
     Route::get('/candidacy/availability', [CandidacyAvailabilityController::class, 'index']);
     Route::post('/candidate/apply', [CandidateController::class, 'store'])
         ->middleware('checkPhase:registration');
+
+    // Editing the campaign and withdrawing/forfeiting a candidacy are allowed
+    // through voting (until polls close) so an approved candidate can still
+    // change their mind. The phase gate for these lives in the controller:
+    // `registration` and `voting_open` only.
+    Route::put('/candidate/apply', [CandidateController::class, 'update']);
+    Route::post('/candidate/withdraw', [CandidateController::class, 'withdraw']);
 
     // Ballot draft + submission (voting_open only)
     Route::get('/ballot/me', [BallotController::class, 'me']);

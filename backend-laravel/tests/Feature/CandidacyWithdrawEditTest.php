@@ -366,6 +366,20 @@ class CandidacyWithdrawEditTest extends TestCase
             $table->timestamps();
         });
 
+        // The apply/edit request validates party names against this table, so it
+        // must exist before any candidacy mutation is exercised.
+        Schema::create('parties', function (Blueprint $table) {
+            $table->id();
+            $table->string('name')->unique();
+            $table->unsignedTinyInteger('sort_order')->default(0);
+            $table->timestamps();
+        });
+
+        DB::table('parties')->insert([
+            ['name' => 'ASLE', 'sort_order' => 1, 'created_at' => now(), 'updated_at' => now()],
+            ['name' => 'SVEA', 'sort_order' => 2, 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
         Schema::create('phases', function (Blueprint $table) {
             $table->id();
             $table->string('name')->unique();
