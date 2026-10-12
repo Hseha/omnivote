@@ -12,6 +12,7 @@ import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import { useElectionStatus } from './lib/ElectionStatusContext';
 import api from './lib/api';
+import { displayPhase, phaseClass } from './lib/phase';
 import './Results.css';
 
 export default function Results({ activeView = 'results', onNavigate, onLogout, currentUser = null }) {
@@ -35,30 +36,6 @@ export default function Results({ activeView = 'results', onNavigate, onLogout, 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPosition, setSelectedPosition] = useState('All');
   const [selectedParty, setSelectedParty] = useState('All');
-
-  function displayPhase(p) {
-    switch (p) {
-      case 'registration':
-        return 'Registration';
-      case 'registration_closed':
-        return 'Registration Closed';
-      case 'voting_open':
-        return 'Voting Open';
-      case 'voting_closed':
-        return 'Voting Closed';
-      default:
-        // null = no configured window yet; never fall back to a real-looking
-        // phase, or the banner lies after the admin clears the schedule.
-        return p || 'Not Configured';
-    }
-  }
-
-  // Live badge colors: green while voting is open, muted otherwise.
-  function phaseClass(p) {
-    if (p === 'voting_open') return 'green-phase';
-    if (!p) return 'muted-phase';
-    return 'blue-phase';
-  }
 
   function formatArchiveDate(iso) {
     if (!iso) return '—';

@@ -15,7 +15,16 @@ PHP_VER="8.4"
 APP_DIR="/var/www/omnivote"
 WEB_USER="www-data"
 DEPLOY_USER="omnivote-deploy"
-APP_URL="${APP_URL:-https://$(hostname)}"
+
+# The hostname both nginx vhosts serve. On a Tailscale node the correct value is
+# the MagicDNS name (e.g. debian.tail7e9e1e.ts.net); `hostname -f` frequently
+# returns the bare short name instead. Override explicitly for any other setup:
+#   PRIMARY_HOST=vote.example.edu sudo bash deploy/setup-server.sh
+# Detection is shared with setup-staging.sh via deploy/lib/host.sh.
+# shellcheck source=lib/host.sh
+source "$(dirname "$0")/lib/host.sh"
+PRIMARY_HOST="${PRIMARY_HOST:-$(omnivote_detect_primary_host)}"
+APP_URL="${APP_URL:-https://$PRIMARY_HOST}"
 
 # ---------------------------------------------------------------------------
 log() { printf '\n\033[1;32m==> %s\033[0m\n' "$*"; }
@@ -83,12 +92,13 @@ grep -q "^cgi.fix_pathinfo=0" "$PHP_INI" || echo "cgi.fix_pathinfo=0" >> "$PHP_I
 
 # ---------------------------------------------------------------------------
 log "5/8  Installing nginx site config"
-cp deploy/nginx-omnivote.conf /etc/nginx/sites-available/omnivote
-sed -i "s|debian.tail7e9e1e.ts.net|$(hostname)|g" /etc/nginx/sites-available/omnivote
+# Both vhost templates are host-agnostic and carry the __PRIMARY_HOST__ token.
+# Render it into each before installing so the primary API vhost AND the Funnel
+# / tailnet-serve vhost (127.0.0.1:8080) agree on the hostname that
+# `tailscale funnel` and `tailscale serve` send in the Host header.
+omnivote_render_vhost deploy/nginx-omnivote.conf /etc/nginx/sites-available/omnivote "$PRIMARY_HOST"
+omnivote_render_vhost deploy/nginx-funnel-api.conf /etc/nginx/sites-available/omnivote-funnel-api "$PRIMARY_HOST"
 ln -sf /etc/nginx/sites-available/omnivote /etc/nginx/sites-enabled/omnivote
-# The Funnel / tailnet-serve vhost (127.0.0.1:8080). Keep the ts.net
-# servername so `tailscale funnel` and `tailscale serve` host headers match.
-cp deploy/nginx-funnel-api.conf /etc/nginx/sites-available/omnivote-funnel-api
 ln -sf /etc/nginx/sites-available/omnivote-funnel-api /etc/nginx/sites-enabled/omnivote-funnel-api
 rm -f /etc/nginx/sites-enabled/default
 nginx -t
@@ -155,7 +165,7 @@ cat <<EOF
  Next steps (manual, in deploy/README.md):
   1. sudo -u $DEPLOY_USER cp backend-laravel/.env.example backend-laravel/.env,
      then edit it and run: chmod 640 backend-laravel/.env
-     APP_ENV=production, APP_DEBUG=false, APP_URL=https://$APP_URL,
+     APP_ENV=production, APP_DEBUG=false, APP_URL=$APP_URL,
      DB_USERNAME/DB_PASSWORD (omnivote / the password printed above),
      SESSION_SECURE_COOKIE=true.  The example file documents every key.
   2. cd backend-laravel && sudo -u $DEPLOY_USER php8.4 artisan key:generate
@@ -168,7 +178,7 @@ cat <<EOF
   7. sudo systemctl enable --now omnivote-worker.service
   8. sudo systemctl enable --now omnivote-backup.timer   (encrypted daily backups)
   9. Set up HTTPS (Let's Encrypt or self-signed) — see README §SSL
- 10. Verify:  curl -k https://$APP_URL/up
+ 10. Verify:  curl -k $APP_URL/up
 
  Optional: install the health-check timer (5-minute interval, admin alerts):
      sudo cp deploy/omnivote-health.service deploy/omnivote-health.timer /etc/systemd/system/

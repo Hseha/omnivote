@@ -27,6 +27,7 @@ import { useTheme } from './lib/ThemeContext';
 import { THEME_PACKS } from './lib/themePacks';
 import { refreshBranding } from './lib/branding';
 import { useElectionStatus } from './lib/ElectionStatusContext';
+import { roleLabel } from './lib/phase';
 import TwoFactorSetup from './TwoFactorSetup';
 import NotificationBroadcast from './components/NotificationBroadcast';
 import OmniVoteMark from './components/OmniVoteMark';
@@ -182,24 +183,6 @@ function initials(name) {
     .slice(0, 2)
     .join('')
     .toUpperCase();
-}
-
-/* Human label for every account role the panel can hold. */
-function roleLabel(role) {
-  switch (role) {
-    case 'admin':
-      return 'System Administrator';
-    case 'teacher':
-      return 'SSG Adviser';
-    case 'ssg_president':
-      return 'SSG President';
-    case 'candidate':
-      return 'Candidate';
-    case 'student':
-      return 'Student';
-    default:
-      return role || 'Panel Account';
-  }
 }
 
 /* ------------------------------------------------------------------------

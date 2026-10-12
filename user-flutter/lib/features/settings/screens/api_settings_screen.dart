@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_colors.dart';
@@ -120,23 +121,27 @@ class _ApiSettingsScreenState extends ConsumerState<ApiSettingsScreen> {
             runSpacing: AppSpacing.sm,
             children: [
               ActionChip(
-                label: const Text('Deployed (debian tailnet)'),
+                label: const Text('Build default'),
                 onPressed: () {
                   _urlController.text = ApiConstants.baseUrl;
                 },
               ),
-              ActionChip(
-                label: const Text('Local: tailnet IP'),
-                onPressed: () {
-                  _urlController.text = 'http://100.100.224.74:8000/api';
-                },
-              ),
-              ActionChip(
-                label: const Text('Local: LAN IP'),
-                onPressed: () {
-                  _urlController.text = 'http://192.168.1.64:8000/api';
-                },
-              ),
+              // Private/tailnet presets are debug-only helpers; a release build
+              // must not ship (or offer) a hardcoded internal address.
+              if (kDebugMode) ...[
+                ActionChip(
+                  label: const Text('Local: tailnet IP'),
+                  onPressed: () {
+                    _urlController.text = 'http://100.100.224.74:8000/api';
+                  },
+                ),
+                ActionChip(
+                  label: const Text('Local: LAN IP'),
+                  onPressed: () {
+                    _urlController.text = 'http://192.168.1.64:8000/api';
+                  },
+                ),
+              ],
             ],
           ),
           AppSpacing.vLg,

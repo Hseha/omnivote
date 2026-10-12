@@ -3,6 +3,8 @@ import { Clock } from 'lucide-react';
 import { useAuth } from '../lib/AuthContext';
 import { useElectionStatus } from '../lib/ElectionStatusContext';
 import { fallbackAvatarOnError, initialsAvatarDataUri } from '../lib/avatar';
+import { displayPhase, roleLabel } from '../lib/phase';
+import { formatClock } from '../lib/datetime';
 import NotificationCenter from './NotificationCenter';
 import PhaseStatusDialog from './PhaseStatusDialog';
 import MobileMenuButton from './MobileMenuButton';
@@ -35,20 +37,7 @@ export default function Header({
   const [showPhaseInfo, setShowPhaseInfo] = useState(false);
 
   useEffect(() => {
-    const tick = () => {
-      const d = new Date();
-      const tzLabel = new Intl.DateTimeFormat('en-US', {
-        timeZoneName: 'short',
-      }).formatToParts(d).find((part) => part.type === 'timeZoneName')?.value;
-      setTimeString(
-        d.toLocaleTimeString('en-US', {
-          hour12: false,
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-        }) + ' ' + (tzLabel || 'LOCAL'),
-      );
-    };
+    const tick = () => setTimeString(formatClock(new Date()));
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
@@ -81,7 +70,7 @@ export default function Header({
         <div className="user-profile">
           <div className="user-info">
             <span className="user-name">{me?.name || 'Admin User'}</span>
-            <span className="user-role">{roleLabel(me?.role)}</span>
+            <span className="user-role">{roleLabel(me?.role, 'Administrator')}</span>
           </div>
           {me?.avatar_url ? (
             <img
@@ -110,33 +99,4 @@ export default function Header({
       )}
     </header>
   );
-}
-
-function roleLabel(role) {
-  switch (role) {
-    case 'admin':
-      return 'System Administrator';
-            case 'teacher':
-              return 'SSG Adviser';
-    case 'ssg_president':
-      return 'SSG President';
-    default:
-      return role || 'Administrator';
-  }
-}
-
-function displayPhase(p) {
-  if (!p) return 'Not Configured';
-  switch (p) {
-    case 'registration':
-      return 'Registration';
-    case 'registration_closed':
-      return 'Registration Closed';
-    case 'voting_open':
-      return 'Voting Open';
-    case 'voting_closed':
-      return 'Voting Closed';
-    default:
-      return p;
-  }
 }

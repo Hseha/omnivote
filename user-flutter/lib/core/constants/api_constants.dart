@@ -1,10 +1,13 @@
 class ApiConstants {
-  // Production default targets the public API-only Tailscale Funnel over
-  // HTTPS. Override with --dart-define=API_BASE_URL=... for local development
-  // (e.g. http://10.0.2.2:8000/api on the Android emulator).
+  // The API origin is supplied at build time via
+  // --dart-define=API_BASE_URL=... . Release builds *require* it (see
+  // lib/main.dart, which refuses to run without one), so the fallback below is
+  // only ever used by local debug builds. It deliberately points at a generic
+  // Android-emulator loopback rather than any real deployment host, so a debug
+  // build can never silently talk to a production server.
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'https://debian.tail7e9e1e.ts.net/api',
+    defaultValue: 'http://10.0.2.2:8000/api',
   );
 
   // Auth endpoints
