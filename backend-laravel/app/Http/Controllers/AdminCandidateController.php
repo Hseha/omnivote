@@ -9,6 +9,7 @@ use App\Models\Department;
 use App\Models\Party;
 use App\Models\Position;
 use App\Models\User;
+use App\Support\AuditLog;
 use App\Support\DepartmentCatalog;
 use App\Support\Notifier;
 use Illuminate\Http\JsonResponse;
@@ -318,6 +319,14 @@ class AdminCandidateController extends Controller
         $candidate->certified_at = now();
         $candidate->save();
 
+        AuditLog::record(
+            $request,
+            'candidate_certified',
+            ($request->user()?->name ?? 'Admin')." certified candidate {$candidate->candidate_ref} as an election winner.",
+            'candidate',
+            $candidate->id,
+        );
+
         return response()->json([
             'message' => 'Candidate certified as election winner.',
             'candidate' => [
@@ -353,6 +362,14 @@ class AdminCandidateController extends Controller
             $account->tokens()->delete();
             $demoted = ['id' => $account->id, 'name' => $account->name, 'email' => $account->email];
         }
+
+        AuditLog::record(
+            $request,
+            'candidate_certification_revoked',
+            ($request->user()?->name ?? 'Admin')." revoked candidate {$candidate->candidate_ref}'s certification.",
+            'candidate',
+            $candidate->id,
+        );
 
         return response()->json([
             'message' => 'Certification revoked.',

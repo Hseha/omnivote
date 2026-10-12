@@ -171,12 +171,12 @@ class LoginBackoffRecoveryTest extends TestCase
         $this->postJson('/api/auth/password/reset-with-code', [
             'student_id' => '2026-0001',
             'code' => $code,
-            'password' => 'a-brand-new-password1',
-            'password_confirmation' => 'a-brand-new-password1',
+            'password' => 'A-brand-new-password1',
+            'password_confirmation' => 'A-brand-new-password1',
         ])->assertStatus(200);
 
         $user->refresh();
-        $this->assertTrue(Hash::check('a-brand-new-password1', $user->password));
+        $this->assertTrue(Hash::check('A-brand-new-password1', $user->password));
         $this->assertFalse($user->must_change_password, 'a self-chosen password needs no rotation');
         $this->assertSame(0, (int) $user->failed_login_attempts, 'recovery must clear the backoff');
         $this->assertNull($user->locked_until);
@@ -196,8 +196,8 @@ class LoginBackoffRecoveryTest extends TestCase
         $this->postJson('/api/auth/password/reset-with-code', [
             'student_id' => '2026-0002',
             'code' => 'WRONG1',
-            'password' => 'a-brand-new-password1',
-            'password_confirmation' => 'a-brand-new-password1',
+            'password' => 'A-brand-new-password1',
+            'password_confirmation' => 'A-brand-new-password1',
         ])->assertStatus(200);
 
         $this->assertTrue(Hash::check('temporary-credential', $user->fresh()->password));
@@ -209,8 +209,8 @@ class LoginBackoffRecoveryTest extends TestCase
         $this->postJson('/api/auth/password/reset-with-code', [
             'student_id' => '1999-9999',
             'code' => 'ABC23456',
-            'password' => 'a-brand-new-password1',
-            'password_confirmation' => 'a-brand-new-password1',
+            'password' => 'A-brand-new-password1',
+            'password_confirmation' => 'A-brand-new-password1',
         ])->assertStatus(200)
             ->assertJsonPath('message', 'If that student ID and code are valid, the password has been reset.');
 
@@ -226,18 +226,18 @@ class LoginBackoffRecoveryTest extends TestCase
         $payload = [
             'student_id' => '2026-0003',
             'code' => $code,
-            'password' => 'a-brand-new-password1',
-            'password_confirmation' => 'a-brand-new-password1',
+            'password' => 'A-brand-new-password1',
+            'password_confirmation' => 'A-brand-new-password1',
         ];
 
         $this->postJson('/api/auth/password/reset-with-code', $payload)->assertStatus(200);
         // Replay with the same code must change nothing.
         $this->postJson('/api/auth/password/reset-with-code', array_merge($payload, [
-            'password' => 'an-attacker-password9',
-            'password_confirmation' => 'an-attacker-password9',
+            'password' => 'An-attacker-password9',
+            'password_confirmation' => 'An-attacker-password9',
         ]))->assertStatus(200);
 
-        $this->assertTrue(Hash::check('a-brand-new-password1', $user->fresh()->password));
+        $this->assertTrue(Hash::check('A-brand-new-password1', $user->fresh()->password));
     }
 
     public function test_a_reset_is_rejected_when_the_password_fails_the_policy(): void

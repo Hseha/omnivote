@@ -13,6 +13,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 use App\Notifications\PasswordResetLink;
+use App\Support\AppSettings;
 
 #[Fillable(['name', 'email', 'password', 'role', 'student_id', 'has_voted', 'year_level', 'block_number', 'department', 'course', 'is_active', 'needs_review', 'review_reason', 'two_factor_secret', 'two_factor_enabled', 'two_factor_recovery_codes', 'avatar_url', 'must_change_password', 'archived_at'])]
 #[Hidden(['password', 'remember_token', 'failed_login_attempts', 'two_factor_secret', 'two_factor_enabled', 'two_factor_recovery_codes'])]
@@ -166,6 +167,16 @@ class User extends Authenticatable
     public function recordFailedLogin(): void
     {
         $this->failed_login_attempts = $this->effectiveFailedAttempts() + 1;
+
+        // Settings → Security exposes a login-backoff kill switch. When an
+        // admin turns it off, still count failures (the panel surfaces them and
+        // the rate limiter still applies) but never open a lockout window.
+        if (! AppSettings::security('loginBackoffEnabled', true)) {
+            $this->locked_until = null;
+            $this->save();
+
+            return;
+        }
 
         $minutes = self::backoffMinutesFor((int) $this->failed_login_attempts);
         $this->locked_until = $minutes > 0 ? now()->addMinutes($minutes) : null;

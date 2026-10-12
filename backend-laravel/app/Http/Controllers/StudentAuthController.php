@@ -5,13 +5,14 @@ namespace App\Http\Controllers;
 use App\Http\Controllers\Concerns\HandlesLoginThrottling;
 use App\Models\RegistrarImport;
 use App\Models\User;
+use App\Support\AuditLog;
 use App\Support\Notifier;
+use App\Support\PasswordPolicy;
 use App\Support\RegistrarCode;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\Rules\Password;
 
 class StudentAuthController extends Controller
 {
@@ -92,7 +93,7 @@ class StudentAuthController extends Controller
     {
         $request->validate([
             'current_password' => ['required', 'string'],
-            'password' => ['required', 'string', 'confirmed', Password::defaults()],
+            'password' => PasswordPolicy::confirmedRules(),
         ]);
 
         $user = $request->user();
@@ -105,6 +106,8 @@ class StudentAuthController extends Controller
             'password' => $request->password,
             'must_change_password' => false,
         ])->save();
+
+        AuditLog::record($request, 'password_changed', 'Student changed their password.', 'user', $user->id);
 
         $current = $user->currentAccessToken();
         $user->tokens()
@@ -135,7 +138,7 @@ class StudentAuthController extends Controller
         $validated = $request->validate([
             'student_id' => ['required', 'string', 'max:64'],
             'code' => ['required', 'string', 'max:16'],
-            'password' => ['required', 'string', 'confirmed', Password::defaults()],
+            'password' => PasswordPolicy::confirmedRules(),
         ]);
 
         $generic = response()->json([
@@ -173,6 +176,8 @@ class StudentAuthController extends Controller
 
             RegistrarCode::redeem($import);
         });
+
+        AuditLog::record($request, 'password_reset', "Student {$user->student_id} reset their password with an activation code.", 'user', $user->id);
 
         Notifier::emailUser(
             $user->id,
