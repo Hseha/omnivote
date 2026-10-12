@@ -4,7 +4,13 @@ set -Eeuo pipefail
 APP_DIR="/var/www/omnivote-staging"
 DB_NAME="omnivote_staging"
 DB_USER="omnivote_staging"
-STAGING_HOST="${STAGING_HOST:-debian.tail7e9e1e.ts.net}"
+REPO_URL="${REPO_URL:-https://github.com/Hseha/omnivote.git}"
+# The tailnet MagicDNS name clients reach staging on. `hostname -f` frequently
+# returns the bare short name, so prefer `tailscale status --json` when present.
+# Detection is shared with setup-server.sh via deploy/lib/host.sh.
+# shellcheck source=lib/host.sh
+source "$(dirname "$0")/lib/host.sh"
+STAGING_HOST="${STAGING_HOST:-$(omnivote_detect_primary_host)}"
 LOCAL_HTTP_PORT="8081"
 TAILSCALE_HTTPS_PORT="8443"
 NGINX_SITE="/etc/nginx/sites-available/omnivote-staging"
@@ -54,7 +60,7 @@ user_exists="$(mysql --batch --skip-column-names -e \
 log "Cloning current main into an isolated staging directory"
 install -d -o www-data -g www-data "$APP_DIR"
 runuser -u www-data -- git clone --depth 1 --branch main \
-    https://github.com/Hseha/omnivote.git "$APP_DIR"
+    "$REPO_URL" "$APP_DIR"
 
 DB_PASSWORD="$(openssl rand -hex 32)"
 log "Creating a new, staging-only MySQL database"

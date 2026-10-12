@@ -8,6 +8,8 @@ import api from './lib/api';
 import { useAuth } from './lib/AuthContext';
 import { useElectionStatus } from './lib/ElectionStatusContext';
 import { allowedViews } from './lib/permissions';
+import { displayPhase, roleLabel } from './lib/phase';
+import { formatClock } from './lib/datetime';
 import {
   Database,
   CheckCircle,
@@ -56,13 +58,7 @@ export default function AdminDashboard({ onLogout, activeView = 'dashboard', onN
     ? {
         time: timeString,
         name: currentUser.name || 'Admin User',
-        role: currentUser.role === 'admin'
-          ? 'System Administrator'
-          : currentUser.role === 'teacher'
-            ? 'SSG Adviser'
-            : currentUser.role === 'ssg_president'
-              ? 'SSG President'
-              : (currentUser.role || 'Administrator'),
+        role: roleLabel(currentUser.role, 'Administrator'),
         avatar: currentUser.avatar_url
           ? currentUser.avatar_url
           : defaultUserIconDataUri(76),
@@ -76,20 +72,7 @@ export default function AdminDashboard({ onLogout, activeView = 'dashboard', onN
 
   // Update clock every second
   useEffect(() => {
-    const tick = () => {
-      const d = new Date();
-      const tzLabel = new Intl.DateTimeFormat('en-US', {
-        timeZoneName: 'short',
-      }).formatToParts(d).find((part) => part.type === 'timeZoneName')?.value;
-      setTimeString(
-        d.toLocaleTimeString('en-US', {
-          hour12: false,
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-        }) + ' ' + (tzLabel || 'LOCAL'),
-      );
-    };
+    const tick = () => setTimeString(formatClock(new Date()));
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
@@ -122,15 +105,6 @@ export default function AdminDashboard({ onLogout, activeView = 'dashboard', onN
   // overview response carried. Kept as a derived value so the dashboard flips
   // on its own without an extra effect.
   const dashboardPhase = livePhase ?? electionPhase;
-  const displayPhase = (p) => {
-    switch (p) {
-      case 'registration': return 'Registration';
-      case 'registration_closed': return 'Registration Closed';
-      case 'voting_open': return 'Voting Open';
-      case 'voting_closed': return 'Voting Closed';
-      default: return p || 'Not Configured';
-    }
-  };
 
   const isAdmin = (currentUser?.role ?? '') === 'admin';
   const [phasePrompt, setPhasePrompt] = useState(null);

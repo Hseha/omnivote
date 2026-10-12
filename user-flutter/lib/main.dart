@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show kReleaseMode;
+import 'package:flutter/foundation.dart' show kDebugMode, kReleaseMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -33,8 +33,15 @@ Future<void> main() async {
   // looks. They are independent reads though, so they run **together** instead
   // of one after the other — on a cold start that is one platform-channel
   // round-trip of latency saved rather than three.
+  // The persisted API-base-URL override is a debug-only affordance. In release
+  // it must never be applied: a stale (or attacker-written) preference would
+  // repoint the app — and the bearer token it sends — at another server. Release
+  // builds use the compiled-in --dart-define value instead.
+  final Future<String?> storedBaseUrlFuture = kDebugMode
+      ? ApiConfigStorage.loadBaseUrl()
+      : Future<String?>.value(null);
   final (storedBaseUrl, storedThemeMode, storedThemePack) = await (
-    ApiConfigStorage.loadBaseUrl(),
+    storedBaseUrlFuture,
     ThemeModeStorage.load(),
     ThemePackStorage.load(),
   ).wait;

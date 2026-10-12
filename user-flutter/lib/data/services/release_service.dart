@@ -11,6 +11,14 @@ final releaseServiceProvider = Provider<ReleaseService>((ref) {
 });
 
 class ReleaseService {
+  /// The GitHub repository that publishes this app's releases. Parameterized so
+  /// a fork or another institution can point at its own Releases without
+  /// editing source: --dart-define=RELEASE_REPO=owner/name
+  static const String releaseRepo = String.fromEnvironment(
+    'RELEASE_REPO',
+    defaultValue: 'Hseha/omnivote',
+  );
+
   final Dio _dio;
 
   ReleaseService(this._dio);
@@ -18,7 +26,7 @@ class ReleaseService {
   static Dio createDio() {
     return Dio(
       BaseOptions(
-        baseUrl: 'https://api.github.com/repos/Hseha/omnivote',
+        baseUrl: 'https://api.github.com/repos/$releaseRepo',
         connectTimeout: const Duration(seconds: 10),
         receiveTimeout: const Duration(seconds: 10),
         headers: {

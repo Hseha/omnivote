@@ -9,22 +9,8 @@ import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import { useElectionStatus } from './lib/ElectionStatusContext';
 import api from './lib/api';
+import { displayPhase } from './lib/phase';
 import './ElectionSetup.css';
-
-function displayPhase(phase) {
-  switch (phase) {
-    case 'registration':
-      return 'Registration';
-    case 'registration_closed':
-      return 'Registration Closed';
-    case 'voting_open':
-      return 'Voting Open';
-    case 'voting_closed':
-      return 'Voting Closed';
-    default:
-      return phase || 'Not Configured';
-  }
-}
 
 export default function ElectionSetup({ activeView = 'setup', onNavigate, onLogout, currentUser = null }) {
   const [subView, setSubView] = useState('main');
