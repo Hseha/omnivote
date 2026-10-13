@@ -35,7 +35,7 @@ class CandidacyApplyScreen extends ConsumerStatefulWidget {
 class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
   final _formKey = GlobalKey<FormState>();
   String? _positionId;
-  final _partyController = TextEditingController();
+  String? _partyName;
   final _sloganController = TextEditingController();
   final _platformController = TextEditingController();
   bool _certify = false;
@@ -47,7 +47,7 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
 
   @override
   void dispose() {
-    _partyController.dispose();
+
     _sloganController.dispose();
     _platformController.dispose();
     super.dispose();
@@ -84,9 +84,7 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
           positionId: _positionId!,
           slogan: _sloganController.text,
           platformStatement: _platformController.text.trim(),
-          partyName: _partyController.text.trim().isEmpty
-              ? null
-              : _partyController.text.trim(),
+          partyName: _partyName?.trim().isEmpty == true ? null : (_partyName ?? "").trim(),
           photoBytes: _photoBytes,
           photoName: _photoName,
         );
@@ -187,19 +185,7 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
                       onChanged: (v) => setState(() => _positionId = v),
                       validator: (v) => v == null ? 'Select a position' : null,
                     ),
-                    AppSpacing.vMd,
-                    AppTextField(
-                      controller: _partyController,
-                      label: 'Party / Platform Name',
-                    ),
-                    AppTextField.fieldGap,
-                    AppTextField(
-                      controller: _sloganController,
-                      label: 'Campaign Slogan',
-                    ),
-                    AppTextField.fieldGap,
-                    _photoSection(),
-                    AppTextField.fieldGap,
+                    _partyField(),
                     AppTextField(
                       controller: _platformController,
                       maxLines: 6,
@@ -263,6 +249,40 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
 
   static String _tierLabel(Position p) =>
       p.tier == PositionTier.provincial ? 'Provincial' : 'National';
+  Widget _partyField() {
+    final partiesAsync = ref.watch(partiesProvider);
+    final parties = partiesAsync.valueOrNull ?? const <String>[];
+    final legacy = _partyName?.trim();
+    final options = <String>{
+      ...parties,
+      if (legacy != null && legacy.isNotEmpty) legacy,
+    }.toList();
+
+    return DropdownButtonFormField<String>(
+      initialValue: _partyName,
+      isExpanded: true,
+      decoration: InputDecoration(
+        labelText: 'Party',
+        helperText: partiesAsync.hasError
+            ? 'Could not load the party list.'
+            : partiesAsync.isLoading
+                ? 'Loading parties…'
+                : 'Optional — pick your official party.',
+      ),
+      items: [
+        const DropdownMenuItem<String>(
+          value: null,
+          child: Text('No party'),
+        ),
+        ...options.map(
+          (p) => DropdownMenuItem<String>(value: p, child: Text(p)),
+        ),
+      ],
+      onChanged: (value) => setState(() => _partyName = value),
+    );
+  }
+
+  Widget _photoSection() {
 
   Widget _photoSection() {
     final appText = AppTextStyles.of(context);
