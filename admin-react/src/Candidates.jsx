@@ -34,6 +34,11 @@ export default function Candidates({ onLogout, activeView = 'candidates', onNavi
   const [modalError, setModalError] = useState('');
   const [savingCandidate, setSavingCandidate] = useState(false);
 
+  // Approve / Reject confirmation modal state.
+  const [confirmAction, setConfirmAction] = useState(null); // { id, name, status }
+  const [confirmSaving, setConfirmSaving] = useState(false);
+  const [confirmError, setConfirmError] = useState('');
+
   const [positions, setPositions] = useState([]);
   const [userSearch, setUserSearch] = useState('');
   const [debouncedUserSearch, setDebouncedUserSearch] = useState('');
@@ -147,11 +152,21 @@ export default function Candidates({ onLogout, activeView = 'candidates', onNavi
 
   const handleStatusChange = async (id, newStatus) => {
     const normalized = (newStatus || '').toLowerCase();
+    await api.patch(`/admin/candidates/${id}`, { status: normalized });
+    await fetchCandidates();
+  };
+
+  const confirmStatusChange = async () => {
+    if (!confirmAction) return;
+    setConfirmSaving(true);
+    setConfirmError('');
     try {
-      await api.patch(`/admin/candidates/${id}`, { status: normalized });
-      await fetchCandidates();
+      await handleStatusChange(confirmAction.id, confirmAction.status);
+      setConfirmAction(null);
     } catch (err) {
-      console.warn('Failed to update candidate status:', err.message);
+      setConfirmError(err?.response?.data?.message || 'Could not update the candidate status. Please try again.');
+    } finally {
+      setConfirmSaving(false);
     }
   };
 
@@ -384,13 +399,13 @@ export default function Candidates({ onLogout, activeView = 'candidates', onNavi
                     <td className="actions-cell">
                       <button
                         className="btn-approve"
-                        onClick={() => handleStatusChange(candidate.id, 'approved')}
+                        onClick={() => setConfirmAction({ id: candidate.id, name: candidate.name, status: 'approved' })}
                       >
                         <Check size={14} /> Approve
                       </button>
                       <button
                         className="btn-reject"
-                        onClick={() => handleStatusChange(candidate.id, 'rejected')}
+                        onClick={() => setConfirmAction({ id: candidate.id, name: candidate.name, status: 'rejected' })}
                       >
                         <X size={14} /> Reject
                       </button>
@@ -653,6 +668,55 @@ export default function Candidates({ onLogout, activeView = 'candidates', onNavi
               </button>
               <button type="button" className="cm-btn-primary" onClick={handleSaveParty} disabled={savingParty || !partyName.trim()}>
                 <Plus size={16} /> {savingParty ? 'Adding…' : 'Add Party'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {confirmAction && (
+        <div className="cm-modal-overlay" onClick={() => !confirmSaving && setConfirmAction(null)}>
+          <div
+            className="cm-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="cm-confirm-status-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="cm-modal-header">
+              <div>
+                <h3 id="cm-confirm-status-title">
+                  {confirmAction.status === 'approved' ? 'Approve' : 'Reject'} {confirmAction.name}?
+                </h3>
+                <p>
+                  {confirmAction.status === 'approved'
+                    ? 'The candidate will appear on the ballot.'
+                    : 'The candidacy will be marked rejected.'}
+                </p>
+              </div>
+              <button type="button" className="cm-modal-close" onClick={() => setConfirmAction(null)} disabled={confirmSaving} aria-label="Close">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="cm-modal-body">
+              <p className="cm-modal-hint">
+                The applicant will be notified immediately. You can change this status later from this table.
+              </p>
+              {confirmError && <div className="cm-modal-error">{confirmError}</div>}
+            </div>
+
+            <div className="cm-modal-footer">
+              <button type="button" className="btn-secondary" onClick={() => setConfirmAction(null)} disabled={confirmSaving}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className={confirmAction.status === 'rejected' ? 'cm-btn-danger' : 'cm-btn-primary'}
+                onClick={confirmStatusChange}
+                disabled={confirmSaving}
+              >
+                {confirmAction.status === 'approved' ? <Check size={16} /> : <X size={16} />}
+                {confirmSaving ? 'Saving…' : confirmAction.status === 'approved' ? 'Approve Candidate' : 'Reject Candidate'}
               </button>
             </div>
           </div>
