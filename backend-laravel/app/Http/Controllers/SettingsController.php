@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Phase;
+use App\Support\AuditLog;
 use App\Support\TermArchive;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
@@ -190,6 +191,13 @@ class SettingsController extends Controller
         if ($section === 'voting') {
             $this->syncElectionTimeline($request);
         }
+
+        AuditLog::record(
+            $request,
+            'settings_updated',
+            ($request->user()?->name ?? 'Admin')." saved the {$section} settings: ".implode(', ', array_keys($accepted)).'.',
+            'settings',
+        );
 
         return response()->json([
             'message' => ucfirst($section).' settings saved.',

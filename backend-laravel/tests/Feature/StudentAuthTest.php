@@ -66,8 +66,8 @@ class StudentAuthTest extends TestCase
         $this->withToken($token)
             ->postJson('/api/auth/password/change', [
                 'current_password' => self::PASSWORD,
-                'password' => 'new-pass-1234',
-                'password_confirmation' => 'new-pass-1234',
+                'password' => 'New-pass-1234',
+                'password_confirmation' => 'New-pass-1234',
             ])
             ->assertOk();
 
@@ -83,8 +83,8 @@ class StudentAuthTest extends TestCase
         $this->actingAs($student)
             ->postJson('/api/auth/password/change', [
                 'current_password' => 'not-the-password',
-                'password' => 'new-pass-1234',
-                'password_confirmation' => 'new-pass-1234',
+                'password' => 'New-pass-1234',
+                'password_confirmation' => 'New-pass-1234',
             ])
             ->assertStatus(422);
     }

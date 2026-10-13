@@ -7,6 +7,7 @@ use App\Models\Course;
 use App\Models\Department;
 use App\Models\RegistrarImport;
 use App\Models\User;
+use App\Support\AuditLog;
 use App\Support\DepartmentCatalog;
 use App\Support\Notifier;
 use App\Support\TemporaryPassword;
@@ -445,20 +446,7 @@ class AdminUserController extends Controller
     /** Write an audit row when the audit_logs table is available. */
     private function audit(Request $request, string $action, string $details, string $entityType = 'department'): void
     {
-        if (! Schema::hasTable('audit_logs')) {
-            return;
-        }
-
-        DB::table('audit_logs')->insert([
-            'user_id' => $request->user()?->id,
-            'action' => $action,
-            'entity_type' => $entityType,
-            'entity_id' => null,
-            'details' => $details,
-            'ip_address' => $request->ip(),
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        AuditLog::record($request, $action, $details, $entityType);
     }
 
     /** Shared filter builder so listing and CSV export stay in lockstep. */
@@ -621,6 +609,8 @@ class AdminUserController extends Controller
         $user->save();
         $user->tokens()->delete();
 
+        $this->audit($request, 'user_role_changed', "{$acting->name} set {$user->name}'s role to {$user->role}.", 'user');
+
         Notifier::toAdmins(
             'emailOnAdminAction',
             'info',
@@ -655,6 +645,13 @@ class AdminUserController extends Controller
         // outlive it — required when disabling an account (and harmless on
         // re-enable, where the account simply signs in again).
         $user->tokens()->delete();
+
+        $this->audit(
+            $request,
+            $validated['is_active'] ? 'user_activated' : 'user_disabled',
+            "{$acting->name} ".($validated['is_active'] ? 'activated' : 'disabled')." {$user->name}'s account.",
+            'user',
+        );
 
         Notifier::toAdmins(
             'emailOnAdminAction',
@@ -800,6 +797,8 @@ class AdminUserController extends Controller
         $user->email = strtolower(trim($validated['email']));
         $user->save();
 
+        $this->audit($request, 'user_email_changed', "{$request->user()?->name} changed {$user->name}'s email to {$user->email}.", 'user');
+
         return response()->json([
             'message' => 'Email address updated.',
             'data' => $this->present($user),
@@ -819,6 +818,8 @@ class AdminUserController extends Controller
         $user->save();
         $user->tokens()->delete();
 
+        $this->audit($request, 'user_password_reset', "{$acting->name} issued a temporary password for {$user->name}.", 'user');
+
         return response()->json([
             'message' => 'Temporary password generated.',
             'temporary_password' => $tempPassword,
@@ -837,6 +838,8 @@ class AdminUserController extends Controller
         }
 
         $user->clearLockout();
+
+        $this->audit($request, 'user_unlocked', "{$request->user()?->name} cleared {$user->name}'s login lockout.", 'user');
 
         return response()->json(['data' => $this->present($user)]);
     }

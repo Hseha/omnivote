@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\User;
 use App\Support\AppSettings;
+use App\Support\AuditLog;
 use App\Support\TwoFactor;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -91,6 +92,8 @@ class AdminTwoFactorController extends Controller
         $user->two_factor_recovery_codes = TwoFactor::hashRecoveryCodes($recoveryCodes);
         $user->save();
 
+        AuditLog::record($request, '2fa_enabled', "{$user->name} enabled two-factor authentication.", 'user', $user->id);
+
         return response()->json([
             'message' => 'Two-factor authentication enabled.',
             'recovery_codes' => $recoveryCodes,
@@ -141,6 +144,8 @@ class AdminTwoFactorController extends Controller
         $user->two_factor_enabled = false;
         $user->two_factor_recovery_codes = [];
         $user->save();
+
+        AuditLog::record($request, '2fa_disabled', "{$user->name} disabled two-factor authentication.", 'user', $user->id);
 
         return response()->json(['message' => 'Two-factor authentication disabled.']);
     }

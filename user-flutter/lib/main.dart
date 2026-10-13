@@ -16,11 +16,12 @@ Future<void> main() async {
 
   // Release builds must state their API origin explicitly.
   //
-  // `ApiConstants.baseUrl` falls back to the maintainer's Tailscale host when
-  // `--dart-define=API_BASE_URL=...` is absent. An APK built that way builds
-  // green and then fails for every student the moment that host is unreachable,
-  // which is the worst possible time to discover it. In release we therefore
-  // refuse to run rather than silently pointing at a developer machine.
+  // `ApiConstants.baseUrl` falls back to a generic Android-emulator loopback
+  // (10.0.2.2) when `--dart-define=API_BASE_URL=...` is absent. An APK built
+  // that way builds green and then fails for every student the moment that
+  // localhost is unreachable, which is the worst possible time to discover it.
+  // In release we therefore refuse to run rather than silently pointing at a
+  // developer's machine.
   const configuredApiBaseUrl = String.fromEnvironment('API_BASE_URL');
   if (kReleaseMode && configuredApiBaseUrl.isEmpty) {
     runApp(const _MissingApiUrlErrorApp());
