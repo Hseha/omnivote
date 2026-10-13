@@ -443,10 +443,11 @@ class RegistrarImportTest extends TestCase
 
         $response->assertStatus(201)
             ->assertJsonPath('summary.accounts_provisioned', 0)
-            // One eligibility-feed update + one existing-account metadata
-            // update per row: the counter covers both, and neither creates a
-            // duplicate or touches credentials/vote state.
-            ->assertJsonPath('summary.updated_eligibility_rows', 2);
+            // One eligibility-feed update per row; the existing-account
+            // refresh is counted separately (`accounts_updated`), and neither
+            // creates a duplicate or touches credentials/vote state.
+            ->assertJsonPath('summary.updated_eligibility_rows', 1)
+            ->assertJsonPath('summary.accounts_updated', 1);
 
         $this->assertSame(1, User::where('student_id', '2024-0001')->count(), 'no duplicate account');
 

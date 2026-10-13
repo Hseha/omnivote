@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import {
   ShieldCheck,
   UploadCloud,
@@ -20,29 +20,6 @@ export default function StudentRegistry({ onLogout, activeView = 'voters', onNav
   const [importResult, setImportResult] = useState(null);
   const [error, setError] = useState('');
   const fileInputRef = useRef(null);
-
-  // Live catalog for the downloadable CSV template. The template's example row
-  // is built from whatever departments/courses currently exist, so it never
-  // ships a hardcoded college or program name that a rename would invalidate.
-  const [templateDepartments, setTemplateDepartments] = useState([]);
-  const [templateCourses, setTemplateCourses] = useState([]);
-
-  useEffect(() => {
-    let active = true;
-    api.get('/admin/users', { params: { per_page: 1 } })
-      .then((res) => {
-        if (!active) return;
-        setTemplateDepartments(res.data?.departments ?? []);
-        setTemplateCourses(res.data?.courses ?? []);
-      })
-      .catch(() => {
-        // Catalog is only used for the template example; a failure just means
-        // the exported template falls back to a header-only sheet.
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
 
   const parseCsvLine = (line) => {
     const cells = [];
@@ -174,23 +151,11 @@ export default function StudentRegistry({ onLogout, activeView = 'voters', onNav
   };
 
   // Blank roster showing the exact format the importer expects: the five
-  // required columns plus the optional Course, with one example row so the
-  // admin can see how a record should look. The example's Department/Course
-  // come from the live catalog, so nothing here is hardcoded.
+  // required columns plus the optional Course. Header row only, so no
+  // department or program name is ever baked into the template.
   const downloadTemplate = () => {
     const header = ['Student ID', 'Student Name', 'Year Level', 'Department', 'Block Number', 'Course'];
-    const exampleDepartment = templateDepartments[0];
-    const exampleCourse = exampleDepartment
-      ? (templateCourses.find((course) => course.college === exampleDepartment)?.name ?? '')
-      : '';
-
-    const lines = [header.join(',')];
-    if (exampleDepartment) {
-      const example = ['2024-0001', 'Juan Dela Cruz', '1', exampleDepartment, '2', exampleCourse];
-      lines.push(example.map(escapeCell).join(','));
-    }
-
-    downloadCsv('omnivote-student-import-template.csv', lines);
+    downloadCsv('omnivote-student-import-template.csv', [header.join(',')]);
   };
 
   const exportCredentials = () => {
@@ -357,7 +322,11 @@ export default function StudentRegistry({ onLogout, activeView = 'voters', onNav
                   <Info size={18} color="#16a34a" />
                   <span>
                     <strong>{summary.total_records} records</strong> • {summary.accounts_provisioned} new accounts provisioned •{' '}
-                    {summary.updated_eligibility_rows} updated • {summary.duplicates_within_file} duplicates within file •{' '}
+                    {summary.updated_eligibility_rows} eligibility rows updated • {summary.accounts_updated ?? 0} existing accounts updated
+                    {(summary.accounts_provisioned ?? 0) === 0 && (summary.accounts_updated ?? 0) > 0 && (
+                      <> (these Student IDs already existed — no new accounts)</>
+                    )}
+                    {' '}• {summary.duplicates_within_file} duplicates within file •{' '}
                     {summary.skipped_incomplete} incomplete rows (missing values → feed only, no account) •{' '}
                     {summary.skipped_unknown_department} skipped (department not in the current list → feed only, no account)
                     {(summary.courses_not_offered ?? 0) > 0 && (
