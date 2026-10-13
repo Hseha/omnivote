@@ -17,6 +17,7 @@ class Candidate extends Model
         'platform_points',
         'photo_path',
         'approval_status',
+        'rejection_reason',
         'certified_winner',
         'certified_at',
         'election_status',

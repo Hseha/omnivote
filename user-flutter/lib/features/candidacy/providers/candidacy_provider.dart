@@ -39,7 +39,7 @@ class CandidacyState {
 }
 
 final candidacyProvider = StateNotifierProvider<CandidacyNotifier, CandidacyState>(
-  (ref) => CandidacyNotifier(ref.read(candidacyRepositoryProvider)),
+  (ref) => CandidacyNotifier(ref.read(candidacyRepositoryProvider), ref),
 );
 
 /// Per-party application counts per position (position id → party → count),
@@ -52,10 +52,24 @@ final candidacyAvailabilityProvider =
   return await ref.watch(candidacyRepositoryProvider).getAvailability();
 });
 
+/// The caller's full application (`GET /api/candidacy/me`), or `null` when
+/// they have never applied. Shared by the My Candidacy screen and the
+/// dashboard quick-action tile, and invalidated after submit / edit /
+/// withdraw so both consumers stay in sync.
+final myApplicationProvider =
+    FutureProvider<CandidacyApplication?>((ref) async {
+  return await ref.watch(candidacyRepositoryProvider).getMyApplication();
+});
+
 class CandidacyNotifier extends StateNotifier<CandidacyState> {
   final CandidacyRepository _repository;
 
-  CandidacyNotifier(this._repository) : super(const CandidacyState());
+  /// Kept so every successful mutation can invalidate [myApplicationProvider]:
+  /// the My Candidacy screen and the dashboard tile both read it and must
+  /// not show a stale status after a submit / edit / withdraw.
+  final Ref _ref;
+
+  CandidacyNotifier(this._repository, this._ref) : super(const CandidacyState());
 
   Future<bool> submit({
     required String positionId,
@@ -76,6 +90,7 @@ class CandidacyNotifier extends StateNotifier<CandidacyState> {
         photoName: photoName,
       );
       state = state.copyWith(isSubmitting: false, submittedApplication: application);
+      _ref.invalidate(myApplicationProvider);
       return true;
     } on CandidacyException catch (e) {
       state = state.copyWith(
@@ -112,6 +127,7 @@ class CandidacyNotifier extends StateNotifier<CandidacyState> {
         photoName: photoName,
       );
       state = state.copyWith(isSubmitting: false, submittedApplication: application);
+      _ref.invalidate(myApplicationProvider);
       return true;
     } on CandidacyException catch (e) {
       state = state.copyWith(
@@ -136,6 +152,7 @@ class CandidacyNotifier extends StateNotifier<CandidacyState> {
     try {
       await _repository.withdraw();
       state = state.copyWith(isSubmitting: false);
+      _ref.invalidate(myApplicationProvider);
       return true;
     } on CandidacyException catch (e) {
       state = state.copyWith(

@@ -143,6 +143,12 @@ class CandidacyRepository {
 
   /// Returns the full application for the current student, or `null` when
   /// they have never applied (`GET /candidacy/me` → `{status: none}`).
+  ///
+  /// The endpoint answers with context fields at the top level
+  /// (`rejection_reason`, `created_at`, `updated_at`, `applicants_count`,
+  /// `election_outcome`) and the campaign fields nested under `candidate`;
+  /// both layers are merged into one [CandidacyApplication] so the screen
+  /// reads a single object.
   Future<CandidacyApplication?> getMyApplication() async {
     final response = await _candidacyService.getMyApplication();
     final data = response.data;
@@ -150,9 +156,18 @@ class CandidacyRepository {
     if ((data['status'] ?? data['approval_status']) == 'none') return null;
     final candidate = data['candidate'];
     if (candidate is! Map) return null;
-    return CandidacyApplication.fromJson(
-      Map<String, dynamic>.from(candidate),
-    );
+
+    final merged = Map<String, dynamic>.from(candidate);
+    for (final key in const [
+      'rejection_reason',
+      'created_at',
+      'updated_at',
+      'applicants_count',
+      'election_outcome',
+    ]) {
+      if (data.containsKey(key)) merged[key] = data[key];
+    }
+    return CandidacyApplication.fromJson(merged);
   }
 
   /// Returns `none` when no application exists, otherwise the status string.
