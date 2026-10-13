@@ -126,6 +126,7 @@ class AdminCandidateController extends Controller
                 'slogan' => $c->slogan,
                 'platform_statement' => $c->platform_statement,
                 'status' => $c->approval_status,
+                'rejection_reason' => $c->rejection_reason,
                 'submissionDate' => $c->created_at?->format('M d, Y'),
                 // Real photo when the candidate uploaded one; null otherwise so
                 // the panel falls back to its offline default user icon.
@@ -262,7 +263,16 @@ class AdminCandidateController extends Controller
             }
         }
 
-        $candidate->update(['approval_status' => $status]);
+        // The reason only accompanies a rejection; an approval (or a flip back
+        // to pending) clears it so a stale note never survives a status change.
+        $reason = $status === 'rejected'
+            ? trim((string) ($request->validated('rejection_reason') ?? ''))
+            : '';
+
+        $candidate->update([
+            'approval_status' => $status,
+            'rejection_reason' => $reason === '' ? null : $reason,
+        ]);
 
         $candidateName = $candidate->user?->name ?? $candidate->candidate_ref;
 
@@ -276,18 +286,24 @@ class AdminCandidateController extends Controller
         );
 
         // Tell the applicant themselves. Only the two terminal states are
-        // messaged — an intermediate review status would just be noise.
+        // messaged — an intermediate review status would just be noise. The
+        // link points at the dedicated My Candidacy screen so the decision
+        // (and its reason) is one tap away.
         if ($candidate->user_id && in_array($candidate->approval_status, ['approved', 'rejected'], true)) {
             $approved = $candidate->approval_status === 'approved';
+            $body = $approved
+                ? 'Your name will appear on the ballot. Good luck!'
+                : 'Your candidacy application was not approved.';
+            if (! $approved && $candidate->rejection_reason) {
+                $body .= ' Reason: '.$candidate->rejection_reason;
+            }
 
             Notifier::notifyUser(
                 (int) $candidate->user_id,
                 $approved ? 'success' : 'warning',
                 $approved ? 'Your candidacy was approved' : 'Your candidacy was rejected',
-                $approved
-                    ? 'Your name will appear on the ballot. Good luck!'
-                    : 'Your candidacy application was not approved.',
-                '/candidacy',
+                $body,
+                '/candidacy/status',
             );
         }
 
@@ -295,6 +311,7 @@ class AdminCandidateController extends Controller
             'candidate' => [
                 'id' => $candidate->id,
                 'status' => $candidate->approval_status,
+                'rejection_reason' => $candidate->rejection_reason,
             ],
         ]);
     }

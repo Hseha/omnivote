@@ -12,6 +12,7 @@ import '../../features/voting/screens/vote_now_screen.dart';
 import '../../features/ballot/screens/my_ballot_screen.dart';
 import '../../features/results/screens/results_screen.dart';
 import '../../features/candidacy/screens/candidacy_apply_screen.dart';
+import '../../features/candidacy/screens/my_candidacy_screen.dart';
 import '../../features/notifications/screens/notifications_screen.dart';
 import '../../features/app_update/screens/app_update_screen.dart';
 import '../../features/settings/screens/api_settings_screen.dart';
@@ -109,6 +110,14 @@ class AppRouter {
       GoRoute(
         path: '/candidacy',
         builder: (context, state) => const CandidacyApplyScreen(),
+      ),
+      // Dedicated hub for applicants: status hero + review timeline, the
+      // submitted application, seat competition, rejection reason, and the
+      // finalized outcome once polls close. Deep-linked by the approval /
+      // rejection notifications and the dashboard quick action.
+      GoRoute(
+        path: '/candidacy/status',
+        builder: (context, state) => const MyCandidacyScreen(),
       ),
       // Notification center, pushed above the shell (bell + Settings entry).
       GoRoute(

@@ -69,12 +69,19 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
     _loadApplication();
   }
 
+  /// `/candidacy?edit=1` (linked from the My Candidacy hub) opens the form
+  /// straight in edit mode once an active application is confirmed below.
+  bool get _wantsEdit =>
+      (GoRouterState.of(context).uri.queryParameters['edit'] ?? '') == '1';
+
   /// Loads the authoritative application (GET /api/candidacy/me) and prefills
   /// the form when one exists so edits start from the current campaign.
   Future<void> _loadApplication() async {
     final application =
         await ref.read(candidacyProvider.notifier).myApplication();
     if (!mounted) return;
+    final active = application != null &&
+        (application.status == 'pending' || application.status == 'approved');
     setState(() {
       _application = application;
       if (application != null) {
@@ -87,6 +94,7 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
             : application.partyName!.trim();
         _sloganController.text = application.slogan ?? '';
         _platformController.text = application.platformStatement;
+        _editing = _wantsEdit && active;
       }
     });
   }
@@ -138,6 +146,10 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
           backgroundColor: wasEditing ? null : AppColors.successGreen,
         ),
       );
+      // A fresh submission lands on the dedicated My Candidacy hub, where the
+      // review timeline and what-happens-next live. Edits return to the
+      // overview so the saved campaign is visible in place.
+      if (!wasEditing) context.go('/candidacy/status');
     } else if (mounted) {
       final failure = ref.read(candidacyProvider);
       if (failure.errorCode == 'seat_taken') {

@@ -15,6 +15,10 @@ class UpdateCandidateStatusRequest extends FormRequest
     {
         return [
             'status' => ['required', 'in:pending,approved,rejected,withdrawn'],
+            // Optional committee note shown to the applicant on the My Candidacy
+            // screen. Only meaningful on rejection; cleared on approval so a
+            // stale reason never survives a status flip.
+            'rejection_reason' => ['nullable', 'string', 'max:1000'],
         ];
     }
 }

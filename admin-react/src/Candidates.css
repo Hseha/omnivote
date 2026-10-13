@@ -636,3 +636,41 @@
 .table-page-size .position-dropdown {
   padding: 5px 10px;
 }
+
+/* Rejection reason: modal input + table echo */
+.cm-reason-field {
+  margin-top: 12px;
+}
+
+.cm-reason-field label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.cm-reason-textarea {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 0.9rem;
+  color: var(--input-color);
+  background-color: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: 6px;
+  resize: vertical;
+}
+
+.cm-reason-textarea:focus {
+  outline: none;
+  border-color: var(--brand-primary);
+}
+
+.rejection-reason-text {
+  margin-top: 4px;
+  max-width: 240px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

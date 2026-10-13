@@ -411,6 +411,7 @@ class CandidacySeatCapTest extends TestCase
             $table->text('platform_points')->nullable();
             $table->string('photo_path')->nullable();
             $table->string('approval_status')->default('pending');
+            $table->string('rejection_reason', 1000)->nullable();
             $table->timestamps();
         });
 

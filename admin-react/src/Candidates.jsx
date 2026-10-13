@@ -38,6 +38,9 @@ export default function Candidates({ onLogout, activeView = 'candidates', onNavi
   const [confirmAction, setConfirmAction] = useState(null); // { id, name, status }
   const [confirmSaving, setConfirmSaving] = useState(false);
   const [confirmError, setConfirmError] = useState('');
+  // Optional committee-supplied explanation shown to the applicant on the
+  // My Candidacy screen when the application is rejected. Cleared on open.
+  const [confirmReason, setConfirmReason] = useState('');
 
   const [positions, setPositions] = useState([]);
   const [userSearch, setUserSearch] = useState('');
@@ -150,9 +153,14 @@ export default function Candidates({ onLogout, activeView = 'candidates', onNavi
     apply();
   };
 
-  const handleStatusChange = async (id, newStatus) => {
+  const handleStatusChange = async (id, newStatus, reason = '') => {
     const normalized = (newStatus || '').toLowerCase();
-    await api.patch(`/admin/candidates/${id}`, { status: normalized });
+    const body = { status: normalized };
+    // Only rejections carry a reason; the backend clears it on approval.
+    if (normalized === 'rejected' && reason.trim()) {
+      body.rejection_reason = reason.trim();
+    }
+    await api.patch(`/admin/candidates/${id}`, body);
     await fetchCandidates();
   };
 
@@ -161,7 +169,11 @@ export default function Candidates({ onLogout, activeView = 'candidates', onNavi
     setConfirmSaving(true);
     setConfirmError('');
     try {
-      await handleStatusChange(confirmAction.id, confirmAction.status);
+      await handleStatusChange(
+        confirmAction.id,
+        confirmAction.status,
+        confirmReason,
+      );
       setConfirmAction(null);
     } catch (err) {
       setConfirmError(err?.response?.data?.message || 'Could not update the candidate status. Please try again.');
@@ -395,17 +407,28 @@ export default function Candidates({ onLogout, activeView = 'candidates', onNavi
                       <span className={`status-badge ${candidate.status.toLowerCase()}`}>
                         {candidate.status}
                       </span>
+                      {candidate.status === 'rejected' && candidate.rejection_reason && (
+                        <div className="rejection-reason-text" title={candidate.rejection_reason}>
+                          {candidate.rejection_reason}
+                        </div>
+                      )}
                     </td>
                     <td className="actions-cell">
                       <button
                         className="btn-approve"
-                        onClick={() => setConfirmAction({ id: candidate.id, name: candidate.name, status: 'approved' })}
+                        onClick={() => {
+                          setConfirmReason('');
+                          setConfirmAction({ id: candidate.id, name: candidate.name, status: 'approved' });
+                        }}
                       >
                         <Check size={14} /> Approve
                       </button>
                       <button
                         className="btn-reject"
-                        onClick={() => setConfirmAction({ id: candidate.id, name: candidate.name, status: 'rejected' })}
+                        onClick={() => {
+                          setConfirmReason('');
+                          setConfirmAction({ id: candidate.id, name: candidate.name, status: 'rejected' });
+                        }}
                       >
                         <X size={14} /> Reject
                       </button>
@@ -702,6 +725,23 @@ export default function Candidates({ onLogout, activeView = 'candidates', onNavi
               <p className="cm-modal-hint">
                 The applicant will be notified immediately. You can change this status later from this table.
               </p>
+              {confirmAction.status === 'rejected' && (
+                <div className="cm-reason-field">
+                  <label htmlFor="cm-rejection-reason">
+                    Reason for rejection <span className="muted-text">(optional, shown to the applicant)</span>
+                  </label>
+                  <textarea
+                    id="cm-rejection-reason"
+                    className="cm-reason-textarea"
+                    rows="3"
+                    maxLength="1000"
+                    placeholder="e.g. Missing required eligibility documents."
+                    value={confirmReason}
+                    onChange={(e) => setConfirmReason(e.target.value)}
+                    disabled={confirmSaving}
+                  />
+                </div>
+              )}
               {confirmError && <div className="cm-modal-error">{confirmError}</div>}
             </div>
 
