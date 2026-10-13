@@ -357,7 +357,11 @@ export default function StudentRegistry({ onLogout, activeView = 'voters', onNav
                   <Info size={18} color="#16a34a" />
                   <span>
                     <strong>{summary.total_records} records</strong> • {summary.accounts_provisioned} new accounts provisioned •{' '}
-                    {summary.updated_eligibility_rows} updated • {summary.duplicates_within_file} duplicates within file •{' '}
+                    {summary.updated_eligibility_rows} eligibility rows updated • {summary.accounts_updated ?? 0} existing accounts updated
+                    {(summary.accounts_provisioned ?? 0) === 0 && (summary.accounts_updated ?? 0) > 0 && (
+                      <> (these Student IDs already existed — no new accounts)</>
+                    )}
+                    {' '}• {summary.duplicates_within_file} duplicates within file •{' '}
                     {summary.skipped_incomplete} incomplete rows (missing values → feed only, no account) •{' '}
                     {summary.skipped_unknown_department} skipped (department not in the current list → feed only, no account)
                     {(summary.courses_not_offered ?? 0) > 0 && (

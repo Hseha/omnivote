@@ -227,6 +227,7 @@ class RegistrarImportController extends Controller
         $created = 0;
         $updated = 0;
         $accountsProvisioned = 0;
+        $accountsUpdated = 0;
         $skipped = 0;
         $skippedUnknownDepartment = 0;
         $flaggedForReview = 0;
@@ -242,7 +243,7 @@ class RegistrarImportController extends Controller
         // missing `&$name` silently throws the writes away — which is exactly how
         // `activation_codes` came back empty to every registrar while the codes
         // were still being generated and hashed in the database.
-        DB::transaction(function () use ($rows, &$created, &$updated, &$accountsProvisioned, &$skipped, &$skippedUnknownDepartment, &$flaggedForReview, &$unmatchedCourses, &$rejectedRows, &$temporaryCredentials, &$issuedCodes, &$codesPreserved, &$usedEmails) {
+        DB::transaction(function () use ($rows, &$created, &$updated, &$accountsProvisioned, &$accountsUpdated, &$skipped, &$skippedUnknownDepartment, &$flaggedForReview, &$unmatchedCourses, &$rejectedRows, &$temporaryCredentials, &$issuedCodes, &$codesPreserved, &$usedEmails) {
             foreach ($rows as $row) {
                 // The login email is derived from the student's name — it is
                 // never read from the CSV — so a row without a name can never
@@ -346,7 +347,11 @@ class RegistrarImportController extends Controller
                             ? $user->role
                             : 'student',
                     ]);
-                    $updated++;
+                    // Counted separately from the eligibility-feed update above:
+                    // one re-imported row touches both the feed row and the
+                    // existing account, and conflating the two made a single
+                    // row report as "2 updated".
+                    $accountsUpdated++;
 
                     continue;
                 }
@@ -389,7 +394,7 @@ class RegistrarImportController extends Controller
             }
         });
 
-        $this->notifyImportSummary($accountsProvisioned, $created, $updated, $flaggedForReview, $skipped, $skippedUnknownDepartment, $unmatchedCourses);
+        $this->notifyImportSummary($accountsProvisioned, $created, $updated, $flaggedForReview, $skipped, $skippedUnknownDepartment, $unmatchedCourses, $accountsUpdated);
 
         return response()->json([
             'message' => $codesPreserved > 0
@@ -401,6 +406,11 @@ class RegistrarImportController extends Controller
                 'created_eligibility_rows' => $created,
                 'updated_eligibility_rows' => $updated,
                 'accounts_provisioned' => $accountsProvisioned,
+                // Existing accounts refreshed by this import (matched by
+                // student_id). Reported separately so a re-import of an
+                // already-provisioned student no longer reads as extra
+                // eligibility rows.
+                'accounts_updated' => $accountsUpdated,
                 'duplicates_within_file' => $duplicateInFile,
                 // Exact CSV lines (including the header offset) dropped as
                 // in-file duplicate IDs, so the registrar can find them.
@@ -434,7 +444,7 @@ class RegistrarImportController extends Controller
     /**
      * Notify panel admins that a registrar import just completed.
      */
-    private function notifyImportSummary(int $provisioned, int $created, int $updated, int $flagged, int $skipped, int $skippedUnknownDepartment, int $unmatchedCourses = 0): void
+    private function notifyImportSummary(int $provisioned, int $created, int $updated, int $flagged, int $skipped, int $skippedUnknownDepartment, int $unmatchedCourses = 0, int $accountsUpdated = 0): void
     {
         Notifier::toAdmins(
             'notifyOnRegistration',
@@ -442,6 +452,7 @@ class RegistrarImportController extends Controller
             'Registrar import completed',
             'Provisioned '.$provisioned.' account(s); '.$created.' eligibility row(s) created, '
                 .$updated.' updated, '.$flagged.' flagged for review'
+                .($accountsUpdated > 0 ? ', '.$accountsUpdated.' existing account(s) updated from an earlier import' : '')
                 .($skipped > 0 ? ', '.$skipped.' incomplete row(s) left unprovisioned.' : '.')
                 .($skippedUnknownDepartment > 0 ? ' '.$skippedUnknownDepartment.' row(s) skipped for unknown department.' : '')
                 .($unmatchedCourses > 0 ? ' '.$unmatchedCourses.' row(s) carry a course that the college does not offer; check the Course values.' : ''),
