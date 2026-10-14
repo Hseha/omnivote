@@ -1,0 +1,8 @@
+[Unit]
+Description=Renew OmniVote Tailscale TLS certificate
+After=tailscaled.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/omnivote-renew-cert.sh __PRIMARY_HOST__

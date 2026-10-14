@@ -359,14 +359,58 @@ The Flutter app already talks to this address over Tailscale.
 
 ## 8. Firewall
 
+`deploy/harden-server.sh` configures ufw so SSH and HTTP(S) are reachable
+**only over the tailnet interface** — the Funnel proxy reaches nginx over
+loopback, so nothing needs a public port:
+
 ```bash
-sudo ufw allow 80/tcp
-sudo ufw allow 443/tcp
-sudo ufw allow 22/tcp            # ssh — keep your hand in
+sudo ufw allow in on tailscale0 to any port 22 proto tcp
+sudo ufw allow in on tailscale0 to any port 80,443 proto tcp
 sudo ufw enable
 ```
+
+On a host that is not on Tailscale, fall back to the public rules
+(`sudo ufw allow 22/tcp`, `sudo ufw allow 80,443/tcp`).
+
 Optional: ensure nothing listens on port 8000 anymore (`sudo ss -tlnp | grep 8000`).
 `php artisan serve` should NOT be running in production — nginx + php-fpm handle all requests.
+
+---
+
+## 8a. Server hardening (`deploy/harden-server.sh`)
+
+`setup-server.sh` runs this as its final step; run it on its own to (re)apply
+hardening to an existing host:
+
+```bash
+sudo PRIMARY_HOST=debian.tail7e9e1e.ts.net bash deploy/harden-server.sh
+```
+
+It is idempotent and applies:
+
+| Area | What it does |
+|---|---|
+| SSH | key-only auth (`PasswordAuthentication no`, no keyboard-interactive), no X11 (`hardening/sshd-99-hardening.conf`) |
+| Kernel/network | loose `rp_filter`, no ICMP redirects/source-route, `kptr_restrict`/`dmesg_restrict`, `kernel.panic=10` (`hardening/sysctl-99-omnivote-hardening.conf`) |
+| Database | MariaDB binds `127.0.0.1` only, `local-infile=0` (`hardening/mariadb-99-omnivote-hardening.cnf`); drops any legacy `dev_admin@'%'` superuser |
+| Firewall | SSH/HTTP(S) only over `tailscale0` (§8) |
+| Updates | installs `unattended-upgrades`, **security origins only, never auto-reboot** (`hardening/apt-*.conf`); comments out the distro's general `label=Debian` origin |
+| Watchdog | systemd runtime hardware watchdog (`RuntimeWatchdogSec=15s`, `hardening/systemd-watchdog.conf`) |
+| TLS | monthly `tailscale cert` renewal to `/etc/ssl/private/<host>.crt|.key` + nginx reload (`hardening/omnivote-cert-renew.{service,timer}`) |
+
+Verify:
+
+```bash
+sshd -T | grep -E 'passwordauthentication|x11forwarding'
+ss -tlnp | grep 3306                 # must be 127.0.0.1 only
+ufw status numbered                  # 22/80/443 only on tailscale0
+systemctl show -p RuntimeWatchdogUSec
+systemctl list-timers omnivote-cert-renew.timer
+unattended-upgrade --dry-run -v | grep 'Allowed origins'
+```
+
+A kernel from `unattended-upgrades` only takes effect on the next reboot;
+reboot when convenient (`sudo systemctl reboot`).
 
 ---
 
@@ -611,4 +655,6 @@ sudo systemctl reload nginx
 | `php-fpm-pool.conf` | php-fpm pool tuning (dynamic workers) |
 | `omnivote-worker.service` | Laravel queue worker, 24/7 |
 | `setup-server.sh` | one-shot provisioning for Ubuntu 24.04 / Debian 12 |
+| `harden-server.sh` | idempotent server hardening (§8a); run by `setup-server.sh` |
+| `hardening/` | drop-in configs + cert-renewal units installed by `harden-server.sh` |
 ```

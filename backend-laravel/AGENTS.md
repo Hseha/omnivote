@@ -23,3 +23,12 @@ To prevent code conflicts, duplicate file rewrites, and race conditions across a
 3. **Check first, then report back before proceeding.** Before starting any task — cross-domain or not — an agent must first investigate the current state (relevant files, existing git status, whether related work is already in progress or partially built elsewhere) and report findings back before making changes. This is a report-then-proceed step, not a silent green light: if the check surfaces something ambiguous (unclear ownership, conflicting in-progress work, a missing dependency), the agent should stop and flag it rather than guessing and continuing.
 4. **Cross-domain changes must be minimal and clearly reported.** When Cline touches frontend files or OpenCode touches backend files, the change should be the smallest set of edits needed to complete the task, and must be explicitly called out in the agent's report (e.g., "Backend change required this frontend update: ...") rather than folded in silently — so cross-domain work is always visible and reviewable, not assumed.
 5. **If a concurrent refactor is detected**, halt autonomous deletions, inspect the newly modified live code, and reconcile the Git index rather than overwriting active work.
+
+## Pending Handoffs
+
+Read the relevant handoff fully before starting. Do not redo completed work or re-derive verified findings.
+
+- **Cline (backend/nginx):** `docs/HANDOFF_TO_CLINE_ADMIN_HARDENING.md` — secure the public admin console (nginx HTTP Basic gate, real client IP, env/guard hardening, admin-auth audit).
+- **OpenCode (React admin):** `docs/HANDOFF_TO_OPENCODE_AUDIT_LOG.md` — Audit Log screen, `noindex` meta, wiring `GET /api/admin/audit-logs`.
+
+**Always work on a feature branch, never on `main`.** Create the branch named in the handoff (e.g. `security/admin-hardening-backend` for Cline, `security/admin-audit-ui` for OpenCode) before making changes, and merge via PR.
