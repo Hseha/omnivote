@@ -1,0 +1,10 @@
+# OmniVote server hardening — MariaDB
+# (installed at /etc/mysql/mariadb.conf.d/99-omnivote-hardening.cnf by
+# deploy/harden-server.sh; sorts after the distro's 50-server.cnf so it wins).
+#
+# The Laravel app connects over loopback only, so there is no reason for the
+# database to listen on any other interface. Disabling local-infile removes a
+# known injection -> local-file-read escalation path.
+[mysqld]
+bind-address = 127.0.0.1
+local-infile = 0
