@@ -30,11 +30,15 @@ GET /api/admin/audit-logs?action=&user_id=&entity_type=&date_from=&date_to=&page
 200 {
   "data": [
     { "id", "user_id", "user_name", "action", "entity_type", "entity_id",
-      "details", "ip_address", "user_agent", "created_at" }
+      "details", "ip_address", "created_at" }
   ],
   "meta": { "current_page", "last_page", "per_page", "total" }
 }
 ```
+
+> **Schema note:** `audit_logs` has **no `user_agent` column** (see `create_audit_logs_table` migration). The UI renders user-agent only if the field is present, so it stays optional — Cline can add the column later without a frontend change. `user_id` is nullable (failed pre-auth logins record `null` → UI shows "System").
+>
+> **Implemented (2026-10-14, branch `security/admin-audit-ui`):** `noindex` meta, `src/AuditLog.jsx` + `src/AuditLog.css`, `formatDateTime()` in `src/lib/datetime.js`, `audit` added to `ROLE_VIEWS.admin`, and the route/nav wiring. The screen shows a clear message on `404` (endpoint not deployed yet) and `403` (no `audit.view`).
 
 ## 3. Tasks
 
