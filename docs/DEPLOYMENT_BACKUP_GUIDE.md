@@ -58,7 +58,7 @@ The admin SPA (`npm run build` in `admin-react/`) is built **by the deploy
 script** and Vite writes it into `backend-laravel/public/admin/` so nginx
 serves `/admin/` on the same origin as `/api/` (keeps Sanctum cookie auth
 same-origin). See `deploy/README.md` §4 for the nginx vhosts and the
-tailnet-only admin gate.
+HTTP Basic pre-auth gate on the admin surface.
 
 Known-good production `.env` values (from `docs/NGINX_TAILSCALE_TEAM_ACCESS.md`):
 

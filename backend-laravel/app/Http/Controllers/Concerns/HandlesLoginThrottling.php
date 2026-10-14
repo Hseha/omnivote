@@ -24,6 +24,15 @@ use Illuminate\Support\Facades\RateLimiter;
  *
  * Both keys decay independently (per-account faster than per-IP) and are
  * cleared together on a successful sign-in.
+ *
+ * LOOPBACK CAVEAT (public Tailscale Funnel): the Funnel ingress is L4 and does
+ * not forward the real client address, so every public request arrives from
+ * 127.0.0.1 — the per-IP key would be a SINGLE global bucket, and 15 sprayed
+ * failures would lock out every account (a trivial denial of service). When the
+ * request IP is loopback/unattributable the per-IP limiter is therefore skipped
+ * entirely; per-account throttling still applies, and the admin surface now also
+ * sits behind nginx HTTP Basic. On an on-prem deployment where the proxy does
+ * forward a real client IP, the per-IP limiter works as designed.
  */
 trait HandlesLoginThrottling
 {
@@ -74,37 +83,62 @@ trait HandlesLoginThrottling
     }
 
     /**
+     * Whether the request IP can identify a caller for per-IP throttling.
+     *
+     * False for loopback/unattributable addresses (see the class docblock): a
+     * loopback-keyed bucket is shared by every public Funnel visitor, so acting
+     * on it would let one sprayer lock everyone out.
+     */
+    private function ipIsAttributable(Request $request): bool
+    {
+        $ip = (string) $request->ip();
+
+        return $ip !== ''
+            && $ip !== '::1'
+            && ! str_starts_with($ip, '127.');
+    }
+
+    /**
      * Returns a 429 response when either limiter is exhausted, otherwise
      * null so the caller can proceed with credential verification.
      */
     protected function loginThrottled(Request $request): ?JsonResponse
     {
         $account = $this->accountKey($request);
-        $ip = $this->ipKey($request);
 
         if (RateLimiter::tooManyAttempts($account, $this->loginAccountMaxAttempts())) {
             return $this->tooManyResponse(RateLimiter::availableIn($account));
         }
 
-        if (RateLimiter::tooManyAttempts($ip, $this->loginIpMaxAttempts())) {
-            return $this->tooManyResponse(RateLimiter::availableIn($ip));
+        if ($this->ipIsAttributable($request)) {
+            $ip = $this->ipKey($request);
+
+            if (RateLimiter::tooManyAttempts($ip, $this->loginIpMaxAttempts())) {
+                return $this->tooManyResponse(RateLimiter::availableIn($ip));
+            }
         }
 
         return null;
     }
 
-    /** Count a failed attempt against both the account and IP keys. */
+    /** Count a failed attempt against the account (and the IP, when attributable). */
     protected function recordLoginFailure(Request $request): void
     {
         RateLimiter::hit($this->accountKey($request), $this->loginAccountDecaySeconds());
-        RateLimiter::hit($this->ipKey($request), $this->loginIpDecaySeconds());
+
+        if ($this->ipIsAttributable($request)) {
+            RateLimiter::hit($this->ipKey($request), $this->loginIpDecaySeconds());
+        }
     }
 
     /** Reset both keys after a successful sign-in. */
     protected function clearLoginThrottle(Request $request): void
     {
         RateLimiter::clear($this->accountKey($request));
-        RateLimiter::clear($this->ipKey($request));
+
+        if ($this->ipIsAttributable($request)) {
+            RateLimiter::clear($this->ipKey($request));
+        }
     }
 
     private function tooManyResponse(int $retryAfter): JsonResponse

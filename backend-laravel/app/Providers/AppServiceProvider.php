@@ -38,13 +38,13 @@ class AppServiceProvider extends ServiceProvider
             ProductionConfigGuard::assertSafe();
         }
 
-        RateLimiter::for('login', function (Request $request) {
-            return Limit::perMinutes(15, 5)->by($request->ip());
-        });
-
-        RateLimiter::for('admin-login', function (Request $request) {
-            return Limit::perMinutes(15, 5)->by($request->ip());
-        });
+        // NOTE: sign-in throttling is NOT wired through named RateLimiter
+        // definitions. `App\Http\Controllers\Concerns\HandlesLoginThrottling`
+        // owns it with two raw keys (per-account + per-IP) so it can apply the
+        // Settings → Security cap and skip the per-IP bucket behind the public
+        // Funnel (where every request is loopback). The former `login` /
+        // `admin-login` definitions here were dead code — no route used
+        // `throttle:login` / `throttle:admin-login` — and have been removed.
 
         // Unauthenticated reads (voting instructions, announcements, branding,
         // election status, candidates, results) previously had no limit at all,

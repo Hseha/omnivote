@@ -25,13 +25,17 @@ class AuditLog
         string $details,
         ?string $entityType = null,
         ?int $entityId = null,
+        ?int $actorId = null,
     ): void {
         if (! Schema::hasTable('audit_logs')) {
             return;
         }
 
-        DB::table('audit_logs')->insert([
-            'user_id' => $request->user()?->id,
+        $row = [
+            // Explicit actor wins over the authenticated user: sign-in events are
+            // recorded before (or without) a session exists, and a failed login
+            // still needs to name the account that was targeted.
+            'user_id' => $actorId ?? $request->user()?->id,
             'action' => mb_substr($action, 0, 100),
             'entity_type' => $entityType === null ? null : mb_substr($entityType, 0, 50),
             'entity_id' => $entityId,
@@ -39,6 +43,15 @@ class AuditLog
             'ip_address' => $request->ip(),
             'created_at' => now(),
             'updated_at' => now(),
-        ]);
+        ];
+
+        // Older installs predate the column (see the add_user_agent migration),
+        // so only write it when it exists.
+        if (Schema::hasColumn('audit_logs', 'user_agent')) {
+            $ua = trim((string) $request->userAgent());
+            $row['user_agent'] = $ua === '' ? null : mb_substr($ua, 0, 512);
+        }
+
+        DB::table('audit_logs')->insert($row);
     }
 }
