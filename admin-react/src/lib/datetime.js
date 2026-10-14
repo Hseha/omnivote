@@ -26,3 +26,23 @@ export function formatClock(date = new Date()) {
     (tzLabel || 'LOCAL')
   );
 }
+
+/**
+ * Formats a timestamp (Laravel ISO-8601 string, epoch, or Date) as the
+ * "YYYY-MM-DD HH:MM:SS" string used across admin tables (audit log, etc.).
+ * Rendered in the viewer's local timezone. Returns "—" for missing values and
+ * the raw input unchanged when it cannot be parsed.
+ *
+ * @param {string|number|Date} [value]
+ * @returns {string}
+ */
+export function formatDateTime(value) {
+  if (value === null || value === undefined || value === '') return '—';
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  const pad = (n) => String(n).padStart(2, '0');
+  return (
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ` +
+    `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+  );
+}

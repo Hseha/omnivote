@@ -8,6 +8,7 @@ import {
   Settings as SettingsIcon,
   ShieldCheck,
   Building2,
+  ScrollText,
   LogOut,
 } from 'lucide-react';
 import { useAuth } from '../lib/AuthContext';
@@ -29,7 +30,8 @@ import './Sidebar.css';
  *   6. Election Setup
  *   7. Results
  *   8. Announcements      ← staff announcements (admin + teacher compose UI)
- *   9. Settings
+ *   9. Audit Log          ← read-only admin action / sign-in trail (admin only)
+ *  10. Settings
  *
  * Base shell classes (`.sidebar`, `.nav-item`, …) intentionally come from
  * the host page's stylesheet — this file only adds the submenu/toggle
@@ -162,7 +164,17 @@ export default function Sidebar({
             <Megaphone size={18} /> Announcements
           </button>
         )}
-        {/* 8. Settings */}
+        {/* 9. Audit Log (admin only) */}
+        {can('audit') && (
+          <button
+            type="button"
+            className={`nav-item ${activeView === 'audit' ? 'active' : ''}`}
+            onClick={go('audit')}
+          >
+            <ScrollText size={18} /> Audit Log
+          </button>
+        )}
+        {/* 10. Settings */}
         {can('settings') && (
           <button
             type="button"
