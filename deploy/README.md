@@ -386,13 +386,28 @@ sudo certbot --nginx -d api.yourdomain.com
 ```
 (The nginx config already opens `/.well-known/acme-challenge/` on port 80.)
 
-**B. Tailscale hostname only (no public domain) → self-signed cert**
+**B. Tailscale hostname only (no public domain) → Tailscale-issued cert (recommended)**
+`tailscale cert` issues a real Let's Encrypt cert for the MagicDNS name and
+writes it under `/var/lib/tailscale/certs/`. The nginx template expects it at
+`/etc/ssl/private/<host>.crt`/`.key` (matching the running deployment), so:
 ```bash
-sudo mkdir -p /etc/ssl/omnivote
+HOST=debian.tail7e9e1e.ts.net
+sudo tailscale cert "$HOST"
+sudo install -m 644 "/var/lib/tailscale/certs/$HOST.crt" "/etc/ssl/private/$HOST.crt"
+sudo install -m 600 "/var/lib/tailscale/certs/$HOST.key" "/etc/ssl/private/$HOST.key"
+sudo systemctl reload nginx
+```
+The cert is valid ~90 days; re-run the two `install` lines and reload after each
+renewal (schedule a cron/timer — nginx will not reload itself).
+
+*Fallback if you cannot use `tailscale cert`: a self-signed cert at the same
+path* — clients must then trust it:
+```bash
+HOST=debian.tail7e9e1e.ts.net
 sudo openssl req -x509 -nodes -newkey rsa:2048 -days 3650 \
-  -keyout /etc/ssl/omnivote/privkey.pem \
-  -out    /etc/ssl/omnivote/fullchain.pem \
-  -subj   "/CN=debian.tail7e9e1e.ts.net"
+  -keyout "/etc/ssl/private/$HOST.key" \
+  -out    "/etc/ssl/private/$HOST.crt" \
+  -subj   "/CN=$HOST"
 sudo systemctl reload nginx
 ```
 The Flutter app already talks to this address over Tailscale.

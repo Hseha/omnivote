@@ -22,7 +22,10 @@ Wants=mysql.service mariadb.service
 [Service]
 User=www-data
 Group=www-data
-Restart=on-failure
+# Restart=always (NOT on-failure): --max-time below intentionally ends the
+# worker cleanly every hour to pick up new code / release memory, and a clean
+# exit has status 0 — with on-failure systemd would leave the worker dead.
+Restart=always
 RestartSec=5s
 TimeoutStopSec=30s
 
