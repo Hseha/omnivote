@@ -92,6 +92,33 @@ class RegistrarImportController extends Controller
         // unknown values are flagged and left unprovisioned. Legacy codes such
         // as "CCS" are accepted and normalized to the canonical college name.
         $knownDepartments = $this->knownDepartments();
+
+        // Display-only name checker. Accounts are identified by student_id, so
+        // a repeated name never merges or drops anyone — this only surfaces
+        // likely duplicates (same full name on a different student_id) and
+        // confirms that students who share a first name but have a different
+        // surname stay distinct. Matching is case- and whitespace-insensitive
+        // so "Ana Flores" and "ANA  FLORES" are treated as the same spelling.
+        $normalizedNameToStudentId = [];
+        $normalizedFirstNameToLastName = [];
+        $nameDuplicates = 0;
+        $nameDuplicateLines = [];
+        $sameFirstNameDistinct = 0;
+
+        // Seed the index from accounts that already exist so a re-import can
+        // flag a name already attached to a different student_id.
+        foreach (User::query()->select('student_id', 'name')->whereNotNull('name')->cursor() as $existingUser) {
+            $existingName = self::normalizeName((string) $existingUser->name);
+            $existingId = (string) ($existingUser->student_id ?? '');
+            if ($existingName['full'] === '' || $existingId === '') {
+                continue;
+            }
+            $normalizedNameToStudentId[$existingName['full']] ??= $existingId;
+            if ($existingName['first'] !== '' && $existingName['last'] !== '') {
+                $normalizedFirstNameToLastName[$existingName['first']] ??= $existingName['last'];
+            }
+        }
+
         $line = 2;
         while (($data = fgetcsv($handle)) !== false) {
             $studentId = trim((string) ($data[$headerMap['student id']] ?? ''));
@@ -141,6 +168,33 @@ class RegistrarImportController extends Controller
             }
 
             $fullName = trim((string) ($data[$headerMap['full name']] ?? ''));
+
+            // Name checker (warnings only — never blocks provisioning or
+            // touches needs_review). Compares on the normalized full name so
+            // letter case and extra spaces never make the same person look
+            // distinct, while the surname keeps students who merely share a
+            // first name apart.
+            $normalizedName = self::normalizeName($fullName);
+            $nameDuplicate = false;
+            if ($normalizedName['full'] !== '') {
+                $knownIdForName = $normalizedNameToStudentId[$normalizedName['full']] ?? null;
+                if ($knownIdForName !== null && $knownIdForName !== $studentId) {
+                    $nameDuplicate = true;
+                    $nameDuplicates++;
+                    $nameDuplicateLines[] = $line;
+                }
+                $normalizedNameToStudentId[$normalizedName['full']] ??= $studentId;
+            }
+            $rowSameFirstNameDistinct = false;
+            if ($normalizedName['first'] !== '' && $normalizedName['last'] !== '') {
+                $knownLastName = $normalizedFirstNameToLastName[$normalizedName['first']] ?? null;
+                if ($knownLastName !== null && $knownLastName !== $normalizedName['last']) {
+                    $rowSameFirstNameDistinct = true;
+                    $sameFirstNameDistinct++;
+                }
+                $normalizedFirstNameToLastName[$normalizedName['first']] ??= $normalizedName['last'];
+            }
+
             $yearLevel = trim((string) ($data[$headerMap['year level']] ?? ''));
             $rawDepartment = trim((string) ($data[$headerMap['department']] ?? ''));
             // Canonical college name: "CCS" and "College of Computer Studies"
@@ -215,6 +269,9 @@ class RegistrarImportController extends Controller
                     : null,
                 '_course_unmatched' => $courseWarning !== null,
                 '_unknown_department' => $department !== '' && ! in_array($department, $knownDepartments, true),
+                // Display-only name-check flags (never gate provisioning).
+                '_name_duplicate' => $nameDuplicate,
+                '_same_first_name_distinct' => $rowSameFirstNameDistinct,
             ];
             $line++;
         }
@@ -233,6 +290,10 @@ class RegistrarImportController extends Controller
         $flaggedForReview = 0;
         $unmatchedCourses = 0;
         $temporaryCredentials = [];
+        // Existing student accounts touched by this import, listed email-only.
+        // Non-mutating: no password is generated or reset here (see the branch
+        // below). A deliberate reset stays an explicit action.
+        $existingCredentials = [];
         $issuedCodes = [];
         // Rows this import updated but deliberately did NOT re-code (see step 1).
         $codesPreserved = 0;
@@ -243,7 +304,7 @@ class RegistrarImportController extends Controller
         // missing `&$name` silently throws the writes away — which is exactly how
         // `activation_codes` came back empty to every registrar while the codes
         // were still being generated and hashed in the database.
-        DB::transaction(function () use ($rows, &$created, &$updated, &$accountsProvisioned, &$accountsUpdated, &$skipped, &$skippedUnknownDepartment, &$flaggedForReview, &$unmatchedCourses, &$rejectedRows, &$temporaryCredentials, &$issuedCodes, &$codesPreserved, &$usedEmails) {
+        DB::transaction(function () use ($rows, &$created, &$updated, &$accountsProvisioned, &$accountsUpdated, &$skipped, &$skippedUnknownDepartment, &$flaggedForReview, &$unmatchedCourses, &$rejectedRows, &$temporaryCredentials, &$existingCredentials, &$issuedCodes, &$codesPreserved, &$usedEmails) {
             foreach ($rows as $row) {
                 // The login email is derived from the student's name — it is
                 // never read from the CSV — so a row without a name can never
@@ -353,6 +414,22 @@ class RegistrarImportController extends Controller
                     // row report as "2 updated".
                     $accountsUpdated++;
 
+                    // Non-mutating credential handoff: list the existing login
+                    // so the registrar gets one sheet for everyone. The account's
+                    // password, sessions, and must_change_password flag are never
+                    // touched here — silently rotating a live student's password
+                    // on every re-import would lock out people mid-term. A reset
+                    // stays a deliberate action (User Management reset, or
+                    // `php artisan security:rotate-student-credentials`).
+                    if (($user->role ?? 'student') === 'student') {
+                        $existingCredentials[] = [
+                            'student_id' => $row['student_id'],
+                            'full_name' => $user->name,
+                            'email' => $user->email,
+                            'status' => 'active',
+                        ];
+                    }
+
                     continue;
                 }
 
@@ -432,8 +509,19 @@ class RegistrarImportController extends Controller
                 // never invalidate a sheet that is already in a student's hands.
                 'activation_codes_issued' => count($issuedCodes),
                 'activation_codes_preserved' => $codesPreserved,
+                // Display-only name checks: rows whose normalized full name
+                // matches a different student (a likely duplicate), and rows
+                // that share a first name with a different surname (confirmed
+                // distinct students — never merged or dropped).
+                'name_duplicates' => $nameDuplicates,
+                'name_duplicate_lines' => array_values($nameDuplicateLines),
+                'same_first_name_distinct' => $sameFirstNameDistinct,
             ],
             'temporary_credentials' => $temporaryCredentials,
+            // Existing student accounts touched by this import. Email-only:
+            // no password is returned or reset, so a routine re-import can
+            // never lock out a student who is mid-term.
+            'existing_credentials' => $existingCredentials,
             // Registrar-issued activation / account-recovery codes. Plaintext,
             // shown once, never stored (assessment M-3 / M-5) — and now only the
             // newly added rows appear here.
@@ -545,6 +633,35 @@ class RegistrarImportController extends Controller
         $usedEmails[] = $candidate;
 
         return $candidate;
+    }
+
+    /**
+     * Normalize a registrar name for case- and whitespace-insensitive
+     * comparison. Letter case ("different letter font size") and doubled
+     * spaces must never make two spellings of the same person look distinct.
+     *
+     * Returns the normalized full name plus its first and last tokens. The
+     * last token is treated as the surname, which is what keeps two students
+     * who share a first name but differ in surname from being conflated.
+     *
+     * @return array{full: string, first: string, last: string}
+     */
+    private static function normalizeName(string $name): array
+    {
+        $collapsed = trim((string) preg_replace('/\s+/u', ' ', $name));
+        $lower = function_exists('mb_strtolower') ? mb_strtolower($collapsed, 'UTF-8') : strtolower($collapsed);
+
+        if ($lower === '') {
+            return ['full' => '', 'first' => '', 'last' => ''];
+        }
+
+        $parts = explode(' ', $lower);
+
+        return [
+            'full' => $lower,
+            'first' => $parts[0],
+            'last' => count($parts) > 1 ? $parts[count($parts) - 1] : '',
+        ];
     }
 
     /**

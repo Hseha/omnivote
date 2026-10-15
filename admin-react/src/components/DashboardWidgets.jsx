@@ -1,9 +1,7 @@
 import {
   Users,
   Activity,
-  AlertTriangle,
   BarChart2,
-  CheckCircle,
   Clock,
   Shield,
   TrendingUp,
@@ -15,23 +13,163 @@ import { fallbackAvatarOnError, initialsAvatarDataUri } from '../lib/avatar';
 import './DashboardWidgets.css';
 
 /*
- * Event-type presentation metadata: label + accent colour + icon.
- * Used when the backend starts populating `recent_actions`; until then the
- * list renders an honest empty state (no demo data is ever shown).
+ * Security & operational log severity tiers.
+ *
+ * `critical` — brute-force backoffs, denied sign-ins, disabled accounts.
+ * `warning`  — role/settings overrides an operator should review.
+ * `success`  — routine operational flags (sign-ins, backups, rotations).
+ *
+ * The backend sends `severity` directly on each analytics row; this map is
+ * the presentation fallback for rows that only carry a raw action/type.
  */
-const ACTION_META = {
-  info: { label: 'Info', color: '#60a5fa', Icon: Users },
-  success: { label: 'Success', color: '#34d399', Icon: CheckCircle },
-  warning: { label: 'Warning', color: '#f59e0b', Icon: AlertTriangle },
-  danger: { label: 'Alert', color: '#f87171', Icon: AlertTriangle },
-  candidate_create: { label: 'Candidate Added', color: '#34d399', Icon: Users },
-  candidate_status_update: { label: 'Candidate Updated', color: '#60a5fa', Icon: Users },
-  user_login: { label: 'Admin Login', color: '#c084fc', Icon: Activity },
-  backup_created: { label: 'Backup Created', color: '#f59e0b', Icon: Clock },
-  election_status_update: { label: 'Election Updated', color: '#f87171', Icon: AlertTriangle },
+const SEVERITY_META = {
+  success: { color: '#10b981', className: 'sev-success', label: 'Operational' },
+  warning: { color: '#f59e0b', className: 'sev-warning', label: 'Warning' },
+  critical: { color: '#f87171', className: 'sev-critical', label: 'Critical' },
 };
 
-const DEFAULT_ACTION = { label: 'Action', color: '#94a3b8', Icon: CheckCircle };
+const DEFAULT_SEVERITY = SEVERITY_META.success;
+
+/** Raw audit action → severity tier for the live stream. */
+const SECURITY_SEVERITY = {
+  account_locked: 'critical',
+  login_backoff_triggered: 'critical',
+  login_denied: 'critical',
+  user_disabled: 'critical',
+  '2fa_failed': 'critical',
+  login_failed: 'warning',
+  user_role_changed: 'warning',
+  user_email_changed: 'warning',
+  settings_updated: 'warning',
+  password_reset: 'warning',
+  backup_restored: 'warning',
+  backup_deleted: 'warning',
+  '2fa_disabled': 'warning',
+  user_archived: 'warning',
+};
+
+function severityFor(log) {
+  if (log && SEVERITY_META[log.severity]) return SEVERITY_META[log.severity];
+  if (log) {
+    // Personal-notification fallback rows carry a type of info/success/
+    // warning/danger; analytics rows resolve via their raw audit action.
+    if (log.type === 'danger') return SEVERITY_META.critical;
+    if (SEVERITY_META[log.type]) return SEVERITY_META[log.type];
+    const byAction = SECURITY_SEVERITY[log.action] || SECURITY_SEVERITY[log.type];
+    if (byAction) return SEVERITY_META[byAction];
+  }
+  return DEFAULT_SEVERITY;
+}
+
+/** `login_backoff_triggered` → `Login Backoff Triggered`. */
+function humanizeSecurityAction(action) {
+  if (!action) return 'System Event';
+  return String(action)
+    .split('_')
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
+/*
+ * Hourly Voting Velocity — inline SVG timeline, no chart library.
+ *
+ * Maps the anonymous `vote_ledger` time-series ({hour, count}) into a bar
+ * strip plus a smoothed polyline. Y coordinates scale off the series maximum
+ * so the graph stays legible whether the peak is 3 votes or 3,000. Counts are
+ * position-level ledger rows — never joined against user accounts (H-1).
+ */
+const VELOCITY_CHART = { width: 640, height: 170, padX: 8, padTop: 14, padBottom: 24 };
+
+function VelocityTimeline({ data, loading, apiOk }) {
+  const points = Array.isArray(data) ? data : [];
+  const maxCount = Math.max(1, ...points.map((p) => toNumber(p.count)));
+  const { width, height, padX, padTop, padBottom } = VELOCITY_CHART;
+  const innerW = width - padX * 2;
+  const innerH = height - padTop - padBottom;
+  const slot = points.length > 0 ? innerW / points.length : innerW;
+  const barW = Math.max(2, slot * 0.55);
+
+  const yFor = (count) => padTop + innerH - (toNumber(count) / maxCount) * innerH;
+  const xFor = (index) => padX + slot * index + slot / 2;
+
+  const barNodes = points.map((point, index) => {
+    const y = yFor(point.count);
+    const x = xFor(index) - barW / 2;
+    const isPeak = toNumber(point.count) === maxCount && maxCount > 0;
+    return (
+      <rect
+        key={point.hour || index}
+        className={`velocity-bar${isPeak ? ' velocity-bar-peak' : ''}`}
+        x={x.toFixed(2)}
+        y={y.toFixed(2)}
+        width={barW.toFixed(2)}
+        height={Math.max(1, padTop + innerH - y).toFixed(2)}
+        rx={Math.min(3, barW / 2)}
+      />
+    );
+  });
+
+  const linePoints = points
+    .map((point, index) => `${xFor(index).toFixed(2)},${yFor(point.count).toFixed(2)}`)
+    .join(' ');
+
+  // Axis ticks: first, middle and last hour labels only — keeps the strip
+  // clean at 24 buckets without crowding.
+  const ticks = points.length > 0
+    ? [0, Math.floor((points.length - 1) / 2), points.length - 1]
+    : [];
+
+  return (
+    <div className="velocity-chart-box">
+      {points.length === 0 ? (
+        <p className="no-data-text">
+          {loading
+            ? 'Loading voting velocity…'
+            : apiOk
+              ? 'No votes recorded in the last 24 hours.'
+              : 'Analytics feed unreachable — velocity data may be stale.'}
+        </p>
+      ) : (
+        <>
+          <svg
+            className="velocity-chart-svg"
+            viewBox={`0 0 ${width} ${height}`}
+            preserveAspectRatio="none"
+            role="img"
+            aria-label={`Hourly voting velocity, last ${points.length} hours, peak ${maxCount} votes`}
+          >
+            {/* Baseline + soft gridlines at 25/50/75/100 % of the peak */}
+            {[0.25, 0.5, 0.75, 1].map((fraction) => (
+              <line
+                key={fraction}
+                className="velocity-gridline"
+                x1={padX}
+                x2={width - padX}
+                y1={(padTop + innerH - innerH * fraction).toFixed(2)}
+                y2={(padTop + innerH - innerH * fraction).toFixed(2)}
+              />
+            ))}
+            {barNodes}
+            <polyline className="velocity-line" points={linePoints} fill="none" />
+            <line
+              className="velocity-baseline"
+              x1={padX}
+              x2={width - padX}
+              y1={padTop + innerH}
+              y2={padTop + innerH}
+            />
+          </svg>
+          <div className="chart-x-axis" aria-hidden="true">
+            {ticks.map((index) => (
+              <span key={index}>{points[index]?.hour}</span>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 /*
  * Election-phase presentation. Keys are normalised so both machine values
@@ -107,6 +245,8 @@ export default function DashboardWidgets({
   electionPhase,
   announcements = [],
   recentActions = [],
+  velocityData = [],
+  securityLogs = [],
   loading = false,
   apiOk = true,
   systemHealth = null,
@@ -117,6 +257,13 @@ export default function DashboardWidgets({
   // Real data only — the backend sends `recent_actions: []` until audit
   // logging exists, in which case the empty state is shown instead.
   const actions = Array.isArray(recentActions) ? recentActions.slice(0, 6) : [];
+  // Live security / operational stream from the analytics endpoint. When the
+  // feed is empty (older backend, offline) the widget falls back to the
+  // signed-in admin's own recent actions so the card never lies about being
+  // a global audit trail.
+  const securityFeed = Array.isArray(securityLogs) && securityLogs.length > 0
+    ? securityLogs.slice(0, 6)
+    : actions;
   // Only surface shortcuts the signed-in role is actually allowed to open.
   const quickActions = permittedViews
     ? QUICK_ACTIONS.filter((action) => permittedViews.includes(action.target))
@@ -277,6 +424,18 @@ export default function DashboardWidgets({
         </section>
       </section>
 
+      {/* ===== Hourly voting velocity — anonymous ledger aggregate ===== */}
+      <section className="chart-card card" aria-label="Voting velocity">
+        <div className="widget-header">
+          <div>
+            <h3>Voting Velocity</h3>
+            <p className="muted-text">Ballot submissions per hour · last 24 h</p>
+          </div>
+          <span className="widget-header-icon"><BarChart2 size={16} /></span>
+        </div>
+        <VelocityTimeline data={velocityData} loading={loading} apiOk={apiOk} />
+      </section>
+
       {/* ===== Secondary: election phase + system status | recent activity ===== */}
       <section className="secondary-grid">
         <div className="status-pair">
@@ -368,35 +527,53 @@ export default function DashboardWidgets({
         <section className="audit-widget card">
           <div className="widget-header">
             <div>
-              <h3>Recent Activity</h3>
-              <p className="muted-text">Your recent activity</p>
+              <h3>Security &amp; System Log</h3>
+              <p className="muted-text">
+                {securityLogs.length > 0
+                  ? 'Live operational &amp; security events'
+                  : 'Your recent activity'}
+              </p>
             </div>
+            <span className="widget-header-icon"><Shield size={16} /></span>
           </div>
           <div className="audit-list">
-            {actions.length === 0 ? (
+            {securityFeed.length === 0 ? (
               <p className="no-data-text">
-                {loading ? 'Fetching activity…' : 'No activity logged yet. Admin actions will appear here.'}
+                {loading
+                  ? 'Fetching system log…'
+                  : apiOk
+                    ? 'No system events logged yet.'
+                    : 'System log unreachable — events may be missing.'}
               </p>
             ) : (
-              actions.map((item, index) => {
-                const { label, color, Icon } = ACTION_META[item.type] || DEFAULT_ACTION;
-                const eventLabel = item.title || label;
-                const eventDetail = item.body || item.target;
+              securityFeed.map((item, index) => {
+                // Analytics rows carry `{action,label,severity,detail,at}`;
+                // the personal recent-actions fallback carries
+                // `{type,title,body,created_at}` — both normalize here.
+                const severity = severityFor(item);
+                const eventLabel = item.label || item.title || humanizeSecurityAction(item.action || item.type);
+                const eventDetail = item.detail || item.body || item.target;
+                const occurredAt = item.at || item.created_at;
                 return (
-                  <div key={item.id ?? index} className="audit-row">
+                  <div
+                    key={item.id ?? index}
+                    className={`audit-row security-row ${severity.className}`}
+                  >
                     <span
-                      className="audit-icon"
-                      style={{ background: color + '20', color }}
+                      className="security-dot"
+                      style={{ background: severity.color }}
                       aria-hidden="true"
-                    >
-                      <Icon size={14} />
-                    </span>
+                    />
                     <div className="audit-text">
                       <div className="audit-desc">
                         <span className="audit-event">{eventLabel}</span>
                         {eventDetail && <span className="audit-target">: {eventDetail}</span>}
                       </div>
-                      <div className="audit-time">{getTimeAgo(item.created_at)}</div>
+                      <div className="audit-time">
+                        <span className="security-severity-tag">{severity.label}</span>
+                        {' · '}
+                        {getTimeAgo(occurredAt)}
+                      </div>
                     </div>
                   </div>
                 );

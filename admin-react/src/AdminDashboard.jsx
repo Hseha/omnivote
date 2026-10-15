@@ -15,6 +15,7 @@ import {
   CheckCircle,
   Clock,
   Award,
+  AlertTriangle,
 } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import MobileMenuButton from './components/MobileMenuButton';
@@ -25,6 +26,9 @@ import MobileMenuButton from './components/MobileMenuButton';
  * Backend contract (`GET /admin/dashboard-overview`): `stats`
  * (total_voters / votes_cast / turnout_rate / approved_candidates),
  * `election_phase`, `announcements`, `recent_actions`, `user`.
+ *
+ * The monitoring panels read `GET /admin/dashboard/analytics`
+ * (`velocity` + `security_logs`), fetched in the same cycle.
  *
  * Everything rendered comes from that response — there are deliberately no
  * fabricated metrics (accounts totals, flagged votes, uptime percentages,
@@ -40,6 +44,11 @@ export default function AdminDashboard({ onLogout, activeView = 'dashboard', onN
   });
   const [announcements, setAnnouncements] = useState([]);
   const [recentActions, setRecentActions] = useState([]);
+  // Hourly vote-ledger velocity (last 24 h) for the SVG timeline panel —
+  // anonymous aggregate only; never joined against user accounts (H-1).
+  const [velocityData, setVelocityData] = useState([]);
+  // Latest 6 operational / security events for the audit stream panel.
+  const [securityLogs, setSecurityLogs] = useState([]);
   // Empty (not "Registration") until a real phase arrives, so an unconfigured
   // election shows "Not Configured" instead of a misleading stale phase.
   const [electionPhase, setElectionPhase] = useState('');
@@ -82,17 +91,46 @@ export default function AdminDashboard({ onLogout, activeView = 'dashboard', onN
     const fetchDashboardData = async () => {
       try {
         setLoading(true);
-        const response = await api.get('/admin/dashboard-overview');
-        const data = response.data;
-        if (data.stats) setStatsData(data.stats);
-        if (data.announcements) setAnnouncements(data.announcements);
-        if (data.recent_actions) setRecentActions(data.recent_actions);
-        if (data.election_phase) setElectionPhase(data.election_phase);
-        setSystemHealth(data.system_health || null);
-        setApiOk(true);
-      } catch (error) {
-        console.warn('Backend API connection pending or unavailable:', error.message);
-        setApiOk(false);
+
+        // Both feeds load together, but a failure in one must not blank the
+        // other: each request settles independently and the panel it drives
+        // falls back to its empty/offline state on its own.
+        const [overviewResult, analyticsResult] = await Promise.allSettled([
+          api.get('/admin/dashboard-overview'),
+          api.get('/admin/dashboard/analytics'),
+        ]);
+
+        if (overviewResult.status === 'fulfilled') {
+          const data = overviewResult.value.data;
+          if (data.stats) setStatsData(data.stats);
+          if (data.announcements) setAnnouncements(data.announcements);
+          if (data.recent_actions) setRecentActions(data.recent_actions);
+          if (data.election_phase) setElectionPhase(data.election_phase);
+          setSystemHealth(data.system_health || null);
+          setApiOk(true);
+        } else {
+          console.warn(
+            'Backend API connection pending or unavailable:',
+            overviewResult.reason?.message,
+          );
+          setApiOk(false);
+        }
+
+        if (analyticsResult.status === 'fulfilled') {
+          const analytics = analyticsResult.value.data;
+          setVelocityData(Array.isArray(analytics.velocity) ? analytics.velocity : []);
+          setSecurityLogs(Array.isArray(analytics.security_logs) ? analytics.security_logs : []);
+        } else {
+          // Offline / older backend without the analytics route: keep the
+          // panels honest with empty arrays (the widgets render their
+          // "unreachable" / empty copy) rather than inventing data.
+          console.warn(
+            'Analytics feed unavailable:',
+            analyticsResult.reason?.message,
+          );
+          setVelocityData([]);
+          setSecurityLogs([]);
+        }
       } finally {
         setLoading(false);
       }
@@ -129,25 +167,27 @@ export default function AdminDashboard({ onLogout, activeView = 'dashboard', onN
     logout();
   };
 
+  const hasPhase = Boolean(dashboardPhase);
+
   const stats = [
     {
       title: 'TOTAL REGISTERED VOTERS',
-      value: (statsData.total_voters || 0).toLocaleString(),
+      value: hasPhase ? (statsData.total_voters || 0).toLocaleString() : '—',
       icon: <Database className="stat-icon blue" />,
     },
     {
       title: 'VOTES CAST',
-      value: (statsData.votes_cast || 0).toLocaleString(),
+      value: hasPhase ? (statsData.votes_cast || 0).toLocaleString() : '—',
       icon: <CheckCircle className="stat-icon green" />,
     },
     {
       title: 'TURNOUT RATE',
-      value: `${statsData.turnout_rate || 0}%`,
+      value: hasPhase ? `${statsData.turnout_rate || 0}%` : '—',
       icon: <Clock className="stat-icon orange" />,
     },
     {
       title: 'APPROVED CANDIDATES',
-      value: (statsData.approved_candidates || 0).toLocaleString(),
+      value: hasPhase ? (statsData.approved_candidates || 0).toLocaleString() : '—',
       icon: <Award className="stat-icon purple" />,
     },
   ];
@@ -188,6 +228,16 @@ export default function AdminDashboard({ onLogout, activeView = 'dashboard', onN
           <p className="welcome-sub">Here&apos;s the latest across your election console.</p>
         </section>
 
+        {!hasPhase && (
+          <section className="clean-slate-banner">
+            <AlertTriangle size={20} />
+            <div>
+              <strong>Election not configured.</strong>
+              <p>The dashboard is on a clean slate — no candidates, votes, or results from a previous phase are showing. Configure the voting windows in Settings to start a new election.</p>
+            </div>
+          </section>
+        )}
+
         {/* 1. Core metrics — the single, unified stat row. */}
         <section className="stats-grid">
           {stats.map((stat, idx) => (
@@ -207,6 +257,8 @@ export default function AdminDashboard({ onLogout, activeView = 'dashboard', onN
           electionPhase={dashboardPhase}
           announcements={announcements}
           recentActions={recentActions}
+          velocityData={velocityData}
+          securityLogs={securityLogs}
           loading={loading}
           apiOk={apiOk}
           systemHealth={systemHealth}
