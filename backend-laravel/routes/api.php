@@ -118,6 +118,13 @@ Route::prefix('admin')->group(function () {
             ->middleware('permission:election.view_config');
         Route::put('/election/config', [ElectionController::class, 'updateConfig'])
             ->middleware('permission:election.update_config');
+        // Comprehensive election reset: clears the schedule, deactivates the
+        // phase, un-certifies candidates, clears votes and the vote ledger.
+        // Guarded by `election.reset` (admin only) and requires an explicit
+        // `confirm: "reset_election"` body field so it cannot be triggered by
+        // a stray save click.
+        Route::post('/election/reset', [ElectionController::class, 'reset'])
+            ->middleware('permission:election.reset');
 
         // Ballot position editing (React Election Setup screen)
         Route::patch('/positions/{position}', [PositionController::class, 'update'])

@@ -3,13 +3,17 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\ElectionConfigRequest;
+use App\Models\Candidate;
 use App\Models\Phase;
 use App\Models\Position;
 use App\Models\RegistrarImport;
 use App\Models\User;
+use App\Support\AuditLog;
+use App\Support\TermArchive;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 /**
  * Election lifecycle + configuration surface.
@@ -160,6 +164,85 @@ class ElectionController extends Controller
         return response()->json([
             'message' => 'Configuration saved.',
             'config' => $this->config($request)->getData(true)['config'],
+        ]);
+    }
+
+    /**
+     * POST /api/admin/election/reset — comprehensive election reset.
+     *
+     * Requires an explicit `confirm: "reset_election"` body field so the
+     * action cannot be triggered by a stray request.
+     *
+     * What gets reset (the cycle is wiped for a fresh start):
+     *   - Election timeline (all four date keys cleared → no phase derivable)
+     *   - Active phase deactivated (dashboard shows "Not Configured")
+     *   - Non-winner candidates reset to pending (applications cleared)
+     *   - All student turnout flags reset (has_voted = false)
+     *   - Anonymous vote ledger truncated
+     *
+     * What is PRESERVED (winners become officers, never deleted):
+     *   - Certified winners are archived via TermArchive → Past Terms roster
+     *   - Their certified_winner, vote_total, winner_rank, certified_at stay intact
+     *
+     * Admin only (`permission:election.reset`).
+     */
+    public function reset(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'confirm' => ['required', Rule::in(['reset_election'])],
+        ]);
+
+        DB::transaction(function () use ($request) {
+            // 1. Archive certified winners so they become preserved officers
+            //    (Past Terms roster) before anything else is wiped.
+            TermArchive::archiveNow();
+
+            // 2. Clear the election timeline so no phase can be derived.
+            foreach (['registration_opens_at', 'registration_closes_at', 'voting_opens_at', 'voting_closes_at'] as $key) {
+                DB::table('election_settings')->updateOrInsert(
+                    ['key' => $key],
+                    ['value' => null, 'updated_at' => now()],
+                );
+            }
+
+            // 3. Deactivate every phase row so Phase::current() returns null.
+            Phase::query()->update(['is_active' => false]);
+
+            // 4. Reset only non-winner candidates (pending/rejected applications).
+            //    Winners stay archived as officers — they are never touched here.
+            Candidate::query()
+                ->where('certified_winner', false)
+                ->update([
+                    'approval_status' => 'pending',
+                    'certified_at' => null,
+                    'winner_rank' => null,
+                    'vote_total' => 0,
+                    'election_status' => null,
+                    'updated_at' => now(),
+                ]);
+
+            // 5. Reset every student's turnout flag so they can vote again.
+            User::where('role', 'student')->update([
+                'has_voted' => false,
+                'voted_at' => null,
+                'updated_at' => now(),
+            ]);
+
+            // 6. Truncate the anonymous vote ledger.
+            DB::table('vote_ledger')->truncate();
+        });
+
+        // Record the reset in the audit trail.
+        AuditLog::record(
+            $request,
+            'election_reset',
+            'Admin reset the election cycle: schedule cleared, phase deactivated, non-winner candidates reset, votes cleared, vote ledger truncated. Certified winners were archived as officers (Past Terms).',
+            'election',
+            null,
+        );
+
+        return response()->json([
+            'message' => 'Election cycle reset to a clean slate. Non-winner candidates and votes were cleared. Certified winners were archived as officers (Past Terms) and are preserved.',
         ]);
     }
 

@@ -12,6 +12,7 @@ return [
             'election.update_config',
             'results.view',
             'results.finalize',
+            'election.reset',
             'settings.view',
             'settings.update',
             'manage_accounts',

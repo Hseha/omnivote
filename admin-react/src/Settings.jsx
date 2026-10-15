@@ -446,7 +446,14 @@ function VotingWindowDialog({ field, voting, onCommit, onClose }) {
  * Confirmation dialog for clearing the whole Voting Windows schedule. Guarded
  * like the per-field Edit dialogs so a stray click can't wipe the timeline.
  */
+/* Confirmation dialog for the comprehensive election reset. Guarded by a
+ * typed "RESET" confirmation so the action cannot be triggered accidentally.
+ * Clears the schedule, deactivates the phase, un-certifies every candidate,
+ * resets voter turnout flags, and truncates the vote ledger.
+ */
 function ResetVotingWindowDialog({ onConfirm, onClose }) {
+  const [confirmText, setConfirmText] = useState('');
+
   return (
     <div className="settings-modal-overlay" onClick={onClose}>
       <div
@@ -458,8 +465,10 @@ function ResetVotingWindowDialog({ onConfirm, onClose }) {
       >
         <div className="settings-modal-header">
           <div>
-            <h3 id="reset-window-title">Reset Voting Windows</h3>
-            <p>Clear the scheduled election timeline</p>
+            <h3 id="reset-window-title">Reset Entire Election</h3>
+            <p className="settings-modal-subtitle">
+              This permanently wipes all election data — cannot be undone.
+            </p>
           </div>
           <button type="button" className="settings-modal-close" aria-label="Close" onClick={onClose}>
             ×
@@ -467,21 +476,59 @@ function ResetVotingWindowDialog({ onConfirm, onClose }) {
         </div>
 
         <div className="settings-modal-body">
+          <AlertTriangle size={20} className="settings-modal-warning-icon" />
           <p className="settings-modal-confirm-text">
-            Clear <strong>Registration Opens, Registration Closes, Voting Opens, and Voting Closes</strong>?
+            This will <strong>permanently delete</strong> everything from the current election:
           </p>
-          <p className="settings-window-hint">
-            The schedule will be unset on this screen. Maximum Votes Per Voter and the
-            toggles below are kept. Press Save to apply the cleared timeline.
+          <ul className="settings-modal-warning-list">
+            <li>The voting schedule (registration and voting windows)</li>
+            <li>The active election phase (shown as "Not Configured" afterwards)</li>
+            <li>All non-winner candidates — their applications and approvals</li>
+            <li>All vote totals and the anonymous vote ledger</li>
+            <li>Every student's "has voted" flag — they can vote again</li>
+          </ul>
+          <p className="settings-modal-preserve-note">
+            <strong>Winners are preserved:</strong> certified winners are
+            archived as officers (Past Terms) and are <strong>not</strong>
+            deleted or removed.
           </p>
+          <p className="settings-modal-warning-note">
+            Use this only when starting a brand-new election cycle. If you only
+            need to clear the schedule dates, edit the Voting Windows above and
+            save instead.
+          </p>
+          <div className="settings-modal-confirm-field">
+            <label htmlFor="reset-confirm-text">Type <strong>RESET</strong> to confirm:</label>
+            <input
+              id="reset-confirm-text"
+              type="text"
+              className="form-input"
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              placeholder="RESET"
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </div>
+          {confirmText !== 'RESET' && (
+            <p className="settings-modal-hint">
+              Type <strong>RESET</strong> to enable the confirmation button.
+            </p>
+          )}
         </div>
 
         <div className="settings-modal-footer">
           <button type="button" className="btn-secondary" onClick={onClose}>
             Cancel
           </button>
-          <button type="button" className="btn-save" onClick={onConfirm}>
-            <Trash2 size={16} /> Clear All Windows
+          <button
+            type="button"
+            className="btn-danger"
+            onClick={onConfirm}
+            disabled={confirmText !== 'RESET' || resetting}
+          >
+            <Trash2 size={16} />
+            {resetting ? 'Resetting…' : 'Reset Entire Election'}
           </button>
         </div>
       </div>
@@ -570,6 +617,7 @@ export default function Settings({ onLogout, onNavigate, initialTab = 'profile' 
   );
   const [windowDialog, setWindowDialog] = useState(null);
   const [resetDialog, setResetDialog] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [form, setForm] = useState(() => loadCachedSettings() ?? DEFAULT_SETTINGS);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState('');
@@ -753,12 +801,20 @@ export default function Settings({ onLogout, onNavigate, initialTab = 'profile' 
   const commitVotingWindow = async (iso) =>
     handleSave('voting', { ...form.voting, [windowDialog.field]: iso });
 
-  const clearVotingWindows = () => {
-    update('voting', 'registrationStart', '');
-    update('voting', 'registrationEnd', '');
-    update('voting', 'votingStart', '');
-    update('voting', 'votingEnd', '');
-    setResetDialog(false);
+  const resetElection = async () => {
+    setResetting(true);
+    setError('');
+    try {
+      await api.post('/admin/election/reset', { confirm: 'reset_election' });
+      setSaved('Election reset to a clean slate — schedule, candidates, votes, and ledger all cleared.');
+      setTimeout(() => setSaved(''), 5000);
+      setResetDialog(false);
+      refreshElectionStatus();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Could not reset the election.');
+    } finally {
+      setResetting(false);
+    }
   };
 
   const runBackupNow = async () => {
@@ -1240,7 +1296,7 @@ export default function Settings({ onLogout, onNavigate, initialTab = 'profile' 
                 </div>
 
                 <div className="settings-panel-footer split">
-                  <button type="button" className="btn-secondary" onClick={() => setResetDialog(true)} disabled={saving}><Trash2 size={16} /> Reset Windows</button>
+                  <button type="button" className="btn-secondary" onClick={() => setResetDialog(true)} disabled={saving}><Trash2 size={16} /> Reset Election</button>
                   <button className="btn-save" onClick={() => handleSave('voting')} disabled={saving}><Save size={16} /> {saving ? 'Saving...' : 'Save Voting Window Settings'}</button>
                 </div>
               </div>
@@ -1596,7 +1652,7 @@ export default function Settings({ onLogout, onNavigate, initialTab = 'profile' 
       )}
       {resetDialog && (
         <ResetVotingWindowDialog
-          onConfirm={clearVotingWindows}
+          onConfirm={resetElection}
           onClose={() => setResetDialog(false)}
         />
       )}

@@ -15,6 +15,7 @@ import {
   CheckCircle,
   Clock,
   Award,
+  AlertTriangle,
 } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import MobileMenuButton from './components/MobileMenuButton';
@@ -166,25 +167,27 @@ export default function AdminDashboard({ onLogout, activeView = 'dashboard', onN
     logout();
   };
 
+  const hasPhase = Boolean(dashboardPhase);
+
   const stats = [
     {
       title: 'TOTAL REGISTERED VOTERS',
-      value: (statsData.total_voters || 0).toLocaleString(),
+      value: hasPhase ? (statsData.total_voters || 0).toLocaleString() : '—',
       icon: <Database className="stat-icon blue" />,
     },
     {
       title: 'VOTES CAST',
-      value: (statsData.votes_cast || 0).toLocaleString(),
+      value: hasPhase ? (statsData.votes_cast || 0).toLocaleString() : '—',
       icon: <CheckCircle className="stat-icon green" />,
     },
     {
       title: 'TURNOUT RATE',
-      value: `${statsData.turnout_rate || 0}%`,
+      value: hasPhase ? `${statsData.turnout_rate || 0}%` : '—',
       icon: <Clock className="stat-icon orange" />,
     },
     {
       title: 'APPROVED CANDIDATES',
-      value: (statsData.approved_candidates || 0).toLocaleString(),
+      value: hasPhase ? (statsData.approved_candidates || 0).toLocaleString() : '—',
       icon: <Award className="stat-icon purple" />,
     },
   ];
@@ -224,6 +227,16 @@ export default function AdminDashboard({ onLogout, activeView = 'dashboard', onN
           <h2 className="welcome-title">Welcome back, {(userProfile.name || 'Admin User').split(' ')[0]}</h2>
           <p className="welcome-sub">Here&apos;s the latest across your election console.</p>
         </section>
+
+        {!hasPhase && (
+          <section className="clean-slate-banner">
+            <AlertTriangle size={20} />
+            <div>
+              <strong>Election not configured.</strong>
+              <p>The dashboard is on a clean slate — no candidates, votes, or results from a previous phase are showing. Configure the voting windows in Settings to start a new election.</p>
+            </div>
+          </section>
+        )}
 
         {/* 1. Core metrics — the single, unified stat row. */}
         <section className="stats-grid">
