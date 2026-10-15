@@ -26,6 +26,9 @@ import MobileMenuButton from './components/MobileMenuButton';
  * (total_voters / votes_cast / turnout_rate / approved_candidates),
  * `election_phase`, `announcements`, `recent_actions`, `user`.
  *
+ * The monitoring panels read `GET /admin/dashboard/analytics`
+ * (`velocity` + `security_logs`), fetched in the same cycle.
+ *
  * Everything rendered comes from that response — there are deliberately no
  * fabricated metrics (accounts totals, flagged votes, uptime percentages,
  * demo activity entries) because the backend does not send them.
@@ -40,6 +43,11 @@ export default function AdminDashboard({ onLogout, activeView = 'dashboard', onN
   });
   const [announcements, setAnnouncements] = useState([]);
   const [recentActions, setRecentActions] = useState([]);
+  // Hourly vote-ledger velocity (last 24 h) for the SVG timeline panel —
+  // anonymous aggregate only; never joined against user accounts (H-1).
+  const [velocityData, setVelocityData] = useState([]);
+  // Latest 6 operational / security events for the audit stream panel.
+  const [securityLogs, setSecurityLogs] = useState([]);
   // Empty (not "Registration") until a real phase arrives, so an unconfigured
   // election shows "Not Configured" instead of a misleading stale phase.
   const [electionPhase, setElectionPhase] = useState('');
@@ -82,17 +90,46 @@ export default function AdminDashboard({ onLogout, activeView = 'dashboard', onN
     const fetchDashboardData = async () => {
       try {
         setLoading(true);
-        const response = await api.get('/admin/dashboard-overview');
-        const data = response.data;
-        if (data.stats) setStatsData(data.stats);
-        if (data.announcements) setAnnouncements(data.announcements);
-        if (data.recent_actions) setRecentActions(data.recent_actions);
-        if (data.election_phase) setElectionPhase(data.election_phase);
-        setSystemHealth(data.system_health || null);
-        setApiOk(true);
-      } catch (error) {
-        console.warn('Backend API connection pending or unavailable:', error.message);
-        setApiOk(false);
+
+        // Both feeds load together, but a failure in one must not blank the
+        // other: each request settles independently and the panel it drives
+        // falls back to its empty/offline state on its own.
+        const [overviewResult, analyticsResult] = await Promise.allSettled([
+          api.get('/admin/dashboard-overview'),
+          api.get('/admin/dashboard/analytics'),
+        ]);
+
+        if (overviewResult.status === 'fulfilled') {
+          const data = overviewResult.value.data;
+          if (data.stats) setStatsData(data.stats);
+          if (data.announcements) setAnnouncements(data.announcements);
+          if (data.recent_actions) setRecentActions(data.recent_actions);
+          if (data.election_phase) setElectionPhase(data.election_phase);
+          setSystemHealth(data.system_health || null);
+          setApiOk(true);
+        } else {
+          console.warn(
+            'Backend API connection pending or unavailable:',
+            overviewResult.reason?.message,
+          );
+          setApiOk(false);
+        }
+
+        if (analyticsResult.status === 'fulfilled') {
+          const analytics = analyticsResult.value.data;
+          setVelocityData(Array.isArray(analytics.velocity) ? analytics.velocity : []);
+          setSecurityLogs(Array.isArray(analytics.security_logs) ? analytics.security_logs : []);
+        } else {
+          // Offline / older backend without the analytics route: keep the
+          // panels honest with empty arrays (the widgets render their
+          // "unreachable" / empty copy) rather than inventing data.
+          console.warn(
+            'Analytics feed unavailable:',
+            analyticsResult.reason?.message,
+          );
+          setVelocityData([]);
+          setSecurityLogs([]);
+        }
       } finally {
         setLoading(false);
       }
@@ -207,6 +244,8 @@ export default function AdminDashboard({ onLogout, activeView = 'dashboard', onN
           electionPhase={dashboardPhase}
           announcements={announcements}
           recentActions={recentActions}
+          velocityData={velocityData}
+          securityLogs={securityLogs}
           loading={loading}
           apiOk={apiOk}
           systemHealth={systemHealth}

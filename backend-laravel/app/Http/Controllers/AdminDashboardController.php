@@ -10,6 +10,9 @@ use App\Models\UserNotification;
 use App\Support\SystemHealth;
 use App\Support\TermArchive;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Admin dashboard + results endpoints for the React SPA.
@@ -74,6 +77,223 @@ class AdminDashboardController extends Controller
             // Admin-only: teachers / SSG president see the plain API-ok card.
             'system_health' => auth()->user()->role === 'admin' ? SystemHealth::stored() : null,
         ]);
+    }
+
+    /**
+     * Unified administrative analytics feed for the dashboard monitoring
+     * panels (GET /api/admin/dashboard/analytics, `permission:dashboard.view`):
+     *
+     *  - `velocity`: hourly vote-ledger counts over the trailing 24 clock
+     *    hours as `[{hour: "HH:00", count: X}, ...]`, oldest → newest, with
+     *    empty buckets zero-filled so the frontend chart never has to guess
+     *    gaps.
+     *  - `security_logs`: the latest 6 operational / security events, lifted
+     *    from `audit_logs` when the trail exists (older installs may predate
+     *    it) and degrading to the newest admin `user_notifications` rows of
+     *    system severity types otherwise.
+     *
+     * CRYPTOGRAPHIC ANONYMITY (H-1): the velocity query reads `vote_ledger`
+     * alone — position/candidate/receipt columns — and is never joined
+     * against `users`, so no per-voter linkage can leak through metrics.
+     */
+    public function analytics(): JsonResponse
+    {
+        return response()->json([
+            'velocity' => $this->hourlyVoteVelocity(),
+            'security_logs' => $this->securityLogs(),
+            'generated_at' => now()->toIso8601String(),
+        ]);
+    }
+
+    /**
+     * Counts of `vote_ledger` rows bucketed per hour over the trailing 24 h.
+     *
+     * The bucket expression is chosen from the active driver (SQLite's
+     * `strftime`, MySQL/MariaDB's `DATE_FORMAT`, PostgreSQL's `TO_CHAR`) so
+     * the aggregation stays in SQL on every supported engine; any other
+     * driver falls back to bucketing plain `recorded_at` timestamps in PHP.
+     *
+     * @return array<int, array{hour: string, count: int}>
+     */
+    private function hourlyVoteVelocity(): array
+    {
+        // 24 hourly slots: the current hour plus the 23 before it.
+        $slots = collect(range(23, 0))->map(fn (int $back) => now()->subHours($back))->values();
+
+        // Plain array keyed by hour-of-day ('00' … '23') — a Collection's
+        // ArrayAccess offset can't be modified by reference, so the merge
+        // loop below writes into an array and we re-wrap at the end.
+        $buckets = [];
+
+        foreach ($slots as $slot) {
+            $buckets[$slot->format('H')] = ['hour' => $slot->format('H:00'), 'count' => 0];
+        }
+
+        if (! Schema::hasTable('vote_ledger')) {
+            return array_values($buckets);
+        }
+
+        $driver = DB::connection()->getDriverName();
+
+        $hourExpression = match ($driver) {
+            'sqlite' => "strftime('%H', recorded_at)",
+            'mysql', 'mariadb' => "DATE_FORMAT(recorded_at, '%H')",
+            'pgsql' => "TO_CHAR(recorded_at, 'HH24')",
+            default => null,
+        };
+
+        if ($hourExpression !== null) {
+            $counts = DB::table('vote_ledger')
+                ->selectRaw($hourExpression.' as bucket_hour, COUNT(*) as aggregate')
+                ->where('recorded_at', '>=', now()->subHours(24))
+                ->groupByRaw($hourExpression)
+                ->get()
+                ->pluck('aggregate', 'bucket_hour');
+        } else {
+            // Portable fallback: pull only the timestamp column and bucket
+            // with Carbon. Still fully decoupled from any user identity.
+            $counts = DB::table('vote_ledger')
+                ->where('recorded_at', '>=', now()->subHours(24))
+                ->pluck('recorded_at')
+                ->countBy(fn ($recordedAt) => Carbon::parse($recordedAt)->format('H'));
+        }
+
+        foreach ($counts as $hourKey => $count) {
+            $key = sprintf('%02d', (int) $hourKey);
+
+            if (isset($buckets[$key])) {
+                $buckets[$key]['count'] = (int) $count;
+            }
+        }
+
+        return array_values($buckets);
+    }
+
+    /**
+     * Latest 6 security / operational events for the audit stream.
+     *
+     * Prefers `audit_logs` (the durable trail written by App\Support\AuditLog)
+     * and falls back to the admin `user_notifications` feed on installs whose
+     * schema predates that table, so the panel degrades honestly instead of
+     * erroring. IP addresses and affected entities are folded into one
+     * readable context snippet per row.
+     *
+     * @return array<int, array{id: string|int, action: string, label: string, severity: string, detail: string, at: string|null}>
+     */
+    private function securityLogs(): array
+    {
+        if (Schema::hasTable('audit_logs')) {
+            $hasUsers = Schema::hasTable('users');
+
+            $query = DB::table('audit_logs')->orderByDesc('audit_logs.id')->limit(6);
+
+            if ($hasUsers) {
+                $query->leftJoin('users', 'users.id', '=', 'audit_logs.user_id')
+                    ->select('audit_logs.*', 'users.name as actor_name');
+            } else {
+                $query->select('audit_logs.*');
+            }
+
+            return $query->get()->map(function ($row) {
+                $action = (string) $row->action;
+
+                return [
+                    'id' => $row->id,
+                    'action' => $action,
+                    'label' => $this->humanizeAction($action),
+                    'severity' => $this->auditSeverity($action),
+                    'detail' => $this->auditDetailSnippet((array) $row),
+                    'at' => $row->created_at
+                        ? Carbon::parse($row->created_at)->toIso8601String()
+                        : null,
+                ];
+            })->values()->all();
+        }
+
+        // Fallback: newest admin notifications carrying a system severity type.
+        return UserNotification::query()
+            ->whereIn('type', ['success', 'warning', 'danger', 'info'])
+            ->latest()
+            ->limit(6)
+            ->get()
+            ->map(fn (UserNotification $n) => [
+                'id' => 'n:'.$n->id,
+                'action' => (string) $n->type,
+                'label' => $n->title ?: 'System event',
+                'severity' => match ($n->type) {
+                    'danger' => 'critical',
+                    'warning' => 'warning',
+                    default => 'success',
+                },
+                'detail' => (string) $n->body,
+                'at' => $n->created_at?->toIso8601String(),
+            ])
+            ->values()
+            ->all();
+    }
+
+    /** Maps an audit action to the panel's three-tier severity scale. */
+    private function auditSeverity(string $action): string
+    {
+        return match (true) {
+            // Active brute-force backoffs, denied sign-ins, disabled accounts
+            // and other hard security stops.
+            in_array($action, [
+                'account_locked',
+                'login_backoff_triggered',
+                'login_denied',
+                'user_disabled',
+                '2fa_failed',
+            ], true) => 'critical',
+            // Manual overrides an operator should review.
+            in_array($action, [
+                'login_failed',
+                'user_role_changed',
+                'user_email_changed',
+                'settings_updated',
+                'password_reset',
+                'backup_restored',
+                'backup_deleted',
+                '2fa_disabled',
+                'user_archived',
+            ], true) => 'warning',
+            // Routine operational flags: sign-ins, backups, credential
+            // rotations, health-adjacent account changes.
+            default => 'success',
+        };
+    }
+
+    /**
+     * Folds the row's IP, actor and affected entity into a single readable
+     * snippet, e.g. `Created backup omnivote-2026-10-16.zip · 192.0.2.14`.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    private function auditDetailSnippet(array $row): string
+    {
+        $context = [];
+
+        if (! empty($row['ip_address'])) {
+            $context[] = 'IP '.$row['ip_address'];
+        }
+
+        if (! empty($row['actor_name'])) {
+            $context[] = (string) $row['actor_name'];
+        } elseif (! empty($row['entity_type']) && ! empty($row['entity_id'])) {
+            $context[] = $row['entity_type'].' #'.$row['entity_id'];
+        }
+
+        $details = trim((string) ($row['details'] ?? ''));
+
+        return $context === []
+            ? $details
+            : ($details === '' ? implode(' · ', $context) : $details.' · '.implode(' · ', $context));
+    }
+
+    /** `user_role_changed` → `User Role Changed`. */
+    private function humanizeAction(string $action): string
+    {
+        return ucwords(str_replace('_', ' ', $action));
     }
 
     public function results(): JsonResponse

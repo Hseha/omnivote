@@ -84,6 +84,11 @@ Route::prefix('admin')->group(function () {
         // Dashboard
         Route::get('/dashboard-overview', [AdminDashboardController::class, 'overview'])
             ->middleware('permission:dashboard.view');
+        // Live monitoring panels: hourly vote velocity (anonymous vote_ledger
+        // aggregate) + latest operational / security audit stream. Same
+        // permission gate as the overview it sits beside.
+        Route::get('/dashboard/analytics', [AdminDashboardController::class, 'analytics'])
+            ->middleware('permission:dashboard.view');
 
         // Candidate review (React Candidates screen)
         Route::get('/candidates', [AdminCandidateController::class, 'index'])
