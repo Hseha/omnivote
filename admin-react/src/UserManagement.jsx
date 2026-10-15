@@ -4,7 +4,7 @@ import Header from './components/Header';
 import {
   Search, Eye, EyeOff, KeyRound, X, CheckCircle, AlertTriangle,
   Lock, Unlock, UserPlus, Download, ShieldCheck, Award, Mail,
-  Archive, ArchiveRestore,
+  Archive, ArchiveRestore, GraduationCap, Copy,
 } from 'lucide-react';
 import api from './lib/api';
 import { useAuth } from './lib/AuthContext';
@@ -32,6 +32,7 @@ export default function UserManagement({ onLogout, activeView = 'user_management
   const [meta, setMeta] = useState({ total: 0, current_page: 1, last_page: 1 });
   const [stats, setStats] = useState(null);
   const [departments, setDepartments] = useState([]);
+  const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(null);
   const [bulkUnlocking, setBulkUnlocking] = useState(false);
@@ -50,6 +51,14 @@ export default function UserManagement({ onLogout, activeView = 'user_management
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
   const [createdCredential, setCreatedCredential] = useState(null);
+
+  // "Add Student" modal state — manual single-student provisioning for a
+  // learner with no account (POST /admin/users/students).
+  const [showAddStudent, setShowAddStudent] = useState(false);
+  const [addForm, setAddForm] = useState({ student_id: '', name: '', year_level: '1', block_number: '', department: '', course: '' });
+  const [addBusy, setAddBusy] = useState(false);
+  const [addError, setAddError] = useState('');
+  const [addResult, setAddResult] = useState(null);
 
   // "Grant SSG President Access" modal state
   const [showGrant, setShowGrant] = useState(false);
@@ -97,6 +106,7 @@ export default function UserManagement({ onLogout, activeView = 'user_management
       // Global aggregates come with every listing response.
       if (d.stats) setStats(d.stats);
       if (d.departments) setDepartments(d.departments);
+      if (d.courses) setCourses(d.courses);
     } catch (e) { setSrvErr(e.response?.data?.message || 'Failed to load users.'); }
     finally { setLoading(false); }
   }, [buildParams]);
@@ -212,6 +222,35 @@ export default function UserManagement({ onLogout, activeView = 'user_management
     } finally { setCreating(false); }
   };
 
+  // Item 3b: manual single-student creation via POST /admin/users/students.
+  const doAddStudent = async (e) => {
+    e.preventDefault();
+    setAddBusy(true); setAddError('');
+    try {
+      const res = await api.post('/admin/users/students', addForm);
+      setAddResult(res.data);
+      loadUsers(1);
+    } catch (err) {
+      const data = err.response?.data;
+      const fieldErrors = data?.errors ? Object.values(data.errors).flat().join(' ') : '';
+      setAddError(data?.message || fieldErrors || 'Failed to create the student account.');
+    } finally { setAddBusy(false); }
+  };
+
+  // One-click handoff of the three one-time secrets to the admin clipboard.
+  const copyAddSecrets = async () => {
+    if (!addResult) return;
+    const text = [
+      `Login handle:        ${addResult.user.email}`,
+      `Temporary password:  ${addResult.temporary_password}`,
+      `Activation code:     ${addResult.activation_code}`,
+    ].join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+      flash('Credentials copied to clipboard.');
+    } catch { setAddError('Could not copy — select the values manually.'); }
+  };
+
   const openArchive = (u) => {
     setArchiveError('');
     setArchiveNameInput('');
@@ -304,6 +343,9 @@ export default function UserManagement({ onLogout, activeView = 'user_management
               </button>
               <button type="button" className="um-header-btn um-header-btn-primary"         onClick={() => { setShowCreate(true); setCreateError(''); setCreatedCredential(null); setCreateForm({ name: '', email: '', role: 'teacher', department: '' }); }} title="Create an SSG Adviser or Administrator account">
                 <UserPlus size={16} /> Create Account
+              </button>
+              <button type="button" className="um-header-btn um-header-btn-primary" onClick={() => { setShowAddStudent(true); setAddError(''); setAddResult(null); setAddForm({ student_id: '', name: '', year_level: '1', block_number: '', department: '', course: '' }); }} title="Create an account for a single student who has none yet (bulk enrolment stays on the Student Registry import)">
+                <GraduationCap size={16} /> Add Student
               </button>
               <button type="button" className="um-header-btn um-header-btn-ssg" onClick={openGrant} title="Grant SSG President access to a certified election winner">
                 <Award size={16} /> Grant SSG President
@@ -480,6 +522,87 @@ export default function UserManagement({ onLogout, activeView = 'user_management
                 <div className="um-modal-actions">
                   <button type="button" className="um-btn-ghost" onClick={() => setShowCreate(false)} disabled={creating}>Cancel</button>
                   <button type="submit" className="um-btn-primary" disabled={creating}>{creating ? 'Creating…' : 'Create account'}</button>
+                </div>
+                </form>
+              )}
+            </div>
+          </div>
+        )}
+
+      {/* Item 3b: Add a single student account (for learners with no account) */}
+      {showAddStudent && (
+        <div className="um-modal-overlay" onClick={() => { if (!addBusy) { setShowAddStudent(false); setAddResult(null); } }}>
+          <div className="um-modal" onClick={e => e.stopPropagation()} role="dialog" aria-label="Add student account">
+            {addResult ? (
+              <>
+                <h3 className="um-modal-title"><CheckCircle size={18} /> Student account created</h3>
+                <p className="um-modal-text">
+                  <strong>{addResult.user.name}</strong> ({addResult.user.student_id}) can now sign in
+                  with the handle below. Share these one-time secrets — they are shown only now:
+                </p>
+                <div className="um-secret-block">
+                  <div className="um-secret-row"><span>Login handle</span><code>{addResult.user.email}</code></div>
+                  <div className="um-secret-row"><span>Temporary password</span><code>{addResult.temporary_password}</code></div>
+                  <div className="um-secret-row"><span>Activation code</span><code>{addResult.activation_code}</code></div>
+                </div>
+                <p className="um-modal-text">
+                  The temporary password forces a change on first sign-in. The activation code lets
+                  the student recover their password unattended later, like any registrar-imported account.
+                </p>
+                <div className="um-modal-actions">
+                  <button type="button" className="um-btn-ghost" onClick={copyAddSecrets}><Copy size={14} /> Copy credentials</button>
+                  <button type="button" className="um-btn-primary" onClick={() => { setShowAddStudent(false); setAddResult(null); }}>Done</button>
+                </div>
+              </>
+            ) : (
+              <form onSubmit={doAddStudent}>
+                <h3 className="um-modal-title"><GraduationCap size={18} /> Add student account</h3>
+                <p className="um-modal-text">
+                  For one student who has no account yet. Bulk enrolment stays on the Student
+                  Registry CSV import; this creates the account plus its registrar record.
+                </p>
+                {addError && <div className="um-banner um-banner-error"><AlertTriangle size={14} /> {addError}</div>}
+                <label className="um-field">
+                  <span>Student ID</span>
+                  <input type="text" required maxLength={64} value={addForm.student_id} onChange={e => setAddForm(f => ({ ...f, student_id: e.target.value }))} placeholder="e.g. 2024-0042" />
+                </label>
+                <label className="um-field">
+                  <span>Full name</span>
+                  <input type="text" required maxLength={255} value={addForm.name} onChange={e => setAddForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Juan Dela Cruz" />
+                </label>
+                <div className="um-field-row">
+                  <label className="um-field">
+                    <span>Year level</span>
+                    <select value={addForm.year_level} onChange={e => setAddForm(f => ({ ...f, year_level: e.target.value }))}>
+                      <option value="1">1st year</option>
+                      <option value="2">2nd year</option>
+                      <option value="3">3rd year</option>
+                      <option value="4">4th year</option>
+                      <option value="5">5th year</option>
+                    </select>
+                  </label>
+                  <label className="um-field">
+                    <span>Block number</span>
+                    <input type="number" min="1" required value={addForm.block_number} onChange={e => setAddForm(f => ({ ...f, block_number: e.target.value }))} placeholder="e.g. 3" />
+                  </label>
+                </div>
+                <label className="um-field">
+                  <span>Department</span>
+                  <select required value={addForm.department} onChange={e => setAddForm(f => ({ ...f, department: e.target.value, course: '' }))}>
+                    <option value="">— Select college —</option>
+                    {[...departments].sort((a, b) => a.localeCompare(b)).map(d => <option key={d} value={d}>{d}</option>)}
+                  </select>
+                </label>
+                <label className="um-field">
+                  <span>Course (optional)</span>
+                  <select value={addForm.course} onChange={e => setAddForm(f => ({ ...f, course: e.target.value }))} disabled={!addForm.department}>
+                    <option value="">— None —</option>
+                    {courses.filter(c => c.college === addForm.department).map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+                  </select>
+                </label>
+                <div className="um-modal-actions">
+                  <button type="button" className="um-btn-ghost" onClick={() => setShowAddStudent(false)} disabled={addBusy}>Cancel</button>
+                  <button type="submit" className="um-btn-primary" disabled={addBusy}>{addBusy ? 'Creating…' : 'Create student account'}</button>
                 </div>
               </form>
             )}

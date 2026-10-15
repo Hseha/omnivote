@@ -4,6 +4,7 @@ use App\Http\Controllers\AdminAuditLogController;
 use App\Http\Controllers\AdminAuthController;
 use App\Http\Controllers\AdminCandidateController;
 use App\Http\Controllers\AdminDashboardController;
+use App\Http\Controllers\AdminStudentController;
 use App\Http\Controllers\AdminTwoFactorController;
 use App\Http\Controllers\AdminUserController;
 use App\Http\Controllers\AnnouncementController;
@@ -172,6 +173,11 @@ Route::prefix('admin')->group(function () {
         Route::get('/users/certified-winners', [AdminUserController::class, 'certifiedWinners'])
             ->middleware('permission:manage_accounts');
         Route::post('/users', [AdminUserController::class, 'store'])
+            ->middleware('permission:manage_accounts');
+        // Manual single-student provisioning (User Management → "Add Student").
+        // Separate controller so it can live beside the staff-creation flow
+        // without widening AdminUserController's staff-only create endpoint.
+        Route::post('/users/students', [AdminStudentController::class, 'store'])
             ->middleware('permission:manage_accounts');
         Route::post('/users/departments', [AdminUserController::class, 'storeDepartment'])
             ->middleware('permission:manage_accounts');
