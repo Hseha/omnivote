@@ -34,7 +34,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
     } else if (auth.mustChangePassword) {
       context.go('/change-password');
     } else {
-      context.go('/dashboard');
+      context.go(destinationForRole(auth));
     }
   }
 

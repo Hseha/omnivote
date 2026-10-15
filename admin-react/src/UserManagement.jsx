@@ -4,7 +4,7 @@ import Header from './components/Header';
 import {
   Search, Eye, EyeOff, KeyRound, X, CheckCircle, AlertTriangle,
   Lock, Unlock, UserPlus, Download, ShieldCheck, Award, Mail,
-  Archive, ArchiveRestore,
+  Archive, ArchiveRestore, GraduationCap, Copy,
 } from 'lucide-react';
 import api from './lib/api';
 import { useAuth } from './lib/AuthContext';
@@ -32,6 +32,7 @@ export default function UserManagement({ onLogout, activeView = 'user_management
   const [meta, setMeta] = useState({ total: 0, current_page: 1, last_page: 1 });
   const [stats, setStats] = useState(null);
   const [departments, setDepartments] = useState([]);
+  const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(null);
   const [bulkUnlocking, setBulkUnlocking] = useState(false);
@@ -51,11 +52,20 @@ export default function UserManagement({ onLogout, activeView = 'user_management
   const [createError, setCreateError] = useState('');
   const [createdCredential, setCreatedCredential] = useState(null);
 
+  // "Add Student" modal state — manual single-student provisioning for a
+  // learner with no account (POST /admin/users/students).
+  const [showAddStudent, setShowAddStudent] = useState(false);
+  const [addForm, setAddForm] = useState({ student_id: '', name: '', year_level: '1', block_number: '', department: '', course: '' });
+  const [addBusy, setAddBusy] = useState(false);
+  const [addError, setAddError] = useState('');
+  const [addResult, setAddResult] = useState(null);
+
   // "Grant SSG President Access" modal state
   const [showGrant, setShowGrant] = useState(false);
   const [winners, setWinners] = useState(null);
   const [winnersLoading, setWinnersLoading] = useState(false);
   const [grantLoading, setGrantLoading] = useState(null);
+  const [grantResult, setGrantResult] = useState(null);
 
   // "Edit email address" modal state
   const [emailEditor, setEmailEditor] = useState(null);
@@ -97,6 +107,7 @@ export default function UserManagement({ onLogout, activeView = 'user_management
       // Global aggregates come with every listing response.
       if (d.stats) setStats(d.stats);
       if (d.departments) setDepartments(d.departments);
+      if (d.courses) setCourses(d.courses);
     } catch (e) { setSrvErr(e.response?.data?.message || 'Failed to load users.'); }
     finally { setLoading(false); }
   }, [buildParams]);
@@ -212,6 +223,35 @@ export default function UserManagement({ onLogout, activeView = 'user_management
     } finally { setCreating(false); }
   };
 
+  // Item 3b: manual single-student creation via POST /admin/users/students.
+  const doAddStudent = async (e) => {
+    e.preventDefault();
+    setAddBusy(true); setAddError('');
+    try {
+      const res = await api.post('/admin/users/students', addForm);
+      setAddResult(res.data);
+      loadUsers(1);
+    } catch (err) {
+      const data = err.response?.data;
+      const fieldErrors = data?.errors ? Object.values(data.errors).flat().join(' ') : '';
+      setAddError(data?.message || fieldErrors || 'Failed to create the student account.');
+    } finally { setAddBusy(false); }
+  };
+
+  // One-click handoff of the three one-time secrets to the admin clipboard.
+  const copyAddSecrets = async () => {
+    if (!addResult) return;
+    const text = [
+      `Login handle:        ${addResult.user.email}`,
+      `Temporary password:  ${addResult.temporary_password}`,
+      `Activation code:     ${addResult.activation_code}`,
+    ].join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+      flash('Credentials copied to clipboard.');
+    } catch { setAddError('Could not copy — select the values manually.'); }
+  };
+
   const openArchive = (u) => {
     setArchiveError('');
     setArchiveNameInput('');
@@ -248,7 +288,7 @@ export default function UserManagement({ onLogout, activeView = 'user_management
 
   // Item 4: load certified winners for the SSG grant dialog.
   const openGrant = async () => {
-    setShowGrant(true); setWinnersLoading(true); setSrvErr('');
+    setShowGrant(true); setWinnersLoading(true); setSrvErr(''); setGrantResult(null);
     try {
       const res = await api.get('/admin/users/certified-winners');
       setWinners(res.data);
@@ -262,12 +302,32 @@ export default function UserManagement({ onLogout, activeView = 'user_management
     if (!window.confirm(`Grant the SSG President role to ${name}? Any previous holder loses access.`)) return;
     setGrantLoading(uid);
     try {
-      await api.post(`/admin/users/${uid}/grant-ssg`);
-      flash(`${name} is now SSG President.`);
-      setShowGrant(false);
+      const res = await api.post(`/admin/users/${uid}/grant-ssg`);
+      // The award is the credential handoff point: surface the login (and the
+      // one-time temporary password, when one had to be minted) before the
+      // admin closes the dialog. The same instructions are emailed to the
+      // winner by the backend.
+      setGrantResult({
+        name,
+        credentials: res.data.credentials || {},
+        replaced: res.data.replaced || [],
+      });
       loadUsers(meta.current_page);
     } catch (e) { setSrvErr(e.response?.data?.message || 'Failed to grant SSG President access.'); }
     finally { setGrantLoading(null); }
+  };
+
+  // One-click handoff of the SSG login for the admin clipboard.
+  const copyGrantSecrets = async () => {
+    if (!grantResult) return;
+    const { email, temporary_password } = grantResult.credentials;
+    const text = temporary_password
+      ? `Login:               ${email}\nTemporary password:  ${temporary_password}`
+      : `Login:               ${email}\nPassword:            their existing password (unchanged)`;
+    try {
+      await navigator.clipboard.writeText(text);
+      flash('Credentials copied to clipboard.');
+    } catch { setSrvErr('Could not copy — select the values manually.'); }
   };
 
   // Item 10: CSV export honouring the currently applied filters.
@@ -304,6 +364,9 @@ export default function UserManagement({ onLogout, activeView = 'user_management
               </button>
               <button type="button" className="um-header-btn um-header-btn-primary"         onClick={() => { setShowCreate(true); setCreateError(''); setCreatedCredential(null); setCreateForm({ name: '', email: '', role: 'teacher', department: '' }); }} title="Create an SSG Adviser or Administrator account">
                 <UserPlus size={16} /> Create Account
+              </button>
+              <button type="button" className="um-header-btn um-header-btn-primary" onClick={() => { setShowAddStudent(true); setAddError(''); setAddResult(null); setAddForm({ student_id: '', name: '', year_level: '1', block_number: '', department: '', course: '' }); }} title="Create an account for a single student who has none yet (bulk enrolment stays on the Student Registry import)">
+                <GraduationCap size={16} /> Add Student
               </button>
               <button type="button" className="um-header-btn um-header-btn-ssg" onClick={openGrant} title="Grant SSG President access to a certified election winner">
                 <Award size={16} /> Grant SSG President
@@ -481,6 +544,87 @@ export default function UserManagement({ onLogout, activeView = 'user_management
                   <button type="button" className="um-btn-ghost" onClick={() => setShowCreate(false)} disabled={creating}>Cancel</button>
                   <button type="submit" className="um-btn-primary" disabled={creating}>{creating ? 'Creating…' : 'Create account'}</button>
                 </div>
+                </form>
+              )}
+            </div>
+          </div>
+        )}
+
+      {/* Item 3b: Add a single student account (for learners with no account) */}
+      {showAddStudent && (
+        <div className="um-modal-overlay" onClick={() => { if (!addBusy) { setShowAddStudent(false); setAddResult(null); } }}>
+          <div className="um-modal" onClick={e => e.stopPropagation()} role="dialog" aria-label="Add student account">
+            {addResult ? (
+              <>
+                <h3 className="um-modal-title"><CheckCircle size={18} /> Student account created</h3>
+                <p className="um-modal-text">
+                  <strong>{addResult.user.name}</strong> ({addResult.user.student_id}) can now sign in
+                  with the handle below. Share these one-time secrets — they are shown only now:
+                </p>
+                <div className="um-secret-block">
+                  <div className="um-secret-row"><span>Login handle</span><code>{addResult.user.email}</code></div>
+                  <div className="um-secret-row"><span>Temporary password</span><code>{addResult.temporary_password}</code></div>
+                  <div className="um-secret-row"><span>Activation code</span><code>{addResult.activation_code}</code></div>
+                </div>
+                <p className="um-modal-text">
+                  The temporary password forces a change on first sign-in. The activation code lets
+                  the student recover their password unattended later, like any registrar-imported account.
+                </p>
+                <div className="um-modal-actions">
+                  <button type="button" className="um-btn-ghost" onClick={copyAddSecrets}><Copy size={14} /> Copy credentials</button>
+                  <button type="button" className="um-btn-primary" onClick={() => { setShowAddStudent(false); setAddResult(null); }}>Done</button>
+                </div>
+              </>
+            ) : (
+              <form onSubmit={doAddStudent}>
+                <h3 className="um-modal-title"><GraduationCap size={18} /> Add student account</h3>
+                <p className="um-modal-text">
+                  For one student who has no account yet. Bulk enrolment stays on the Student
+                  Registry CSV import; this creates the account plus its registrar record.
+                </p>
+                {addError && <div className="um-banner um-banner-error"><AlertTriangle size={14} /> {addError}</div>}
+                <label className="um-field">
+                  <span>Student ID</span>
+                  <input type="text" required maxLength={64} value={addForm.student_id} onChange={e => setAddForm(f => ({ ...f, student_id: e.target.value }))} placeholder="e.g. 2024-0042" />
+                </label>
+                <label className="um-field">
+                  <span>Full name</span>
+                  <input type="text" required maxLength={255} value={addForm.name} onChange={e => setAddForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Juan Dela Cruz" />
+                </label>
+                <div className="um-field-row">
+                  <label className="um-field">
+                    <span>Year level</span>
+                    <select value={addForm.year_level} onChange={e => setAddForm(f => ({ ...f, year_level: e.target.value }))}>
+                      <option value="1">1st year</option>
+                      <option value="2">2nd year</option>
+                      <option value="3">3rd year</option>
+                      <option value="4">4th year</option>
+                      <option value="5">5th year</option>
+                    </select>
+                  </label>
+                  <label className="um-field">
+                    <span>Block number</span>
+                    <input type="number" min="1" required value={addForm.block_number} onChange={e => setAddForm(f => ({ ...f, block_number: e.target.value }))} placeholder="e.g. 3" />
+                  </label>
+                </div>
+                <label className="um-field">
+                  <span>Department</span>
+                  <select required value={addForm.department} onChange={e => setAddForm(f => ({ ...f, department: e.target.value, course: '' }))}>
+                    <option value="">— Select college —</option>
+                    {[...departments].sort((a, b) => a.localeCompare(b)).map(d => <option key={d} value={d}>{d}</option>)}
+                  </select>
+                </label>
+                <label className="um-field">
+                  <span>Course (optional)</span>
+                  <select value={addForm.course} onChange={e => setAddForm(f => ({ ...f, course: e.target.value }))} disabled={!addForm.department}>
+                    <option value="">— None —</option>
+                    {courses.filter(c => c.college === addForm.department).map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+                  </select>
+                </label>
+                <div className="um-modal-actions">
+                  <button type="button" className="um-btn-ghost" onClick={() => setShowAddStudent(false)} disabled={addBusy}>Cancel</button>
+                  <button type="submit" className="um-btn-primary" disabled={addBusy}>{addBusy ? 'Creating…' : 'Create student account'}</button>
+                </div>
               </form>
             )}
           </div>
@@ -489,50 +633,87 @@ export default function UserManagement({ onLogout, activeView = 'user_management
 
       {/* Item 4: Grant SSG President access (certified winners only) */}
       {showGrant && (
-        <div className="um-modal-overlay" onClick={() => setShowGrant(false)}>
+        <div className="um-modal-overlay" onClick={() => { setShowGrant(false); setGrantResult(null); }}>
           <div className="um-modal" onClick={e => e.stopPropagation()} role="dialog" aria-label="Grant SSG President access">
-            <h3 className="um-modal-title"><ShieldCheck size={18} /> Grant SSG President access</h3>
-            <p className="um-modal-text">
-              Only certified election winners are eligible. This is a single-seat role —
-              granting it removes any previous holder.
-            </p>
-            {winnersLoading && <p className="um-modal-text">Loading certified winners…</p>}
-            {winners && winners.data.length === 0 && (
-              <div className="um-banner um-banner-error">
-                <AlertTriangle size={14} />
-                <span>
-                  No certified winners yet. Certify a candidate first (Results →
-                  certify the ratified winner) before granting SSG President access.
-                </span>
-              </div>
-            )}
-            {winners && winners.data.length > 0 && (
+            {grantResult ? (
               <>
-                {winners.ssg_president && (
+                <h3 className="um-modal-title"><CheckCircle size={18} /> SSG President granted</h3>
+                <p className="um-modal-text">
+                  <strong>{grantResult.name}</strong> can now open the SSG President dashboard in the
+                  admin console and keep signing in to the mobile app. Instructions were emailed to{' '}
+                  <strong>{grantResult.credentials.email || 'their address on file'}</strong>.
+                </p>
+                <div className="um-secret-block">
+                  <div className="um-secret-row"><span>Login</span><code>{grantResult.credentials.email || '—'}</code></div>
+                  {grantResult.credentials.temporary_password ? (
+                    <div className="um-secret-row"><span>Temporary password</span><code>{grantResult.credentials.temporary_password}</code></div>
+                  ) : (
+                    <div className="um-secret-row"><span>Password</span><code>unchanged — their existing one</code></div>
+                  )}
+                </div>
+                {grantResult.credentials.temporary_password && (
                   <p className="um-modal-text">
-                    Current holder: <strong>{winners.ssg_president.name}</strong> ({winners.ssg_president.email})
+                    This one-time password is shown only now and must be changed on first sign-in.
                   </p>
                 )}
-                <div className="um-winner-list">
-                  {winners.data.map(w => (
-                    <div key={w.candidate_id} className="um-winner-row">
-                      <div>
-                        <div className="um-winner-name">{w.name || '—'} {w.already_ssg_president && <span className="um-review-flag">Current SSG President</span>}</div>
-                        <div className="um-winner-meta">{w.position || 'Position'} • {w.email || 'no email'} • certified {w.certified_at || '—'}</div>
-                      </div>
-                      {!w.already_ssg_president && w.user_id && (
-                        <button type="button" className="um-btn-primary" onClick={() => doGrant(w.user_id, w.name || w.email)} disabled={grantLoading === w.user_id}>
-                          {grantLoading === w.user_id ? 'Granting…' : 'Grant'}
-                        </button>
-                      )}
+                {grantResult.replaced.length > 0 && (
+                  <p className="um-modal-text">
+                    Previous holder {grantResult.replaced.map(r => r.name).join(', ')} was demoted to student.
+                  </p>
+                )}
+                <div className="um-modal-actions">
+                  {grantResult.credentials.temporary_password && (
+                    <button type="button" className="um-btn-ghost" onClick={copyGrantSecrets}><Copy size={14} /> Copy credentials</button>
+                  )}
+                  <button type="button" className="um-btn-primary" onClick={() => { setShowGrant(false); setGrantResult(null); }}>Done</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h3 className="um-modal-title"><ShieldCheck size={18} /> Grant SSG President access</h3>
+                <p className="um-modal-text">
+                  Only certified election winners are eligible. This is a single-seat role —
+                  granting it removes any previous holder.
+                </p>
+                {winnersLoading && <p className="um-modal-text">Loading certified winners…</p>}
+                {winners && winners.data.length === 0 && (
+                  <div className="um-banner um-banner-error">
+                    <AlertTriangle size={14} />
+                    <span>
+                      No certified winners yet. Certify a candidate first (Results →
+                      certify the ratified winner) before granting SSG President access.
+                    </span>
+                  </div>
+                )}
+                {winners && winners.data.length > 0 && (
+                  <>
+                    {winners.ssg_president && (
+                      <p className="um-modal-text">
+                        Current holder: <strong>{winners.ssg_president.name}</strong> ({winners.ssg_president.email})
+                      </p>
+                    )}
+                    <div className="um-winner-list">
+                      {winners.data.map(w => (
+                        <div key={w.candidate_id} className="um-winner-row">
+                          <div>
+                            <div className="um-winner-name">{w.name || '—'} {w.already_ssg_president && <span className="um-review-flag">Current SSG President</span>}</div>
+                            <div className="um-winner-meta">{w.position || 'Position'} • {w.email || 'no email'} • certified {w.certified_at || '—'}</div>
+                          </div>
+                          {!w.already_ssg_president && w.user_id && (
+                            <button type="button" className="um-btn-primary" onClick={() => doGrant(w.user_id, w.name || w.email)} disabled={grantLoading === w.user_id}>
+                              {grantLoading === w.user_id ? 'Granting…' : 'Grant'}
+                            </button>
+                          )}
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  </>
+                )}
+                <div className="um-modal-actions">
+                  <button type="button" className="um-btn-ghost" onClick={() => { setShowGrant(false); setGrantResult(null); }}>Close</button>
                 </div>
               </>
             )}
-            <div className="um-modal-actions">
-              <button type="button" className="um-btn-ghost" onClick={() => setShowGrant(false)}>Close</button>
-            </div>
           </div>
         </div>
       )}

@@ -63,16 +63,16 @@ class _OmniVoteAppState extends ConsumerState<OmniVoteApp> {
         // New session: drop anything cached under a previous account first
         // (defense in depth — the logout path below already clears), then
         // Registrar-provisioned accounts must rotate their temporary password
-        // before they can reach the dashboard.
+        // before they can reach their dashboard.
         _resetSessionScopedData(ref);
         AppRouter.router.go(
-          next.mustChangePassword ? '/change-password' : '/dashboard',
+          next.mustChangePassword ? '/change-password' : destinationForRole(next),
         );
       } else if (isNowAuthenticated &&
           !next.mustChangePassword &&
           (previous?.mustChangePassword ?? false)) {
-        // Password rotation finished: advance into the app.
-        AppRouter.router.go('/dashboard');
+        // Password rotation finished: advance into the right dashboard.
+        AppRouter.router.go(destinationForRole(next));
       } else if (!isNowAuthenticated && wasAuthenticated) {
         // Session ended on this phone: drop every account-scoped cache so
         // the next sign-in can never see the previous account's data.

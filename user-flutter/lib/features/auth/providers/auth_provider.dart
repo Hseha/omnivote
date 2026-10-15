@@ -42,12 +42,17 @@ class AuthState {
   /// body-based oracle.
   final int? retryAfterSeconds;
 
+  /// The user's role (student | ssg_president). Mirrors the backend's
+  /// `users.role` payload; it only turns true after a successful login.
+  final String? role;
+
   AuthState({
     this.student,
     this.isLoading = false,
     this.errorMessage,
     this.mustChangePassword = false,
     this.retryAfterSeconds,
+    this.role,
   });
 
   AuthState copyWith({
@@ -56,6 +61,7 @@ class AuthState {
     String? errorMessage,
     Object? mustChangePassword = _unset,
     Object? retryAfterSeconds = _unset,
+    Object? role = _unset,
   }) {
     return AuthState(
       student: student ?? this.student,
@@ -67,10 +73,24 @@ class AuthState {
       retryAfterSeconds: identical(retryAfterSeconds, _unset)
           ? this.retryAfterSeconds
           : retryAfterSeconds as int?,
+      role: identical(role, _unset)
+          ? this.role
+          : role as String?,
     );
   }
 
   bool get isAuthenticated => student != null;
+}
+
+/// Where an authenticated account lands on first navigation.
+///
+/// The SSG President gets a dedicated governance shell (officer roster +
+/// announcements); everyone else lands on the shared student dashboard.
+/// Shared by the login listener in `app.dart` and the cold-start bootstrap
+/// in the splash screen so both paths always agree.
+String destinationForRole(AuthState state) {
+  if (state.role == 'ssg_president') return '/ssg-president';
+  return '/dashboard';
 }
 
 /// Sentinel so `copyWith(mustChangePassword: false)` can clear the flag.
@@ -130,6 +150,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       student: result?.student,
       mustChangePassword: result?.mustChangePassword ?? false,
       isLoading: false,
+      role: result?.student.role,
     );
   }
 
@@ -145,6 +166,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       state = AuthState(
         student: result.student,
         mustChangePassword: result.mustChangePassword,
+        role: result.student.role,
       );
       return true;
     } catch (e) {
