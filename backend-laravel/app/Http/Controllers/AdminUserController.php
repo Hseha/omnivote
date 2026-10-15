@@ -940,6 +940,20 @@ class AdminUserController extends Controller
             ], 422);
         }
 
+        // The SSG seat is a post-certification governance role. Refuse to
+        // grant it before the results are published.
+        $resultsPublished = (bool) DB::table('election_settings')
+            ->where('key', 'results_published')
+            ->value('value');
+
+        if (! $resultsPublished) {
+            return response()->json([
+                'message' => 'SSG President access can only be granted after the election results are published. Current status: not published.',
+            ], 422);
+        }
+
+        $previousRole = $user->role;
+
         $previous = User::where('role', 'ssg_president')
             ->where('id', '!=', $user->id)
             ->get();
@@ -956,8 +970,43 @@ class AdminUserController extends Controller
             $user->tokens()->delete();
         });
 
+        // --- Credentials handoff -------------------------------------------
+        // The SSG President is a promoted existing student, so their login is
+        // the same email + password they already have. If they never had one
+        // (no registrar password), mint a temporary one exactly like the
+        // account-creation flow does and email it to them. The plaintext is
+        // only ever known here (the model hashes on save) and in the email —
+        // the hash is never sent, only the freshly minted value.
+        $credentials = ['email' => $user->email, 'role' => $user->role];
+        $temporaryPassword = null;
+
+        if (empty($user->password)) {
+            $temporaryPassword = TemporaryPassword::generate();
+            $user->forceFill([
+                'password' => $temporaryPassword,
+                'must_change_password' => true,
+            ])->save();
+            $credentials['temporary_password'] = $temporaryPassword;
+        }
+
+        if ($user->email) {
+            $passwordLine = $temporaryPassword !== null
+                ? "Password:     {$temporaryPassword} (temporary — you will be asked to change it after sign-in)"
+                : "Password:     the one you already use (unchanged by this promotion)";
+
+            Notifier::emailUser(
+                $user->id,
+                'emailOnAdminAction',
+                'Your OmniVote SSG President account',
+                "Your SSG President account is active. Sign in at the admin dashboard or the mobile app with:\n\nEmail:     {$user->email}\n{$passwordLine}\n\nThe account was promoted from '{$previousRole}' to 'ssg_president'.",
+                null,
+                true,
+            );
+        }
+
         return response()->json([
             'data' => $this->present($user),
+            'credentials' => $credentials,
             'replaced' => $previous->map(fn (User $u) => [
                 'id' => $u->id, 'name' => $u->name, 'email' => $u->email,
             ])->values(),

@@ -21,6 +21,8 @@ import '../../features/settings/screens/help_faq_screen.dart';
 import '../../features/settings/screens/settings_screen.dart';
 import 'app_shell.dart';
 
+import '../../features/ssg_president/screens/president_dashboard_screen.dart';
+
 class AppRouter {
   // Splash is the bootstrap route: it checks auth once and redirects to
   // /dashboard or /login (audit §2 #11).
@@ -99,6 +101,14 @@ class AppRouter {
             ],
           ),
         ],
+      ),
+      // SSG President governance shell — a dedicated dashboard for the elected
+      // student (officer roster + announcements). No voting, candidacy or
+      // ballot tabs; those remain election-administration powers for Admin/
+      // Teacher only.
+      GoRoute(
+        path: '/ssg-president',
+        builder: (context, state) => const PresidentDashboardScreen(),
       ),
       GoRoute(
         path: '/candidate-profile',

@@ -59,10 +59,9 @@ class StudentAuthController extends Controller
             return response()->json(['message' => 'Invalid credentials'], 401);
         }
 
-        if ($user->role !== 'student') {
-            return response()->json(['message' => 'Forbidden'], 403);
-        }
-
+        // SSG President accounts must still be able to sign in (e.g. to open
+        // the dedicated SSG President dashboard) — role is enforced by the
+        // permission catalog, not by the mobile login gate.
         // Administrators can disable an account (AdminUserController::updateStatus).
         // Correct credentials for a disabled account must not mint a mobile token.
         if (! $user->is_active) {

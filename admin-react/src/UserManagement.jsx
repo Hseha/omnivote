@@ -65,6 +65,7 @@ export default function UserManagement({ onLogout, activeView = 'user_management
   const [winners, setWinners] = useState(null);
   const [winnersLoading, setWinnersLoading] = useState(false);
   const [grantLoading, setGrantLoading] = useState(null);
+  const [grantResult, setGrantResult] = useState(null);
 
   // "Edit email address" modal state
   const [emailEditor, setEmailEditor] = useState(null);
@@ -287,7 +288,7 @@ export default function UserManagement({ onLogout, activeView = 'user_management
 
   // Item 4: load certified winners for the SSG grant dialog.
   const openGrant = async () => {
-    setShowGrant(true); setWinnersLoading(true); setSrvErr('');
+    setShowGrant(true); setWinnersLoading(true); setSrvErr(''); setGrantResult(null);
     try {
       const res = await api.get('/admin/users/certified-winners');
       setWinners(res.data);
@@ -301,12 +302,32 @@ export default function UserManagement({ onLogout, activeView = 'user_management
     if (!window.confirm(`Grant the SSG President role to ${name}? Any previous holder loses access.`)) return;
     setGrantLoading(uid);
     try {
-      await api.post(`/admin/users/${uid}/grant-ssg`);
-      flash(`${name} is now SSG President.`);
-      setShowGrant(false);
+      const res = await api.post(`/admin/users/${uid}/grant-ssg`);
+      // The award is the credential handoff point: surface the login (and the
+      // one-time temporary password, when one had to be minted) before the
+      // admin closes the dialog. The same instructions are emailed to the
+      // winner by the backend.
+      setGrantResult({
+        name,
+        credentials: res.data.credentials || {},
+        replaced: res.data.replaced || [],
+      });
       loadUsers(meta.current_page);
     } catch (e) { setSrvErr(e.response?.data?.message || 'Failed to grant SSG President access.'); }
     finally { setGrantLoading(null); }
+  };
+
+  // One-click handoff of the SSG login for the admin clipboard.
+  const copyGrantSecrets = async () => {
+    if (!grantResult) return;
+    const { email, temporary_password } = grantResult.credentials;
+    const text = temporary_password
+      ? `Login:               ${email}\nTemporary password:  ${temporary_password}`
+      : `Login:               ${email}\nPassword:            their existing password (unchanged)`;
+    try {
+      await navigator.clipboard.writeText(text);
+      flash('Credentials copied to clipboard.');
+    } catch { setSrvErr('Could not copy — select the values manually.'); }
   };
 
   // Item 10: CSV export honouring the currently applied filters.
@@ -612,50 +633,87 @@ export default function UserManagement({ onLogout, activeView = 'user_management
 
       {/* Item 4: Grant SSG President access (certified winners only) */}
       {showGrant && (
-        <div className="um-modal-overlay" onClick={() => setShowGrant(false)}>
+        <div className="um-modal-overlay" onClick={() => { setShowGrant(false); setGrantResult(null); }}>
           <div className="um-modal" onClick={e => e.stopPropagation()} role="dialog" aria-label="Grant SSG President access">
-            <h3 className="um-modal-title"><ShieldCheck size={18} /> Grant SSG President access</h3>
-            <p className="um-modal-text">
-              Only certified election winners are eligible. This is a single-seat role —
-              granting it removes any previous holder.
-            </p>
-            {winnersLoading && <p className="um-modal-text">Loading certified winners…</p>}
-            {winners && winners.data.length === 0 && (
-              <div className="um-banner um-banner-error">
-                <AlertTriangle size={14} />
-                <span>
-                  No certified winners yet. Certify a candidate first (Results →
-                  certify the ratified winner) before granting SSG President access.
-                </span>
-              </div>
-            )}
-            {winners && winners.data.length > 0 && (
+            {grantResult ? (
               <>
-                {winners.ssg_president && (
+                <h3 className="um-modal-title"><CheckCircle size={18} /> SSG President granted</h3>
+                <p className="um-modal-text">
+                  <strong>{grantResult.name}</strong> can now open the SSG President dashboard in the
+                  admin console and keep signing in to the mobile app. Instructions were emailed to{' '}
+                  <strong>{grantResult.credentials.email || 'their address on file'}</strong>.
+                </p>
+                <div className="um-secret-block">
+                  <div className="um-secret-row"><span>Login</span><code>{grantResult.credentials.email || '—'}</code></div>
+                  {grantResult.credentials.temporary_password ? (
+                    <div className="um-secret-row"><span>Temporary password</span><code>{grantResult.credentials.temporary_password}</code></div>
+                  ) : (
+                    <div className="um-secret-row"><span>Password</span><code>unchanged — their existing one</code></div>
+                  )}
+                </div>
+                {grantResult.credentials.temporary_password && (
                   <p className="um-modal-text">
-                    Current holder: <strong>{winners.ssg_president.name}</strong> ({winners.ssg_president.email})
+                    This one-time password is shown only now and must be changed on first sign-in.
                   </p>
                 )}
-                <div className="um-winner-list">
-                  {winners.data.map(w => (
-                    <div key={w.candidate_id} className="um-winner-row">
-                      <div>
-                        <div className="um-winner-name">{w.name || '—'} {w.already_ssg_president && <span className="um-review-flag">Current SSG President</span>}</div>
-                        <div className="um-winner-meta">{w.position || 'Position'} • {w.email || 'no email'} • certified {w.certified_at || '—'}</div>
-                      </div>
-                      {!w.already_ssg_president && w.user_id && (
-                        <button type="button" className="um-btn-primary" onClick={() => doGrant(w.user_id, w.name || w.email)} disabled={grantLoading === w.user_id}>
-                          {grantLoading === w.user_id ? 'Granting…' : 'Grant'}
-                        </button>
-                      )}
+                {grantResult.replaced.length > 0 && (
+                  <p className="um-modal-text">
+                    Previous holder {grantResult.replaced.map(r => r.name).join(', ')} was demoted to student.
+                  </p>
+                )}
+                <div className="um-modal-actions">
+                  {grantResult.credentials.temporary_password && (
+                    <button type="button" className="um-btn-ghost" onClick={copyGrantSecrets}><Copy size={14} /> Copy credentials</button>
+                  )}
+                  <button type="button" className="um-btn-primary" onClick={() => { setShowGrant(false); setGrantResult(null); }}>Done</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h3 className="um-modal-title"><ShieldCheck size={18} /> Grant SSG President access</h3>
+                <p className="um-modal-text">
+                  Only certified election winners are eligible. This is a single-seat role —
+                  granting it removes any previous holder.
+                </p>
+                {winnersLoading && <p className="um-modal-text">Loading certified winners…</p>}
+                {winners && winners.data.length === 0 && (
+                  <div className="um-banner um-banner-error">
+                    <AlertTriangle size={14} />
+                    <span>
+                      No certified winners yet. Certify a candidate first (Results →
+                      certify the ratified winner) before granting SSG President access.
+                    </span>
+                  </div>
+                )}
+                {winners && winners.data.length > 0 && (
+                  <>
+                    {winners.ssg_president && (
+                      <p className="um-modal-text">
+                        Current holder: <strong>{winners.ssg_president.name}</strong> ({winners.ssg_president.email})
+                      </p>
+                    )}
+                    <div className="um-winner-list">
+                      {winners.data.map(w => (
+                        <div key={w.candidate_id} className="um-winner-row">
+                          <div>
+                            <div className="um-winner-name">{w.name || '—'} {w.already_ssg_president && <span className="um-review-flag">Current SSG President</span>}</div>
+                            <div className="um-winner-meta">{w.position || 'Position'} • {w.email || 'no email'} • certified {w.certified_at || '—'}</div>
+                          </div>
+                          {!w.already_ssg_president && w.user_id && (
+                            <button type="button" className="um-btn-primary" onClick={() => doGrant(w.user_id, w.name || w.email)} disabled={grantLoading === w.user_id}>
+                              {grantLoading === w.user_id ? 'Granting…' : 'Grant'}
+                            </button>
+                          )}
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  </>
+                )}
+                <div className="um-modal-actions">
+                  <button type="button" className="um-btn-ghost" onClick={() => { setShowGrant(false); setGrantResult(null); }}>Close</button>
                 </div>
               </>
             )}
-            <div className="um-modal-actions">
-              <button type="button" className="um-btn-ghost" onClick={() => setShowGrant(false)}>Close</button>
-            </div>
           </div>
         </div>
       )}
