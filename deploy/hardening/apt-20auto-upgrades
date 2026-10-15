@@ -1,0 +1,6 @@
+// OmniVote server hardening — enable the APT periodic timers
+// (installed at /etc/apt/apt.conf.d/20auto-upgrades by deploy/harden-server.sh).
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+APT::Periodic::Download-Upgradeable-Packages "1";
+APT::Periodic::AutocleanInterval "7";

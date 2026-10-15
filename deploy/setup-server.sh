@@ -34,12 +34,12 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-log "1/8  Updating package lists"
+log "1/9  Updating package lists"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
 
 # ---------------------------------------------------------------------------
-log "2/8  Installing PHP $PHP_VER + extensions + FPM + nginx + MySQL + Composer"
+log "2/9  Installing PHP $PHP_VER + extensions + FPM + nginx + MySQL + Composer"
 apt-get install -y --no-install-recommends \
     nginx \
     mysql-server \
@@ -59,7 +59,7 @@ apt-get install -y --no-install-recommends \
     "php$PHP_VER-opcache"
 
 # ---------------------------------------------------------------------------
-log "3/8  Preparing deploy account + web root"
+log "3/9  Preparing deploy account + web root"
 if ! id -u "$DEPLOY_USER" >/dev/null 2>&1; then
     useradd --system --create-home --shell /bin/bash "$DEPLOY_USER"
 fi
@@ -85,13 +85,13 @@ fi
 install -d -o "$WEB_USER" -g "$WEB_USER" /var/www/omnivote/letsencrypt
 
 # ---------------------------------------------------------------------------
-log "4/8  Hardening PHP-FPM (see deploy/php-fpm-pool.conf for tuning)"
+log "4/9  Hardening PHP-FPM (see deploy/php-fpm-pool.conf for tuning)"
 PHP_INI="/etc/php/$PHP_VER/fpm/php.ini"
 sed -i "s/^;?cgi.fix_pathinfo=.*/cgi.fix_pathinfo=0/" "$PHP_INI" || true
 grep -q "^cgi.fix_pathinfo=0" "$PHP_INI" || echo "cgi.fix_pathinfo=0" >> "$PHP_INI"
 
 # ---------------------------------------------------------------------------
-log "5/8  Installing nginx site config"
+log "5/9  Installing nginx site config"
 # Both vhost templates are host-agnostic and carry the __PRIMARY_HOST__ token.
 # Render it into each before installing so the primary API vhost AND the Funnel
 # / tailnet-serve vhost (127.0.0.1:8080) agree on the hostname that
@@ -104,7 +104,7 @@ rm -f /etc/nginx/sites-enabled/default
 nginx -t
 
 # ---------------------------------------------------------------------------
-log "6/8  Creating the OmniVote database + user"
+log "6/9  Creating the OmniVote database + user"
 MYSQL_DB_PASS="${MYSQL_DB_PASS:-}"
 MYSQL_USER_EXISTS="$(mysql --batch --skip-column-names -e \
     "SELECT EXISTS(SELECT 1 FROM mysql.user WHERE User='omnivote' AND Host='localhost')")"
@@ -132,13 +132,13 @@ SQL
 fi
 
 # ---------------------------------------------------------------------------
-log "7/8  Enabling 24/7 systemd services (auto-start + auto-restart)"
+log "7/9  Enabling 24/7 systemd services (auto-start + auto-restart)"
 systemctl enable --now php$PHP_VER-fpm
 systemctl enable --now nginx
 systemctl enable --now mysql
 
 # ---------------------------------------------------------------------------
-log "8/8  Deploying the Laravel app"
+log "8/9  Deploying the Laravel app"
 if [[ -d "$APP_DIR/backend-laravel/vendor" ]]; then
     echo "  vendor/ already present, skipping composer install"
 else
@@ -156,6 +156,10 @@ if [[ -d "$APP_DIR/backend-laravel/storage" && -d "$APP_DIR/backend-laravel/boot
          "$APP_DIR/backend-laravel/bootstrap/cache" \
          -type d -exec chmod g+s {} +
 fi
+
+# ---------------------------------------------------------------------------
+log "9/9  Applying server hardening (SSH, sysctl, DB, firewall, updates, cert)"
+PRIMARY_HOST="$PRIMARY_HOST" bash "$(dirname "$0")/harden-server.sh"
 
 cat <<EOF
 
@@ -177,8 +181,14 @@ cat <<EOF
      sudo -u $DEPLOY_USER php8.4 artisan route:cache
   7. sudo systemctl enable --now omnivote-worker.service
   8. sudo systemctl enable --now omnivote-backup.timer   (encrypted daily backups)
-  9. Set up HTTPS (Let's Encrypt or self-signed) — see README §SSL
+  9. Set up HTTPS (Let's Encrypt or self-signed) — see README §SSL.
+     On a Tailscale-only host the hardening step already installed the
+     Tailscale cert-renewal timer (omnivote-cert-renew.timer).
  10. Verify:  curl -k $APP_URL/up
+
+ Server hardening is applied automatically by step 9/9 (see README
+ §Server hardening): SSH key-only auth, kernel/sysctl + firewall hardening,
+ loopback-only MariaDB, security-only auto-updates, and a runtime watchdog.
 
  Optional: install the health-check timer (5-minute interval, admin alerts):
      sudo cp deploy/omnivote-health.service deploy/omnivote-health.timer /etc/systemd/system/
