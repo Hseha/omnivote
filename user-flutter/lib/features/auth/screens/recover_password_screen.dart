@@ -54,11 +54,14 @@ class _RecoverPasswordScreenState extends ConsumerState<RecoverPasswordScreen> {
     final password = value ?? '';
     if (password.isEmpty) return 'Please enter a new password';
     if (password.length < 8) return 'Use at least 8 characters';
-    if (!RegExp(r'[A-Za-z]').hasMatch(password)) {
-      return 'Include at least one letter';
+    if (!RegExp(r'[a-z]').hasMatch(password)) {
+      return 'Include a lowercase letter';
+    }
+    if (!RegExp(r'[A-Z]').hasMatch(password)) {
+      return 'Include an uppercase letter';
     }
     if (!RegExp(r'[0-9]').hasMatch(password)) {
-      return 'Include at least one number';
+      return 'Include a number';
     }
     return null;
   }
@@ -186,6 +189,8 @@ class _RecoverPasswordScreenState extends ConsumerState<RecoverPasswordScreen> {
                       controller: _newController,
                       obscure: true,
                       label: 'New password',
+                      helper: 'At least 8 characters, including uppercase, '
+                          'lowercase and a number.',
                       prefixIcon: const Icon(Icons.lock_outline),
                       validator: _validateNewPassword,
                     ),
