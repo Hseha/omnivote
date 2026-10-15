@@ -282,7 +282,14 @@ Route::prefix('auth')->group(function () {
     // The temporary-credential gate is on by default: an account flagged
     // `must_change_password` can only reach the three routes needed to clear
     // the flag (security assessment C-1). Those opt out explicitly.
-    Route::middleware(['auth:sanctum', 'role:student', 'passwordChanged'])->group(function () {
+    //
+    // `ssg_president` is included alongside `student`: a promoted President
+    // signs in through this same mobile login and carries a Sanctum bearer
+    // token, so `/me` (cold-start restore), `/logout` and `/password/change`
+    // (a promoted account may carry a registrar-issued temporary credential)
+    // must resolve for that role too. Without this, a President's token is
+    // discarded on every cold start and the app appears permanently signed out.
+    Route::middleware(['auth:sanctum', 'role:student,ssg_president', 'passwordChanged'])->group(function () {
         Route::post('/logout', [StudentAuthController::class, 'logout'])
             ->withoutMiddleware(EnsurePasswordChanged::class);
         Route::get('/me', [StudentAuthController::class, 'me'])
@@ -340,4 +347,22 @@ Route::middleware(['auth:sanctum', 'role:student', 'passwordChanged'])->group(fu
     // per-IP limit there would punish ordinary voters for verifying receipts.
     Route::post('/results/verify', [ResultsController::class, 'verify'])
         ->middleware('throttle:receipt-verify');
+});
+
+// ------------------------------------------------------------------------
+// SSG President (Flutter client)
+//
+// The President signs in through the mobile login above and carries a Sanctum
+// bearer token, so the panel's `/api/admin/ssg/officers` route (session-guarded
+// by the `auth` web guard) is unreachable from the app. This mirrors that
+// projection for the app.
+//
+// Guarded by `role:ssg_president` rather than `permission:officers.view`: the
+// permission middleware carries the panel's two-factor enrollment gate, and the
+// Flutter app has no 2FA enrollment path, so a permission-gated route would
+// 403 a President who is legitimately signed in. Announcement writes stay
+// panel-only; the app's announcements feed is the public `GET /announcements`.
+// ------------------------------------------------------------------------
+Route::middleware(['auth:sanctum', 'role:ssg_president', 'passwordChanged'])->group(function () {
+    Route::get('/ssg/officers', [SsgOfficerController::class, 'index']);
 });
