@@ -451,7 +451,7 @@ function VotingWindowDialog({ field, voting, onCommit, onClose }) {
  * Clears the schedule, deactivates the phase, un-certifies every candidate,
  * resets voter turnout flags, and truncates the vote ledger.
  */
-function ResetVotingWindowDialog({ onConfirm, onClose }) {
+function ResetElectionDialog({ onConfirm, onClose, resetting }) {
   const [confirmText, setConfirmText] = useState('');
 
   return (
@@ -1651,9 +1651,10 @@ export default function Settings({ onLogout, onNavigate, initialTab = 'profile' 
         />
       )}
       {resetDialog && (
-        <ResetVotingWindowDialog
+        <ResetElectionDialog
           onConfirm={resetElection}
           onClose={() => setResetDialog(false)}
+          resetting={resetting}
         />
       )}
       {restoreDialog && (
