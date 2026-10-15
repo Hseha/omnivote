@@ -66,9 +66,10 @@ produce a TLS/404 failure.
 
 ### 2. HTTPS certificate and hostname must agree
 
-The Nginx server block uses certificate files under `/etc/ssl/omnivote/`.
-Every team machine must be able to resolve the Tailscale hostname, and the
-certificate must be trusted and valid for that hostname.
+The Nginx server block uses certificate files at `/etc/ssl/private/<host>.crt`
+and `/etc/ssl/private/<host>.key` (the path `tailscale cert` output is installed
+to — see `deploy/README.md` §7). Every team machine must be able to resolve the
+Tailscale hostname, and the certificate must be trusted and valid for that hostname.
 
 If the certificate is self-signed, browsers and Flutter Web will reject it
 unless the certificate authority is installed on each device. `curl -k` can
