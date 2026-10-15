@@ -2,8 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../data/services/api_client.dart';
 
 /// FutureProvider that fetches the elected officer roster. Mutated by the
-/// SSG President screen on refresh; guarded by the backend's `officers.view`
-/// permission + the `voting_closed` phase gate.
+/// SSG President screen on refresh; guarded by the backend's `ssg_president`
+/// role on a Sanctum token, plus the `voting_closed` phase gate.
 final presidentOfficersProvider = FutureProvider<List<Map<String, String>>>((ref) async {
   final dio = ref.read(apiClientProvider);
   final response = await dio.get('/ssg/officers');

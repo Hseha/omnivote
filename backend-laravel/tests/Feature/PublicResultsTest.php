@@ -187,6 +187,61 @@ class PublicResultsTest extends TestCase
             ->assertJsonPath('message', 'The officer roster is available after voting is closed.');
     }
 
+    public function test_ssg_president_mobile_roster_matches_the_panel_projection(): void
+    {
+        $this->closeVoting();
+
+        $this->makeCandidate('ref-ana', 'Ana', 'president', votes: 3, elected: true);
+
+        // The Flutter President dashboard reads the same projection off a
+        // Sanctum bearer token, where the panel's session-guarded
+        // `/api/admin/ssg/officers` is unreachable.
+        $this->asPresident()
+            ->getJson('/api/ssg/officers')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.position_key', 'president')
+            ->assertJsonPath('data.0.name', 'Ana');
+    }
+
+    public function test_mobile_officer_roster_is_refused_for_plain_students(): void
+    {
+        $this->closeVoting();
+
+        $this->makeCandidate('ref-ana', 'Ana', 'president', votes: 3, elected: true);
+
+        // The mobile governance surface is scoped to the President role; a
+        // student token must not read it.
+        $this->asStudent()
+            ->getJson('/api/ssg/officers')
+            ->assertStatus(403);
+    }
+
+    public function test_mobile_officer_roster_waits_until_voting_closes(): void
+    {
+        // Window still open → the roster is not published yet.
+        $this->window([
+            'registration_opens_at' => now()->subDays(2),
+            'registration_closes_at' => now()->subDay(),
+            'voting_opens_at' => now()->subHour(),
+            'voting_closes_at' => now()->addDay(),
+        ]);
+
+        $this->asPresident()
+            ->getJson('/api/ssg/officers')
+            ->assertStatus(403)
+            ->assertJsonPath('message', 'The officer roster is available after voting is closed.');
+    }
+
+    public function test_ssg_president_can_restore_a_mobile_session(): void
+    {
+        // Cold-start restore hits /auth/me; the President role must resolve
+        // there too, or the app discards the token and appears signed out.
+        $this->asPresident()
+            ->getJson('/api/auth/me')
+            ->assertOk();
+    }
+
     public function test_archive_term_archives_winners_under_a_school_year_label(): void
     {
         $this->closeVoting();
@@ -282,6 +337,12 @@ class PublicResultsTest extends TestCase
     private function asStudent(): static
     {
         return $this->actingAs($this->makeUser(['role' => 'student']), 'sanctum');
+    }
+
+    /** A request authenticated as an SSG President via the sanctum guard. */
+    private function asPresident(): static
+    {
+        return $this->actingAs($this->makeUser(['role' => 'ssg_president']), 'sanctum');
     }
 
     /** A first-party SPA request authenticated as a panel administrator. */

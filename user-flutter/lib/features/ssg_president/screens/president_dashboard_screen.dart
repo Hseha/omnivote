@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_tokens.dart';
+import '../../../core/utils/error_message.dart';
 import '../../../core/widgets/top_bar.dart';
 import '../../app_update/providers/app_update_provider.dart';
 import '../../auth/providers/auth_provider.dart';
@@ -102,7 +103,12 @@ class _OfficerRosterSection extends StatelessWidget {
       return const Center(child: CircularProgressIndicator());
     }
     if (state.hasError) {
-      return Center(child: Text('Could not load roster: ${state.error}'));
+      return Center(
+        child: Text(apiErrorMessage(
+          state.error!,
+          fallback: 'Could not load the officer roster.',
+        )),
+      );
     }
     if (state.value == null || state.value!.isEmpty) {
       return const Center(child: Text('No officers on roster yet.'));
@@ -130,7 +136,12 @@ class _AnnouncementsSection extends StatelessWidget {
       return const Center(child: CircularProgressIndicator());
     }
     if (state.hasError) {
-      return Center(child: Text('Could not load announcements: ${state.error}'));
+      return Center(
+        child: Text(apiErrorMessage(
+          state.error!,
+          fallback: 'Could not load announcements.',
+        )),
+      );
     }
     if (state.value == null || state.value!.isEmpty) {
       return const Center(child: Text('No announcements yet.'));

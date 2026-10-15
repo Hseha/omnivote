@@ -103,6 +103,23 @@ class StudentAuthTest extends TestCase
             ->assertJsonValidationErrors('password');
     }
 
+    public function test_change_password_explains_a_missing_requirement(): void
+    {
+        $student = $this->makeUser();
+
+        // 'alllowercase1' is long enough and has a number, so the only unmet
+        // requirement is the default uppercase rule. The student must be told
+        // that specifically, not handed Laravel's opaque "format is invalid".
+        $this->actingAs($student)
+            ->postJson('/api/auth/password/change', [
+                'current_password' => self::PASSWORD,
+                'password' => 'alllowercase1',
+                'password_confirmation' => 'alllowercase1',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('errors.password.0', 'Your password must include an uppercase letter.');
+    }
+
     public function test_non_student_accounts_are_forbidden_from_student_routes(): void
     {
         $admin = $this->makeUser(['role' => 'admin']);
