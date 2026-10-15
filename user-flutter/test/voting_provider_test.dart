@@ -49,9 +49,16 @@ class _FakeVoteRepository extends VoteRepository {
   Object? throwError;
   Completer<void>? gate;
 
+  /// ownerId values observed on each submit call (device-isolation wiring).
+  final List<String?> submitOwners = [];
+
   @override
-  Future<VoteReceipt> submit({required Map<String, dynamic> selections}) async {
+  Future<VoteReceipt> submit({
+    required Map<String, dynamic> selections,
+    String? ownerId,
+  }) async {
     submitCalls++;
+    submitOwners.add(ownerId);
     if (gate != null) await gate!.future;
     if (throwError != null) throw throwError!;
     return const VoteReceipt(receiptToken: 'abc123');
@@ -117,6 +124,21 @@ void main() {
       expect(state.alreadyVoted, isTrue);
       expect(state.votedAt, '2026-10-10T00:30:00+00:00');
     });
+
+    test('submit passes the current account in so the receipt is owner-scoped',
+        () async {
+      final repo = _FakeVoteRepository();
+      final notifier = VotingNotifier(
+        repo,
+        currentUserId: () => 'student-a',
+      );
+
+      final success = await notifier.submitBallot({'president': 'ref-ana'});
+
+      expect(success, isTrue);
+      expect(repo.submitOwners, ['student-a']);
+    });
+
 
     test('a fresh submit still returns the receipt and stays a success',
         () async {

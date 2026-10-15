@@ -5,9 +5,13 @@ import '../../../core/utils/error_message.dart';
 import '../../../core/utils/network_error.dart';
 import '../../../data/models/student_model.dart';
 import '../../../data/repositories/auth_repository.dart';
+import '../../../data/services/login_prefs.dart';
 
 final StateNotifierProvider<AuthNotifier, AuthState> authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
-  final notifier = AuthNotifier(ref.read(authRepositoryProvider));
+  final notifier = AuthNotifier(
+    ref.read(authRepositoryProvider),
+    loginPrefs: ref.read(loginPrefsProvider),
+  );
 
   // Listen for unauthorized events from the API client
   ref.listen(authEventProvider, (previous, next) {
@@ -112,7 +116,12 @@ String? backoffHint(int? retryAfterSeconds) {
 class AuthNotifier extends StateNotifier<AuthState> {
   final AuthRepository _authRepository;
 
-  AuthNotifier(this._authRepository) : super(AuthState());
+  /// Remembered logins for the "Remember me" prefill. Cleared on every
+  /// sign-out so a shared phone never shows one account's credentials to
+  /// the next person on the login screen (device isolation).
+  final LoginPrefs? _loginPrefs;
+
+  AuthNotifier(this._authRepository, {this._loginPrefs}) : super(AuthState());
 
   Future<void> checkAuth() async {
     state = state.copyWith(isLoading: true);
@@ -212,9 +221,20 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
+  /// Signs out: revokes the server token, drops the local token, and forgets
+  /// any remembered credentials, then resets to the signed-out state.
   Future<void> logout() async {
     state = state.copyWith(isLoading: true);
     await _authRepository.logout();
+    // Strict device isolation: the previous account must leave nothing
+    // behind for the next sign-in on this phone — in particular not its
+    // remembered email/password pair, which would otherwise prefill the
+    // login form (and one-tap-sign-in) for whoever opens it next.
+    //
+    // "Remember me" still pre-fills after a silent session death (token
+    // expiry on a cold start never runs through here), so the feature keeps
+    // working for the returning owner in its main scenario.
+    await _loginPrefs?.clear();
     state = AuthState();
   }
 

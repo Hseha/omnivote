@@ -44,6 +44,11 @@ class _FakeStorage extends SecureStorageService {
 
   @override
   Future<String?> readValue(String key) async => _store[key];
+
+  @override
+  Future<void> deleteValue(String key) async => _store.remove(key);
+
+  String? readValueSync(String key) => _store[key];
 }
 
 
@@ -107,6 +112,36 @@ void main() {
 
     expect(receipt.receiptToken, 'abc123');
     expect(saved, 'abc123');
+  });
+
+  test('receipts are isolated per account: B cannot read A\'s stored receipt',
+      () async {
+    final storage = _FakeStorage();
+    final repo =
+        VoteRepository(_FakeVoteService(), storage, _FakeElectionStatusService());
+
+    await repo.submit(selections: {'president': 'ref-x'}, ownerId: 'student-a');
+
+    expect(await repo.getSavedReceipt(ownerId: 'student-a'), 'abc123');
+    expect(await repo.getSavedReceipt(ownerId: 'student-b'), isNull);
+    // B's own receipt lands under B's own key and does not clobber A's.
+    await repo.submit(selections: {'president': 'ref-y'}, ownerId: 'student-b');
+    expect(await repo.getSavedReceipt(ownerId: 'student-b'), 'abc123');
+    expect(await repo.getSavedReceipt(ownerId: 'student-a'), 'abc123');
+  });
+
+  test('legacy global receipt is claimed once by the reading account', () async {
+    final storage = _FakeStorage();
+    await storage.saveValue('vote_receipt_token', 'legacy-abc');
+    final repo =
+        VoteRepository(_FakeVoteService(), storage, _FakeElectionStatusService());
+
+    // First read claims it for the reader and moves it to their scoped key.
+    expect(await repo.getSavedReceipt(ownerId: 'student-a'), 'legacy-abc');
+    // The global key is gone, so another account can never see it.
+    expect(storage.readValueSync('vote_receipt_token'), isNull);
+    expect(await repo.getSavedReceipt(ownerId: 'student-b'), isNull);
+    expect(await repo.getSavedReceipt(ownerId: 'student-a'), 'legacy-abc');
   });
 
   test('getMyBallot returns null for a non-map payload', () async {

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/utils/network_error.dart';
 import '../../../data/models/vote_receipt_model.dart';
 import '../../../data/repositories/vote_repository.dart';
+import '../../auth/providers/auth_provider.dart';
 
 class VotingState {
   final bool isSubmitting;
@@ -45,13 +46,23 @@ class VotingState {
 }
 
 final votingProvider = StateNotifierProvider<VotingNotifier, VotingState>(
-  (ref) => VotingNotifier(ref.read(voteRepositoryProvider)),
+  (ref) => VotingNotifier(
+    ref.read(voteRepositoryProvider),
+    // The receipt is account data: thread the current account in so the
+    // repository stores it under that account's key only (device isolation).
+    currentUserId: () => ref.read(authProvider).student?.id,
+  ),
 );
 
 class VotingNotifier extends StateNotifier<VotingState> {
   final VoteRepository _repository;
 
-  VotingNotifier(this._repository) : super(const VotingState());
+  /// Resolves the currently signed-in account, or null when logged out.
+  /// Used only to scope stored vote receipts to their owner.
+  final String? Function()? currentUserId;
+
+  VotingNotifier(this._repository, {this.currentUserId})
+      : super(const VotingState());
 
   /// Submits a ballot. `selections` is a map of `position_key -> candidate_ref`
   /// (or a list of refs). On success the receipt token is stored.
@@ -74,7 +85,12 @@ class VotingNotifier extends StateNotifier<VotingState> {
 
     state = state.copyWith(isSubmitting: true, clearError: true);
     try {
-      final receipt = await _repository.submit(selections: selections);
+      final receipt = await _repository.submit(
+        selections: selections,
+        // Account-scoped on purpose: on a shared phone the receipt must only
+        // ever be written under the voter who produced it (device isolation).
+        ownerId: currentUserId?.call(),
+      );
       state = state.copyWith(isSubmitting: false, receipt: receipt);
       return true;
     } on DioException catch (e) {
@@ -133,7 +149,8 @@ class VotingNotifier extends StateNotifier<VotingState> {
     }
   }
 
-  Future<String?> savedReceipt() => _repository.getSavedReceipt();
+  Future<String?> savedReceipt() =>
+      _repository.getSavedReceipt(ownerId: currentUserId?.call());
 
   Future<bool> verifyReceipt(String token) => _repository.verify(token);
 }

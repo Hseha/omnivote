@@ -21,14 +21,27 @@ class VoteRepository {
 
   VoteRepository(this._voteService, this._storage, this._electionStatusService);
 
+  /// Storage key for a vote receipt, namespaced per account.
+  ///
+  /// Receipts used to share the single global [_receiptKey], so on a shared
+  /// phone account B's My Ballot could fall back to account A's stored
+  /// receipt (device isolation). New writes always carry the owner's id; a
+  /// null [ownerId] resolves to the legacy global key for backward
+  /// compatibility (see [getSavedReceipt]).
+  static String _receiptKeyFor(String? ownerId) =>
+      (ownerId == null || ownerId.isEmpty) ? _receiptKey : '$_receiptKey:$ownerId';
+
   /// Submits a ballot and returns the receipt token. The token is persisted
   /// in secure storage (it never reveals candidate choices).
-  Future<VoteReceipt> submit({required Map<String, dynamic> selections}) async {
+  Future<VoteReceipt> submit({
+    required Map<String, dynamic> selections,
+    String? ownerId,
+  }) async {
     final response = await _voteService.submitBallot(selections);
     final data = Map<String, dynamic>.from(response.data as Map);
     final receipt = VoteReceipt.fromJson(data);
 
-    await saveReceipt(receipt.receiptToken);
+    await saveReceipt(receipt.receiptToken, ownerId: ownerId);
     return receipt;
   }
 
@@ -84,12 +97,31 @@ class VoteRepository {
     return false;
   }
 
-  // --- Receipt persistence (non-identifying, local) ---
-  Future<void> saveReceipt(String token) async {
-    await _storage.saveValue(_receiptKey, token);
+  // --- Receipt persistence (per-account, local) ---
+  /// Stores [token] under this account's own key so a device shared by two
+  /// accounts can never show one voter's receipt to the other.
+  Future<void> saveReceipt(String token, {String? ownerId}) async {
+    await _storage.saveValue(_receiptKeyFor(ownerId), token);
   }
 
-  Future<String?> getSavedReceipt() async {
-    return await _storage.readValue(_receiptKey);
+  /// Reads the current account's receipt.
+  ///
+  /// Receipts written before per-account scoping lived under the single
+  /// global key: the first account to read after the upgrade claims it
+  /// (claim-once migration — correct on the overwhelmingly common
+  /// single-user device). The receipt token is non-identifying (it proves a
+  /// ballot counted, never for whom), bounding the shared-device edge.
+  Future<String?> getSavedReceipt({String? ownerId}) async {
+    final key = _receiptKeyFor(ownerId);
+    final scoped = await _storage.readValue(key);
+    if (scoped != null && scoped.isNotEmpty) return scoped;
+    if (ownerId == null || ownerId.isEmpty || key == _receiptKey) {
+      return null;
+    }
+    final legacy = await _storage.readValue(_receiptKey);
+    if (legacy == null || legacy.isEmpty) return null;
+    await _storage.saveValue(key, legacy);
+    await _storage.deleteValue(_receiptKey);
+    return legacy;
   }
 }
