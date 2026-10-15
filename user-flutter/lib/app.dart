@@ -6,6 +6,10 @@ import 'core/theme/brand_accent.dart';
 import 'data/services/theme_mode.dart';
 import 'data/services/theme_pack.dart';
 import 'features/auth/providers/auth_provider.dart';
+import 'features/ballot/screens/my_ballot_screen.dart';
+import 'features/candidacy/providers/candidacy_provider.dart';
+import 'features/dashboard/providers/dashboard_provider.dart';
+import 'features/voting/providers/voting_provider.dart';
 
 // The app is split across three files rather than the usual single
 // `main.dart`:
@@ -27,6 +31,24 @@ class OmniVoteApp extends ConsumerStatefulWidget {
   ConsumerState<OmniVoteApp> createState() => _OmniVoteAppState();
 }
 
+/// Drops every Riverpod cache that holds account-specific data.
+///
+/// Device isolation for shared phones: Riverpod's non-autoDispose providers
+/// keep their last value for the app's whole lifetime, so without this the
+/// next account to sign in would render the previous account's candidacy,
+/// ballot, receipt, registration and form state from cache. Election-wide
+/// providers (announcements, positions, results, branding, election status)
+/// are deliberately left alone — they are the same for every account.
+/// Notifications already self-clears on logout (see its provider).
+void _resetSessionScopedData(WidgetRef ref) {
+  ref.invalidate(myApplicationProvider);
+  ref.invalidate(candidacyProvider);
+  ref.invalidate(registrationDataProvider);
+  ref.invalidate(myBallotProvider);
+  ref.invalidate(savedReceiptProvider);
+  ref.invalidate(votingProvider);
+}
+
 class _OmniVoteAppState extends ConsumerState<OmniVoteApp> {
   @override
   Widget build(BuildContext context) {
@@ -38,8 +60,11 @@ class _OmniVoteAppState extends ConsumerState<OmniVoteApp> {
       final isNowAuthenticated = next.isAuthenticated;
 
       if (isNowAuthenticated && !wasAuthenticated) {
+        // New session: drop anything cached under a previous account first
+        // (defense in depth — the logout path below already clears), then
         // Registrar-provisioned accounts must rotate their temporary password
         // before they can reach the dashboard.
+        _resetSessionScopedData(ref);
         AppRouter.router.go(
           next.mustChangePassword ? '/change-password' : '/dashboard',
         );
@@ -49,6 +74,9 @@ class _OmniVoteAppState extends ConsumerState<OmniVoteApp> {
         // Password rotation finished: advance into the app.
         AppRouter.router.go('/dashboard');
       } else if (!isNowAuthenticated && wasAuthenticated) {
+        // Session ended on this phone: drop every account-scoped cache so
+        // the next sign-in can never see the previous account's data.
+        _resetSessionScopedData(ref);
         AppRouter.router.go('/login');
       }
     });

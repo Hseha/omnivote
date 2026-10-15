@@ -52,6 +52,13 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
   CandidacyApplication? _application;
   bool _editing = false;
 
+  /// Whether the `?edit=1` deep-link intent has been honored. The query
+  /// parameter stays in the URL for the screen's whole lifetime, so every
+  /// later reload (after a successful save) would re-read it and bounce the
+  /// user straight back into the edit form — the "Changes saved, then Save
+  /// Changes again" loop. Consuming it once keeps reloads on the overview.
+  bool _editIntentConsumed = false;
+
   Uint8List? _photoBytes;
   String? _photoName;
   String? _photoError;
@@ -82,7 +89,17 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
     if (!mounted) return;
     final active = application != null &&
         (application.status == 'pending' || application.status == 'approved');
+    // The ?edit=1 link is honored exactly once per screen instance: after a
+    // successful save this reload runs with the same URL, and re-honoring it
+    // would flip the form straight back into edit mode (the save loop).
     setState(() {
+      // Only read the edit intent when an application exists: _wantsEdit
+      // needs a GoRouter above the widget (absent in widget tests), and the
+      // short-circuit below guarantees it is never touched otherwise.
+      final firstLoadWithApplication =
+          !_editIntentConsumed && application != null;
+      final openForEdit = firstLoadWithApplication && _wantsEdit;
+      _editIntentConsumed = true;
       _application = application;
       if (application != null) {
         _applicationStatus = application.status;
@@ -94,7 +111,7 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
             : application.partyName!.trim();
         _sloganController.text = application.slogan ?? '';
         _platformController.text = application.platformStatement;
-        _editing = _wantsEdit && active;
+        _editing = openForEdit && active;
       }
     });
   }
@@ -147,9 +164,15 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
         ),
       );
       // A fresh submission lands on the dedicated My Candidacy hub, where the
-      // review timeline and what-happens-next live. Edits return to the
-      // overview so the saved campaign is visible in place.
-      if (!wasEditing) context.go('/candidacy/status');
+      // review timeline and what-happens-next live. An edit returns to the
+      // dashboard: the edit form must never re-open behind the snackbar (the
+      // `?edit=1` query stays in the URL, so the overview path alone cannot
+      // be trusted to clear it).
+      if (!wasEditing) {
+        context.go('/candidacy/status');
+      } else {
+        context.go('/dashboard');
+      }
     } else if (mounted) {
       final failure = ref.read(candidacyProvider);
       if (failure.errorCode == 'seat_taken') {

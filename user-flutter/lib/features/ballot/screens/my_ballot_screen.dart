@@ -20,6 +20,7 @@ import '../../../data/models/election_status_model.dart';
 import '../../../data/models/position_model.dart';
 import '../../../data/repositories/candidate_repository.dart';
 import '../../../data/repositories/vote_repository.dart';
+import '../../auth/providers/auth_provider.dart';
 import '../../candidates/providers/candidates_provider.dart';
 import '../../dashboard/providers/election_status_provider.dart';
 import '../../voting/providers/voting_provider.dart';
@@ -35,9 +36,13 @@ final myBallotProvider = FutureProvider<Map<String, dynamic>>((ref) async {
 
 /// The receipt token persisted locally at submit time. Restores the receipt
 /// after a relaunch if the server payload ever lacks one for a submitted
-/// ballot (audit §5 #8).
+/// ballot (audit §5 #8). Account-scoped: watching the student id also makes
+/// the provider re-read for the right account when the user changes.
 final savedReceiptProvider = FutureProvider<String?>((ref) async {
-  return await ref.watch(voteRepositoryProvider).getSavedReceipt();
+  final studentId = ref.watch(authProvider.select((state) => state.student?.id));
+  return await ref
+      .watch(voteRepositoryProvider)
+      .getSavedReceipt(ownerId: studentId);
 });
 
 /// Every approved candidate (all positions, all pages) so draft rows can

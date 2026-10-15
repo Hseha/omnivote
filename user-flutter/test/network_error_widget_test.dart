@@ -47,7 +47,12 @@ class _FakeVoteRepository extends VoteRepository {
   Object? throwError;
 
   @override
-  Future<VoteReceipt> submit({required Map<String, dynamic> selections}) async {
+  Future<VoteReceipt> submit({
+    required Map<String, dynamic> selections,
+    // Accepted for the interface; this fake ignores ownership.
+    // ignore: unused_element_parameter
+    String? ownerId,
+  }) async {
     if (throwError != null) throw throwError!;
     return const VoteReceipt(receiptToken: 'abc123');
   }
