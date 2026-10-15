@@ -35,6 +35,28 @@ final class ProductionConfigGuard
             $problems[] = 'SESSION_SECURE_COOKIE must be true in production: session cookies would be sent over plain HTTP.';
         }
 
+        // Session payloads hold the 2FA pending marker, the rotated id and — for
+        // staff — a durable auth state. Storing them in plaintext in the session
+        // table widens the blast radius of any DB read, so production must
+        // encrypt them (the connection is already TLS, but defense in depth).
+        if (! config('session.encrypt')) {
+            $problems[] = 'SESSION_ENCRYPT must be true in production: session payloads are otherwise stored in plaintext.';
+        }
+
+        // The admin SPA authenticates with Sanctum's stateful cookie, which is
+        // only issued to origins on the stateful list. If the panel's own host is
+        // missing the browser never receives the cookie and every call 401s.
+        $panelHost = parse_url((string) config('app.url'), PHP_URL_HOST);
+        $stateful = strtolower(implode(',', (array) config('sanctum.stateful', [])));
+        if (is_string($panelHost) && $panelHost !== '' && ! str_contains($stateful, strtolower($panelHost))) {
+            $problems[] = 'SANCTUM_STATEFUL_DOMAINS must include the panel host ('.$panelHost.'): the admin SPA cookie is only issued for stateful origins.';
+        }
+
+        // NOTE: no TRUSTED_HOSTS assertion. App\Support\TrustedHosts::hosts()
+        // always merges the APP_URL/FRONTEND_URL hosts into the allow-list, so
+        // the panel host is trusted regardless of TRUSTED_HOSTS and a check here
+        // could only produce a false positive.
+
         if (! str_starts_with((string) config('app.url'), 'https://')) {
             $problems[] = 'APP_URL must use https:// in production: password-reset links and generated URLs inherit it.';
         }

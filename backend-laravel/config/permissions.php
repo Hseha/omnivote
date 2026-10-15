@@ -15,6 +15,7 @@ return [
             'settings.view',
             'settings.update',
             'manage_accounts',
+            'audit.view',
             'officers.view',
             'announcements.view',
             'announcements.create',

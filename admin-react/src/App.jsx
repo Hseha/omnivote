@@ -11,6 +11,7 @@ import Results from './Results';
 import Settings from './Settings';
 import UserManagement from './UserManagement';
 import Departments from './Departments';
+import AuditLog from './AuditLog';
 import SsgPresident from './SsgPresident';
 import TwoFactorEnrollmentScreen from './TwoFactorEnrollmentScreen';
 import { AuthProvider, useAuth } from './lib/AuthContext';
@@ -29,6 +30,7 @@ const ROUTE_TITLES = {
   setup: 'Election Setup',
   results: 'Results',
   announcements: 'Announcements',
+  audit: 'Audit Log',
   settings: 'Settings',
   user_management: 'User Management',
   departments: 'Departments',
@@ -201,6 +203,15 @@ function AppShell() {
     case 'departments':
       return (
         <Departments
+          onLogout={undefined}
+          activeView={currentView}
+          onNavigate={navigate}
+          currentUser={user}
+        />
+      );
+    case 'audit':
+      return (
+        <AuditLog
           onLogout={undefined}
           activeView={currentView}
           onNavigate={navigate}

@@ -124,7 +124,21 @@ DB_USERNAME=omnivote                 # or root
 DB_PASSWORD=<strong-password>
 
 SESSION_SECURE_COOKIE=true           # cookies only over HTTPS
+SESSION_ENCRYPT=true                 # encrypt session payloads at rest (required)
 ```
+
+> **Deploy-order warning (session encryption).** `SESSION_ENCRYPT` is now
+> asserted by `security:assert-production-config` and by the per-request
+> `ProductionConfigGuard`. Set `SESSION_ENCRYPT=true` in the server `.env`
+> **before** deploying this code:
+> - `deploy.sh` runs the assert *before* `config:cache`, so a missing value
+>   aborts the deploy cleanly (nothing goes live); and
+> - if the value were left `false` after the code was live, the guard would
+>   throw on **every** production HTTP request (500s across the site).
+>
+> Turning it on invalidates existing session rows, so everyone (including you)
+> is signed out and must log in again — expected, and it pairs with the
+> password/2FA rotation in the incident step below.
 
 Then:
 ```bash
@@ -148,6 +162,7 @@ keys. Edit the server copy to match the right-hand column:
 | `FRONTEND_URL` | *(unset)* | *(unset; falls back to `APP_URL` for same-origin admin)* |
 | `SANCTUM_STATEFUL_DOMAINS` | *(unset)* | *(unset; config includes `APP_URL` and local development hosts)* |
 | `SESSION_SECURE_COOKIE` | *(unset → false)* | `true` |
+| `SESSION_ENCRYPT` | *(unset → false)* | `true` (required; assert + per-request guard) |
 | `SANCTUM_TOKEN_EXPIRATION` | *(unset → 43200)* | `43200` (default already 30 days) |
 | `DB_DATABASE` | `omnivote_local` | `omnivote` |
 | `DB_USERNAME` | `root` | `omnivote` (a dedicated user, or `root`) |
@@ -182,7 +197,16 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now omnivote-backup.timer
 systemctl list-timers omnivote-backup.timer
 
-# 2) nginx vhost + php-fpm pool + queue worker
+# 2a) HTTP Basic password file for the admin gate — CREATE THIS FIRST.
+#     nginx serves 500 for /admin/ and /api/admin/ if the file is missing, so
+#     it must exist before the vhosts below go live. One shared credential is
+#     fine here (it is a pre-auth gate, not per-user auth); replace with a
+#     stronger secret and store it in your password manager.
+sudo htpasswd -c /etc/nginx/.htpasswd-omnivote omnivote   # prompts for a password
+sudo chmod 640 /etc/nginx/.htpasswd-omnivote
+sudo chown root:www-data /etc/nginx/.htpasswd-omnivote
+
+# 2b) nginx vhost + php-fpm pool + queue worker
 sudo cp nginx-omnivote.conf /etc/nginx/sites-available/omnivote
 sudo ln -sf /etc/nginx/sites-available/omnivote /etc/nginx/sites-enabled/omnivote
 # funnel/serve vhost (127.0.0.1:8080) — keeps the ts.net server_name so
@@ -204,12 +228,13 @@ sudo systemctl restart php8.4-fpm
 
 # 4) verify
 systemctl is-active nginx php8.4-fpm mysql omnivote-worker omnivote-backup.timer
-# NOTE: /up is tailnet-only now; over the public Funnel and from the server's
-# own hostname (which resolves to the public ingress) the funnel vhost
-# deliberately returns 404. Resolve via a tailnet IP:
-curl -k --resolve debian.tail7e9e1e.ts.net:443:$(tailscale ip -4) https://debian.tail7e9e1e.ts.net/up
 # public API route: reachable from anywhere
 curl -k https://debian.tail7e9e1e.ts.net/api/election/status
+# health probe: reachable from anywhere (the funnel vhost serves /up publicly)
+curl -k https://debian.tail7e9e1e.ts.net/up
+# admin gate: without credentials this must be 401 (NOT 200), with them 200/301
+curl -k -o /dev/null -w '%{http_code}\n' https://debian.tail7e9e1e.ts.net/admin/
+curl -k -u omnivote:YOUR_PASSWORD -o /dev/null -w '%{http_code}\n' https://debian.tail7e9e1e.ts.net/admin/
 ```
 
 `php artisan serve` on port 8000 stays available for local testing and is
@@ -226,14 +251,25 @@ Two vhosts, because of the Tailscale ("ts.net") network layout:
   the HTTPS API + the `/admin/` console from here when connecting over the LAN.
 - **`omnivote-funnel-api`** (`deploy/nginx-funnel-api.conf`) listens on
   `127.0.0.1:8080` and is the target of `tailscale funnel` (public student API)
-  **and** `tailscale serve` (tailnet clients). Because both tailnet and public
-  traffic land on this same vhost, it gates the admin surface on the
-  `Tailscale-Funnel-Request` header tailscaled sets on every *public* Funnel
-  request (it strips client-supplied values first, so it cannot be spoofed):
-  `/admin/`, `/up`, `/sanctum/`, and `/api/admin/*` return 404 for public
-  callers and are served normally for tailnet clients.
+  **and** `tailscale serve` (tailnet clients).
 
-Copy both:
+Both vhosts protect the admin surface (`/admin/`, `/api/admin/*`, `/sanctum/*`)
+with an **HTTP Basic pre-auth gate** backed by `/etc/nginx/.htpasswd-omnivote`.
+The app's own auth (Sanctum stateful session + TOTP 2FA) sits *behind* Basic, so
+an attacker who discovers the public URL still has to clear Basic before they can
+reach the login form. Because it is the same realm (`OmniVote Admin`) on the same
+origin in both files, the browser reuses one credential for the console and its
+same-origin `/api/admin` + `/sanctum` XHRs.
+
+> **Why Basic and not an IP allow-list.** Tailscale Funnel is L4 and does not
+> reliably set `X-Forwarded-For`, so every public request reaches Laravel as
+> loopback — a per-IP control (or a network ACL) cannot tell one visitor from
+> another. A shared pre-auth secret is the only gate that runs before the app.
+
+The public student API (`/api/*`) and candidate media (`/storage/*`) stay open,
+as before.
+
+Copy both (after creating the htpasswd file — see step 2a above):
 
 ```bash
 sudo cp deploy/nginx-omnivote.conf /etc/nginx/sites-available/omnivote
@@ -257,11 +293,17 @@ Caveats:
 
 - The two vhosts must stay in sync; `deploy.sh` does not rewrite
   `/etc/nginx`, so copy new versions during deploys by hand.
-- The 404-for-funnel gate assumes tailscaled removes client-supplied
-  `Tailscale-Funnel-Request` values (`addTailscaleIdentityHeaders`). Verify
-  after a tailscale upgrade: tailnet `/up` must stay 200 and public `/up` 404.
-- The admin console is intentionally **tailnet-only**. LAN access via the
-  omnivote vhost still works; the public Funnel always gets 404 on `/admin/`.
+- The `auth_basic_user_file` path **must exist before reload**. nginx passes
+  `nginx -t` with a missing file but serves `500` at request time, which would
+  take the admin console (and its API) down.
+- The Basic credential is a shared secret. Rotate it with
+  `sudo htpasswd /etc/nginx/.htpasswd-omnivote omnivote` (no `-c`, so it does not
+  truncate the file) and reload nginx. It is a second factor in front of, not a
+  replacement for, the app's own login + 2FA.
+- The admin console is still excluded from search engines: the SPA shell also
+  carries `<meta name="robots" content="noindex, nofollow">`, nginx sends
+  `X-Robots-Tag: noindex, nofollow` on `/admin/`, and `public/robots.txt`
+  disallows `/admin/` and `/api/`.
 
 ---
 
@@ -344,13 +386,28 @@ sudo certbot --nginx -d api.yourdomain.com
 ```
 (The nginx config already opens `/.well-known/acme-challenge/` on port 80.)
 
-**B. Tailscale hostname only (no public domain) → self-signed cert**
+**B. Tailscale hostname only (no public domain) → Tailscale-issued cert (recommended)**
+`tailscale cert` issues a real Let's Encrypt cert for the MagicDNS name and
+writes it under `/var/lib/tailscale/certs/`. The nginx template expects it at
+`/etc/ssl/private/<host>.crt`/`.key` (matching the running deployment), so:
 ```bash
-sudo mkdir -p /etc/ssl/omnivote
+HOST=debian.tail7e9e1e.ts.net
+sudo tailscale cert "$HOST"
+sudo install -m 644 "/var/lib/tailscale/certs/$HOST.crt" "/etc/ssl/private/$HOST.crt"
+sudo install -m 600 "/var/lib/tailscale/certs/$HOST.key" "/etc/ssl/private/$HOST.key"
+sudo systemctl reload nginx
+```
+The cert is valid ~90 days; re-run the two `install` lines and reload after each
+renewal (schedule a cron/timer — nginx will not reload itself).
+
+*Fallback if you cannot use `tailscale cert`: a self-signed cert at the same
+path* — clients must then trust it:
+```bash
+HOST=debian.tail7e9e1e.ts.net
 sudo openssl req -x509 -nodes -newkey rsa:2048 -days 3650 \
-  -keyout /etc/ssl/omnivote/privkey.pem \
-  -out    /etc/ssl/omnivote/fullchain.pem \
-  -subj   "/CN=debian.tail7e9e1e.ts.net"
+  -keyout "/etc/ssl/private/$HOST.key" \
+  -out    "/etc/ssl/private/$HOST.crt" \
+  -subj   "/CN=$HOST"
 sudo systemctl reload nginx
 ```
 The Flutter app already talks to this address over Tailscale.
@@ -418,9 +475,8 @@ reboot when convenient (`sudo systemctl reboot`).
 
 ```bash
 # health endpoint Laravel ships with (bootstrap routes: health: '/up').
-# NOTE: resolve via a tailnet IP (or loopback) — over the public Funnel the
-# funnel vhost intentionally returns 404 for /up and /sanctum/ and /admin/.
-curl -k --resolve debian.tail7e9e1e.ts.net:443:100.84.115.25 https://debian.tail7e9e1e.ts.net/up
+# /up is public (the funnel vhost serves it); the admin surface is not.
+curl -k https://debian.tail7e9e1e.ts.net/up
 
 # services that must never die
 systemctl is-enabled php8.4-fpm nginx mysql omnivote-worker
@@ -428,6 +484,10 @@ systemctl is-active   php8.4-fpm nginx mysql omnivote-worker
 
 # API smoke test (public + tailnet; these are public routes, both must work)
 curl -i -k https://debian.tail7e9e1e.ts.net/api/election/status
+
+# admin surface is gated: 401 without Basic credentials, 200/301 with them
+curl -k -o /dev/null -w 'no creds: %{http_code}\n' https://debian.tail7e9e1e.ts.net/admin/
+curl -k -u omnivote:YOUR_PASSWORD -o /dev/null -w 'with creds: %{http_code}\n' https://debian.tail7e9e1e.ts.net/admin/
 ```
 
 Kill-test it — that's the whole point of 24/7:
@@ -632,6 +692,63 @@ sudo systemctl reload nginx
 
 ---
 
+## 11. Admin console security & post-suspicion rotation
+
+The admin console is **intentionally public** via Funnel, protected by:
+
+1. **nginx HTTP Basic** on `/admin`, `/admin/`, `/api/admin`, `/api/admin/*`,
+   `/sanctum/*` (shared secret in `/etc/nginx/.htpasswd-omnivote`).
+2. The app's own auth underneath: Sanctum stateful session + CSRF, bcrypt,
+   generic credential errors, per-account login backoff, mandatory TOTP 2FA,
+   and a server-side role/permission re-check on every request.
+
+### Why an IP allow-list is not used
+Tailscale Funnel is L4 and does **not** forward the real client address, so
+`$request->ip()` is always loopback. Consequences:
+- Do **not** rely on per-IP controls for the public Funnel surface.
+- The per-IP login limiter is deliberately skipped for loopback addresses
+  (`HandlesLoginThrottling`), because a single loopback-keyed bucket would let
+  one sprayer lock out every account. Per-account backoff still applies.
+
+### Rotation runbook (after any suspicion of exposure)
+The console URL was publicly reachable and got scanned (see the incident note
+in `docs/HANDOFF_TO_CLINE_ADMIN_HARDENING.md`). If you ever suspect access,
+treat it as a precautionary rotation:
+
+```bash
+cd /var/www/omnivote/backend-laravel
+
+# 0. Snapshot evidence (read-only) BEFORE revoking anything.
+sudo -u omnivote-deploy php8.4 artisan tinker --execute="
+file_put_contents('/tmp/omni-incident-'.date('Ymd-His').'.json', json_encode([
+ 'panel' => DB::table('users')->whereIn('role',['admin','teacher','ssg_president'])
+   ->get(['id','email','role','is_active','two_factor_enabled','failed_login_attempts','locked_until']),
+ 'sessions' => DB::table('sessions')->orderByDesc('last_activity')->limit(200)
+   ->get(['user_id','ip_address','user_agent','last_activity']),
+ 'audit' => DB::table('audit_logs')->orderByDesc('created_at')->limit(300)->get(),
+], JSON_PRETTY_PRINT)); echo 'saved';"
+sudo cp /var/log/nginx/access.log /tmp/omni-access-$(date +%Y%m%d-%H%M%S).log
+
+# 1. Revoke all panel sessions (forces re-login once SESSION_ENCRYPT flips too).
+sudo -u omnivote-deploy php8.4 artisan tinker --execute="
+\$ids = DB::table('users')->whereIn('role',['admin','teacher','ssg_president'])->pluck('id');
+echo DB::table('sessions')->whereIn('user_id',\$ids)->delete().' sessions revoked';"
+
+# 2. Rotate the Basic gate credential (no -c, so it appends rather than truncates).
+sudo htpasswd /etc/nginx/.htpasswd-omnivote omnivote
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Then, in the panel: force a password reset for every panel account and
+re-enroll TOTP 2FA (disable + set up again) so recovery codes are regenerated.
+Skim **Settings → Audit Log** (or `audit_logs`) for entries that are not
+attributable to a known operator.
+
+> Flipping `SESSION_ENCRYPT=true` also invalidates every session row, so it
+> doubles as a global sign-out — expected, and it pairs with this rotation.
+
+---
+
 ## Troubleshooting
 
 | Symptom | Cause / fix |
@@ -651,7 +768,7 @@ sudo systemctl reload nginx
 |---|---|
 | `README.md` | this guide |
 | `nginx-omnivote.conf` | nginx server block (HTTP→HTTPS + FastCGI), public `:443` |
-| `nginx-funnel-api.conf` | nginx vhost for `127.0.0.1:8080` (tailscale funnel/serve); tailnet-only admin gate |
+| `nginx-funnel-api.conf` | nginx vhost for `127.0.0.1:8080` (tailscale funnel/serve); HTTP Basic gate on the admin surface |
 | `php-fpm-pool.conf` | php-fpm pool tuning (dynamic workers) |
 | `omnivote-worker.service` | Laravel queue worker, 24/7 |
 | `setup-server.sh` | one-shot provisioning for Ubuntu 24.04 / Debian 12 |

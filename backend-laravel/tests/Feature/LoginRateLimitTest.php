@@ -93,6 +93,10 @@ class LoginRateLimitTest extends TestCase
 
     public function test_credential_stuffing_across_many_accounts_triggers_the_ip_block(): void
     {
+        // A real, non-loopback client address so the per-IP limiter applies
+        // (loopback is deliberately exempt — see the next test).
+        $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.7']);
+
         $real = $this->makeUser(['role' => 'admin']);
 
         // 15 failures across 15 different (nonexistent) emails on one IP.
@@ -107,6 +111,29 @@ class LoginRateLimitTest extends TestCase
             ->postJson('/api/admin/login', ['email' => $real->email, 'password' => self::PASSWORD])
             ->assertStatus(429)
             ->assertHeader('Retry-After');
+    }
+
+    /**
+     * Behind the public Tailscale Funnel every request arrives from 127.0.0.1,
+     * so a per-IP bucket would be global: 15 sprayed failures could lock out
+     * every account. The limiter must therefore be a no-op for loopback, while
+     * per-account throttling keeps working.
+     */
+    public function test_loopback_ip_does_not_create_a_global_login_lockout(): void
+    {
+        $real = $this->makeUser(['role' => 'admin']);
+
+        for ($i = 0; $i < 15; $i++) {
+            $this->stateful()
+                ->postJson('/api/admin/login', ['email' => "spray-{$i}@example.test", 'password' => 'wrong-password'])
+                ->assertStatus(401);
+        }
+
+        // Still able to sign in: the loopback key never accumulated.
+        $this->stateful()
+            ->postJson('/api/admin/login', ['email' => $real->email, 'password' => self::PASSWORD])
+            ->assertOk()
+            ->assertJsonPath('user.id', $real->id);
     }
 
     public function test_a_successful_login_clears_the_throttle_counters(): void

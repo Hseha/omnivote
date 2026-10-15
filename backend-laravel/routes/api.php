@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AdminAuditLogController;
 use App\Http\Controllers\AdminAuthController;
 use App\Http\Controllers\AdminCandidateController;
 use App\Http\Controllers\AdminDashboardController;
@@ -133,6 +134,12 @@ Route::prefix('admin')->group(function () {
             ->middleware('permission:settings.view');
         Route::patch('/settings/{section}', [SettingsController::class, 'update'])
             ->middleware('permission:settings.update');
+
+        // Audit trail (React Audit Log screen). Admin only; the listing is a
+        // read-only projection of `audit_logs` for sensitive admin actions and
+        // sign-in events.
+        Route::get('/audit-logs', [AdminAuditLogController::class, 'index'])
+            ->middleware('permission:audit.view');
 
         // Backup & restore (React Settings → Backup & Restore)
         Route::get('/backups', [BackupController::class, 'index'])

@@ -36,6 +36,18 @@ GET /api/admin/audit-logs?action=&user_id=&entity_type=&date_from=&date_to=&page
 }
 ```
 
+> **Schema note:** `audit_logs.user_agent` is a **nullable** column added by this work
+> (migration `2026_10_14_000001_add_user_agent_to_audit_logs_table.php`); the API records
+> the client user-agent on each row, and the UI renders it when present. `user_id` is
+> nullable (failed pre-auth logins record `null` → UI shows "System").
+>
+> **Implemented (2026-10-14):** backend `GET /api/admin/audit-logs` (permission `audit.view`),
+> `user_agent` column + recording, and admin sign-in auditing (success/failure/lockout/denied/
+> 2FA-failure/logout); frontend `noindex` meta, `src/AuditLog.jsx` + `src/AuditLog.css`,
+> `formatDateTime()` in `src/lib/datetime.js`, `audit` added to `ROLE_VIEWS.admin`, and the
+> route/nav wiring. The screen shows a clear message on `403` (no `audit.view`) and `404`
+> (endpoint not deployed yet).
+
 ## 3. Tasks
 
 ### 3.1 `noindex` (do first)

@@ -34,11 +34,47 @@ class AssertProductionConfigCommandTest extends TestCase
             'app.debug' => false,
             'app.url' => 'https://omnivote.example.edu',
             'session.secure' => true,
+            'session.encrypt' => true,
+            'sanctum.stateful' => ['omnivote.example.edu'],
             'app.key' => 'base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
         ]);
 
         $this->artisan('security:assert-production-config')
             ->expectsOutputToContain('Production configuration looks safe.')
             ->assertSuccessful();
+    }
+
+    public function test_reports_an_unencrypted_session_store(): void
+    {
+        config([
+            'app.env' => 'production',
+            'app.debug' => false,
+            'app.url' => 'https://omnivote.example.edu',
+            'session.secure' => true,
+            'session.encrypt' => false,
+            'sanctum.stateful' => ['omnivote.example.edu'],
+            'app.key' => 'base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+        ]);
+
+        $this->artisan('security:assert-production-config')
+            ->expectsOutputToContain('SESSION_ENCRYPT must be true')
+            ->assertExitCode(Command::FAILURE);
+    }
+
+    public function test_reports_a_missing_stateful_panel_host(): void
+    {
+        config([
+            'app.env' => 'production',
+            'app.debug' => false,
+            'app.url' => 'https://omnivote.example.edu',
+            'session.secure' => true,
+            'session.encrypt' => true,
+            'sanctum.stateful' => ['localhost', '127.0.0.1'],
+            'app.key' => 'base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+        ]);
+
+        $this->artisan('security:assert-production-config')
+            ->expectsOutputToContain('SANCTUM_STATEFUL_DOMAINS must include the panel host')
+            ->assertExitCode(Command::FAILURE);
     }
 }

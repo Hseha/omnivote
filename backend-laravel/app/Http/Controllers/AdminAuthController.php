@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Controllers\Concerns\HandlesLoginThrottling;
 use App\Models\User;
 use App\Support\AppSettings;
+use App\Support\AuditLog;
 use App\Support\TwoFactor;
 use Closure;
 use Illuminate\Http\JsonResponse;
@@ -60,6 +61,15 @@ class AdminAuthController extends Controller
             // Indistinguishable from a wrong password on purpose: a distinct 423
             // naming the lockout reason and the exact wait time confirmed that a
             // panel account exists (assessment M-3).
+            AuditLog::record(
+                $request,
+                'account_locked',
+                "Blocked a sign-in attempt for {$user->email} while the account is in login backoff.",
+                'user',
+                $user->id,
+                $user->id,
+            );
+
             return $this->backoffResponse($user->backoffSecondsRemaining());
         }
 
@@ -69,6 +79,18 @@ class AdminAuthController extends Controller
             }
             $this->recordLoginFailure($request);
 
+            // Audited for every failure, including unknown addresses (actor is
+            // then null). The attempted email is the only identifier we have, so
+            // it goes in the details.
+            AuditLog::record(
+                $request,
+                'login_failed',
+                'Failed admin sign-in attempt for '.$request->input('email').'.',
+                'user',
+                $user?->id,
+                $user?->id,
+            );
+
             return response()->json(['message' => 'Invalid credentials'], 401);
         }
 
@@ -76,12 +98,30 @@ class AdminAuthController extends Controller
         // permission-gated route, so read them from there: a role added to the
         // config must be able to sign in instead of hitting a stale copy.
         if (! in_array($user->role, config('permissions.panel_roles', []), true)) {
+            AuditLog::record(
+                $request,
+                'login_denied',
+                "Denied admin sign-in for {$user->email}: role '{$user->role}' is not a panel role.",
+                'user',
+                $user->id,
+                $user->id,
+            );
+
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
         // Administrators can disable an account (AdminUserController::updateStatus).
         // Credentials that still verify must not mint a session or token.
         if (! $user->is_active) {
+            AuditLog::record(
+                $request,
+                'login_denied',
+                "Denied admin sign-in for {$user->email}: the account is disabled.",
+                'user',
+                $user->id,
+                $user->id,
+            );
+
             return response()->json(['message' => 'Your account has been disabled.'], 403);
         }
 
@@ -173,6 +213,15 @@ class AdminAuthController extends Controller
         if (! $this->validSecondFactor($user, $code)) {
             RateLimiter::hit($this->twoFactorAttemptKey($user), 60);
 
+            AuditLog::record(
+                $request,
+                '2fa_failed',
+                "Invalid second-factor code submitted for {$user->email}.",
+                'user',
+                $user->id,
+                $user->id,
+            );
+
             return response()->json(['message' => 'Invalid authentication code.'], 422);
         }
 
@@ -195,6 +244,15 @@ class AdminAuthController extends Controller
         // every login response only widened the attack surface. Any legacy
         // `admin-session` token from an older build is pruned here.
         $user->tokens()->where('name', self::SESSION_TOKEN_NAME)->delete();
+
+        AuditLog::record(
+            $request,
+            'login_success',
+            "{$user->name} signed in to the admin console.",
+            'user',
+            $user->id,
+            $user->id,
+        );
 
         return response()->json([
             'user' => $user,
@@ -494,6 +552,15 @@ class AdminAuthController extends Controller
 
         if ($user instanceof User) {
             $user->tokens()->where('name', self::SESSION_TOKEN_NAME)->delete();
+
+            AuditLog::record(
+                $request,
+                'logout',
+                "{$user->name} signed out of the admin console.",
+                'user',
+                $user->id,
+                $user->id,
+            );
         }
 
         Auth::logout();
