@@ -493,6 +493,147 @@ class RegistrarImportTest extends TestCase
     }
 
     // ------------------------------------------------------------------
+    // Name checker (display-only) + existing-account credential handoff
+    // ------------------------------------------------------------------
+
+    public function test_same_full_name_on_different_ids_is_flagged_but_still_created(): void
+    {
+        $this->makeUser(['role' => 'teacher', 'department' => 'BSIT']);
+
+        $response = $this->import($this->csv([
+            ['2024-0001', 'Ana Flores', '1', 'BSIT', 'Block 1'],
+            // Same name, different letter case + doubled spaces, different ID.
+            ['2024-0002', 'ANA  FLORES', '1', 'BSIT', 'Block 2'],
+        ]));
+
+        $response->assertStatus(201)
+            ->assertJsonPath('summary.accounts_provisioned', 2)
+            ->assertJsonPath('summary.name_duplicates', 1)
+            ->assertJsonPath('summary.name_duplicate_lines', [3])
+            ->assertJsonPath('summary.same_first_name_distinct', 0);
+
+        // Warning only — both students are still provisioned.
+        $this->assertSame(2, User::where('role', 'student')->count());
+        $this->assertNotNull(User::where('email', 'ana.flores')->first());
+        $this->assertNotNull(User::where('email', 'ana.flores2')->first());
+    }
+
+    public function test_same_first_name_with_different_surname_is_not_a_duplicate(): void
+    {
+        $this->makeUser(['role' => 'teacher', 'department' => 'BSIT']);
+
+        $response = $this->import($this->csv([
+            ['2024-0001', 'Ana Flores', '1', 'BSIT', 'Block 1'],
+            ['2024-0002', 'Ana Reyes', '1', 'BSIT', 'Block 2'],
+        ]));
+
+        $response->assertStatus(201)
+            ->assertJsonPath('summary.accounts_provisioned', 2)
+            ->assertJsonPath('summary.name_duplicates', 0)
+            // Reported as distinct students: never merged, never dropped.
+            ->assertJsonPath('summary.same_first_name_distinct', 1);
+
+        $this->assertSame(2, User::where('role', 'student')->count());
+    }
+
+    public function test_name_duplicate_is_flagged_against_an_existing_account(): void
+    {
+        $this->makeUser([
+            'role' => 'student',
+            'student_id' => '2024-9999',
+            'name' => 'Ana Flores',
+            'email' => 'ana.flores',
+        ]);
+        $this->makeUser(['role' => 'teacher', 'department' => 'BSIT']);
+
+        $response = $this->import($this->csv([
+            ['2024-0001', 'ana flores', '1', 'BSIT', 'Block 1'],
+        ]));
+
+        $response->assertStatus(201)
+            ->assertJsonPath('summary.name_duplicates', 1)
+            ->assertJsonPath('summary.name_duplicate_lines', [2]);
+    }
+
+    public function test_reimport_of_the_same_student_id_is_not_a_name_duplicate(): void
+    {
+        $this->makeUser([
+            'role' => 'student',
+            'student_id' => '2024-0001',
+            'name' => 'Ana Flores',
+            'email' => 'ana.flores',
+        ]);
+        $this->makeUser(['role' => 'teacher', 'department' => 'BSIT']);
+
+        $this->import($this->csv([
+            ['2024-0001', 'Ana Flores', '1', 'BSIT', 'Block 1'],
+        ]))->assertJsonPath('summary.name_duplicates', 0);
+    }
+
+    public function test_existing_account_is_listed_email_only_and_password_is_never_reset(): void
+    {
+        $this->makeUser([
+            'role' => 'student',
+            'student_id' => '2024-0001',
+            'name' => 'Ana Flores',
+            'email' => 'ana.flores',
+            'password' => 'my-own-password',
+            'must_change_password' => false,
+        ]);
+        $this->makeUser(['role' => 'teacher', 'department' => 'BSIT']);
+
+        $response = $this->import($this->csv([
+            ['2024-0001', 'Ana Flores', '1', 'BSIT', 'Block 1'],
+        ]));
+
+        $response->assertStatus(201)
+            ->assertJsonPath('summary.accounts_provisioned', 0)
+            ->assertJsonPath('summary.accounts_updated', 1);
+
+        // No fresh credential is generated for an existing account.
+        $this->assertSame([], $response->json('temporary_credentials'));
+
+        $existing = $response->json('existing_credentials');
+        $this->assertCount(1, $existing);
+        $this->assertSame('2024-0001', $existing[0]['student_id']);
+        $this->assertSame('ana.flores', $existing[0]['email']);
+        $this->assertSame('active', $existing[0]['status']);
+        $this->assertArrayNotHasKey('temp_password', $existing[0], 'existing credentials must never carry a password');
+
+        // The student's chosen password and flag are untouched.
+        $user = User::where('student_id', '2024-0001')->firstOrFail();
+        $this->assertTrue(Hash::check('my-own-password', $user->password), 're-import must not reset an active password');
+        $this->assertFalse((bool) $user->must_change_password);
+    }
+
+    public function test_existing_account_still_holding_a_temp_password_is_listed_but_not_rotated(): void
+    {
+        $this->makeUser([
+            'role' => 'student',
+            'student_id' => '2024-0001',
+            'name' => 'Ana Flores',
+            'email' => 'ana.flores',
+            'password' => 'temp-from-before',
+            'must_change_password' => true,
+        ]);
+        $this->makeUser(['role' => 'teacher', 'department' => 'BSIT']);
+
+        $response = $this->import($this->csv([
+            ['2024-0001', 'Ana Flores', '1', 'BSIT', 'Block 1'],
+        ]));
+
+        $response->assertStatus(201);
+        $this->assertSame([], $response->json('temporary_credentials'));
+        $this->assertCount(1, $response->json('existing_credentials'));
+
+        // Rotation stays a deliberate act (security:rotate-student-credentials),
+        // never a side-effect of a routine re-import.
+        $user = User::where('student_id', '2024-0001')->firstOrFail();
+        $this->assertTrue(Hash::check('temp-from-before', $user->password), 're-import must not rotate a held temp password');
+        $this->assertTrue((bool) $user->must_change_password);
+    }
+
+    // ------------------------------------------------------------------
     // Helpers
     // ------------------------------------------------------------------
 

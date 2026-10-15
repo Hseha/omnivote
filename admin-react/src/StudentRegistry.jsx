@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   ShieldCheck,
   UploadCloud,
@@ -16,10 +16,35 @@ import './StudentRegistry.css';
 export default function StudentRegistry({ onLogout, activeView = 'voters', onNavigate, currentUser = null }) {
   const [selectedFile, setSelectedFile] = useState(null);
   const [previewRows, setPreviewRows] = useState([]);
+  const [previewHeaderRecognized, setPreviewHeaderRecognized] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
   const [error, setError] = useState('');
   const fileInputRef = useRef(null);
+
+  // Live catalog for the downloadable CSV template's example row, so the
+  // sample never bakes in a department or program name that a rename would
+  // invalidate. When the catalog is unavailable the template falls back to a
+  // header-only sheet.
+  const [templateDepartments, setTemplateDepartments] = useState([]);
+  const [templateCourses, setTemplateCourses] = useState([]);
+
+  useEffect(() => {
+    let active = true;
+    api.get('/admin/users', { params: { per_page: 1 } })
+      .then((res) => {
+        if (!active) return;
+        setTemplateDepartments(res.data?.departments ?? []);
+        setTemplateCourses(res.data?.courses ?? []);
+      })
+      .catch(() => {
+        // The catalog only feeds the template example; a failure just means
+        // the exported template stays header-only.
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const parseCsvLine = (line) => {
     const cells = [];
@@ -49,7 +74,7 @@ export default function StudentRegistry({ onLogout, activeView = 'voters', onNav
 
   const parseCsvPreview = (text) => {
     const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0);
-    if (lines.length < 2) return [];
+    if (lines.length < 1) return { rows: [], headerRecognized: false };
 
     const headers = parseCsvLine(lines[0]).map((header) => header
       .replace(/^\uFEFF/, '')
@@ -66,7 +91,11 @@ export default function StudentRegistry({ onLogout, activeView = 'voters', onNav
       course: findColumn('course', 'program'),
     };
 
-    return lines.slice(1, 6)
+    // Column order is irrelevant — the importer matches headers by text.
+    const headerRecognized = columns.student_id >= 0 && columns.full_name >= 0;
+    if (lines.length < 2) return { rows: [], headerRecognized };
+
+    const rows = lines.slice(1, 6)
       .map(parseCsvLine)
       .filter((row) => row.length >= 2)
       .map((row) => {
@@ -88,6 +117,8 @@ export default function StudentRegistry({ onLogout, activeView = 'voters', onNav
           role: 'Student',
         };
       });
+
+    return { rows, headerRecognized };
   };
 
   const handleFileChange = (e) => {
@@ -98,7 +129,11 @@ export default function StudentRegistry({ onLogout, activeView = 'voters', onNav
     setSelectedFile(file);
 
     const reader = new FileReader();
-    reader.onload = () => setPreviewRows(parseCsvPreview(String(reader.result)));
+    reader.onload = () => {
+      const { rows, headerRecognized } = parseCsvPreview(String(reader.result));
+      setPreviewRows(rows);
+      setPreviewHeaderRecognized(headerRecognized);
+    };
     reader.readAsText(file);
   };
 
@@ -125,14 +160,17 @@ export default function StudentRegistry({ onLogout, activeView = 'voters', onNav
   const handleCancel = () => {
     setSelectedFile(null);
     setPreviewRows([]);
+    setPreviewHeaderRecognized(false);
     setImportResult(null);
     setError('');
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // One-time handout after an import: CSV of every newly provisioned account's
-  // login (email) + temporary password, so the admin can share them instead of
-  // trying to remember them. The temp password is the student ID in the CSV.
+  // One-time handout after an import: a CSV of every account created by this
+  // import (login email + randomly generated temporary password) plus the
+  // existing accounts it touched (login email only — their password is never
+  // reset here). The temporary password is a random CSPRNG value, never the
+  // student ID.
   const escapeCell = (value = '') => {
     const text = String(value);
     return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
@@ -151,37 +189,77 @@ export default function StudentRegistry({ onLogout, activeView = 'voters', onNav
   };
 
   // Blank roster showing the exact format the importer expects: the five
-  // required columns plus the optional Course. Header row only, so no
-  // department or program name is ever baked into the template.
+  // required columns plus the optional Course. The header names line up with
+  // the importer ("Full Name") and the credentials export, and an example row
+  // built from the live catalog shows how a record should look.
   const downloadTemplate = () => {
-    const header = ['Student ID', 'Student Name', 'Year Level', 'Department', 'Block Number', 'Course'];
-    downloadCsv('omnivote-student-import-template.csv', [header.join(',')]);
+    const header = ['Student ID', 'Full Name', 'Year Level', 'Department', 'Block Number', 'Course'];
+    const lines = [header.join(',')];
+
+    const exampleDepartment = templateDepartments[0];
+    if (exampleDepartment) {
+      const exampleCourse = (templateCourses.find((course) => course.college === exampleDepartment)?.name ?? '');
+      const example = ['2024-0001', 'Juan Dela Cruz', '1', exampleDepartment, '1', exampleCourse];
+      lines.push(example.map(escapeCell).join(','));
+    }
+
+    downloadCsv('omnivote-student-import-template.csv', lines);
   };
 
   const exportCredentials = () => {
-    const credentials = importResult?.temporary_credentials ?? [];
-    if (credentials.length === 0) return;
+    const newCredentials = importResult?.temporary_credentials ?? [];
+    const existingCredentials = importResult?.existing_credentials ?? [];
+    if (newCredentials.length === 0 && existingCredentials.length === 0) return;
 
-    const header = ['Student ID', 'Full Name', 'Email Address (Login)', 'Year Level', 'Block Number', 'Department', 'Course', 'Password'];
-    const lines = [
-      header.join(','),
-      ...credentials.map((c) => [
+    const header = ['Student ID', 'Full Name', 'Email Address (Login)', 'Status', 'Year Level', 'Block Number', 'Department', 'Course', 'Temporary Password'];
+    const rows = [
+      ...newCredentials.map((c) => [
         escapeCell(c.student_id),
         escapeCell(c.full_name),
         escapeCell(c.email),
+        escapeCell('New'),
         escapeCell(c.year_level),
         escapeCell(c.block_number),
         escapeCell(c.department ?? ''),
         escapeCell(c.course ?? ''),
         escapeCell(c.temp_password),
-      ].join(',')),
+      ]),
+      // Existing accounts are listed so the registrar has one sheet for
+      // everyone, but no password is generated or reset for them.
+      ...existingCredentials.map((c) => [
+        escapeCell(c.student_id),
+        escapeCell(c.full_name),
+        escapeCell(c.email),
+        escapeCell('Existing'),
+        '', '', '', '',
+        '',
+      ]),
     ];
+    const lines = [header.join(','), ...rows.map((row) => row.join(','))];
 
     downloadCsv(`omnivote-login-credentials-${new Date().toISOString().slice(0, 10)}.csv`, lines);
   };
 
+  // Registrar-issued activation / recovery codes are returned once, in
+  // plaintext, only for the rows an import added. Export them so the registrar
+  // can hand them out; the server keeps only a bcrypt hash.
+  const exportActivationCodes = () => {
+    const codes = importResult?.activation_codes ?? [];
+    if (codes.length === 0) return;
+
+    const header = ['Student ID', 'Full Name', 'Activation Code'];
+    const lines = [
+      header.join(','),
+      ...codes.map((c) => [escapeCell(c.student_id), escapeCell(c.full_name), escapeCell(c.activation_code)].join(',')),
+    ];
+
+    downloadCsv(`omnivote-activation-codes-${new Date().toISOString().slice(0, 10)}.csv`, lines);
+  };
+
   const summary = importResult?.summary;
   const tempCredentials = importResult?.temporary_credentials ?? [];
+  const existingCredentials = importResult?.existing_credentials ?? [];
+  const activationCodes = importResult?.activation_codes ?? [];
 
   return (
     <div className="dashboard-container">
@@ -231,8 +309,13 @@ export default function StudentRegistry({ onLogout, activeView = 'voters', onNav
             </p>
             <span className="dropzone-sub">.csv files only, max 10MB</span>
             <div className="required-columns-pill">
-              <strong>Required CSV columns:</strong> Student ID, Student Name, Year Level, Department, Block Number
-              <span className="optional-course-note"> · Optional: Course (stored as-is when it doesn't match an offered program)</span>
+              <strong>Required CSV columns:</strong> Student ID, Full Name, Year Level, Department, Block Number
+              <span className="optional-course-note"> · Optional: Course (stored as-is when it doesn&apos;t match an offered program)</span>
+              <span className="optional-course-note">
+                {' '}· Department accepts the college name or its code (e.g. &quot;CCS&quot;); Course accepts the program name or code
+                (e.g. &quot;BSIT&quot;); Block Number accepts &quot;1&quot; or &quot;Block 1&quot;; Year Level is &quot;1&quot;–&quot;4&quot;. The login
+                email is generated from the name, never read from the CSV.
+              </span>
             </div>
             <input
               ref={fileInputRef}
@@ -255,7 +338,9 @@ export default function StudentRegistry({ onLogout, activeView = 'voters', onNav
                     <div className="file-meta">
                       {previewRows.length > 0
                         ? `${previewRows.length} records found • Ready for preview`
-                        : 'No valid records found in this file'}
+                        : previewHeaderRecognized
+                          ? 'Header recognized • add student rows to preview them'
+                          : 'No valid records found in this file'}
                     </div>
                   </div>
                 </div>
@@ -266,8 +351,10 @@ export default function StudentRegistry({ onLogout, activeView = 'voters', onNav
                 <Info size={18} color="#16a34a" />
                 {previewRows.length > 0 ? (
                   <span><strong>Previewing the first {previewRows.length} rows below</strong></span>
+                ) : previewHeaderRecognized ? (
+                  <span><strong>This looks like the blank template.</strong> Add student rows under the header row to preview them.</span>
                 ) : (
-                  <span><strong>No valid rows to preview.</strong> Check that the CSV header row uses the required columns (Student ID, Student Name, Year Level, Department, Block Number).</span>
+                  <span><strong>No valid rows to preview.</strong> Check that the header row includes the required columns (Student ID, Full Name, Year Level, Department, Block Number). Column order doesn&apos;t matter.</span>
                 )}
               </div>
 
@@ -276,7 +363,7 @@ export default function StudentRegistry({ onLogout, activeView = 'voters', onNav
                   <thead>
                     <tr>
                       <th>Student ID</th>
-                      <th>Student Name</th>
+                      <th>Full Name</th>
                       <th>Login (auto-generated)</th>
                       <th>Year Level</th>
                       <th>Block Number</th>
@@ -299,7 +386,11 @@ export default function StudentRegistry({ onLogout, activeView = 'voters', onNav
                   </tbody>
                 </table>
               ) : (
-                <p className="registry-csv-empty">Fix the file and pick it again — the header row must match the required column order.</p>
+                <p className="registry-csv-empty">
+                  {previewHeaderRecognized
+                    ? 'The header row is recognized — add one student per line to import them.'
+                    : 'Fix the file and pick it again — the header row must include the required columns (Student ID, Full Name, Year Level, Department, Block Number).'}
+                </p>
               )}
             </div>
           )}
@@ -338,39 +429,95 @@ export default function StudentRegistry({ onLogout, activeView = 'voters', onNav
                         </span>
                       </>
                     )}
+                    {(summary.name_duplicates ?? 0) > 0 && (
+                      <>
+                        {' '}•{' '}
+                        <span className="text-amber-700">
+                          {summary.name_duplicates} row(s) share a full name with a different Student ID (accounts were
+                          still created — verify they aren&apos;t duplicate people)
+                        </span>
+                      </>
+                    )}
+                    {(summary.same_first_name_distinct ?? 0) > 0 && (
+                      <>
+                        {' '}• {summary.same_first_name_distinct} with the same first name but a different surname (kept
+                        as separate students)
+                      </>
+                    )}
                   </span>
                 </div>
               )}
-              {tempCredentials.length > 0 && (
+              {(tempCredentials.length > 0 || existingCredentials.length > 0) && (
+                <>
+                  {tempCredentials.length > 0 && (
+                    <table className="preview-table">
+                      <thead>
+                        <tr>
+                          <th>Student ID</th>
+                          <th>Full Name</th>
+                          <th>Email</th>
+                          <th>Temporary Password</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {tempCredentials.slice(0, 5).map((c, i) => (
+                          <tr key={i}>
+                            <td className="font-mono">{c.student_id}</td>
+                            <td className="font-medium">{c.full_name}</td>
+                            <td className="text-muted">{c.email}</td>
+                            <td className="font-mono">{c.temp_password}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                  <p className="table-footer-info">
+                    {tempCredentials.length > 0 && (
+                      <>Showing the first {Math.min(5, tempCredentials.length)} of {tempCredentials.length} newly created
+                        account(s) — download the CSV below for every account. </>
+                    )}
+                    {existingCredentials.length > 0 && (
+                      <>{existingCredentials.length} existing account(s) are listed in the CSV by login email only; an
+                        import never resets their password. Reset them deliberately from User Management if needed. </>
+                    )}
+                    Students sign in to the mobile app with their generated Email Address (their name, lowercased with
+                    dots) and the randomly generated Temporary Password from the CSV.
+                  </p>
+                  <div className="credentials-export-row">
+                    <button type="button" className="btn-export-creds" onClick={exportCredentials}>
+                      <Download size={16} /> Export Login Credentials ({tempCredentials.length + existingCredentials.length})
+                    </button>
+                  </div>
+                </>
+              )}
+              {activationCodes.length > 0 && (
                 <>
                   <table className="preview-table">
                     <thead>
                       <tr>
                         <th>Student ID</th>
                         <th>Full Name</th>
-                        <th>Email</th>
-                        <th>Temporary Password</th>
+                        <th>Activation Code</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {tempCredentials.slice(0, 5).map((c, i) => (
+                      {activationCodes.slice(0, 5).map((c, i) => (
                         <tr key={i}>
                           <td className="font-mono">{c.student_id}</td>
                           <td className="font-medium">{c.full_name}</td>
-                          <td className="text-muted">{c.email}</td>
-                          <td className="font-mono">{c.temp_password}</td>
+                          <td className="font-mono">{c.activation_code}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                   <p className="table-footer-info">
-                    Showing the first 5 of {tempCredentials.length} — download the CSV below for every newly
-                    created account. Students log in to the mobile app with their generated Email Address
-                    (their name, lowercased with dots) and this Temporary Password (their Student ID).
+                    Showing the first {Math.min(5, activationCodes.length)} of {activationCodes.length} activation
+                    code(s). These one-time account-recovery codes are shown only once — distribute them securely and
+                    delete the file afterward.
                   </p>
                   <div className="credentials-export-row">
-                    <button type="button" className="btn-export-creds" onClick={exportCredentials}>
-                      <Download size={16} /> Export Login Credentials ({tempCredentials.length})
+                    <button type="button" className="btn-export-creds" onClick={exportActivationCodes}>
+                      <Download size={16} /> Export Activation Codes ({activationCodes.length})
                     </button>
                   </div>
                 </>
