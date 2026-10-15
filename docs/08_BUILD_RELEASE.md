@@ -104,6 +104,57 @@ app-only Added/Fixed/Changed notes from commits since `archive/user-flutter`,
 refuses an existing tag, and creates the GitHub Release with APKs only. It does
 not upload symbols or signing materials.
 
+### Automatic test-channel releases
+
+`Auto release student app (test channel)`
+([`.github/workflows/auto-release-student-app.yml`](.github/workflows/auto-release-student-app.yml))
+runs on every push to `main` that touches anything under `user-flutter/**`. It
+reuses the two workflows above via `workflow_call`:
+
+1. **Bump** — increments the patch and build number in `user-flutter/pubspec.yaml`
+   (`1.2.1+4` → `1.2.2+5`) and commits it to `main` as
+   `chore(release): bump student app to X.Y.Z+N [skip ci]`. The bump is
+   required: Android's `versionCode` is the `+N` build number, so a rebuilt APK
+   with an unchanged build number would be refused as an upgrade. Commits pushed
+   with `GITHUB_TOKEN` do not start workflows, so the bump cannot re-trigger this
+   workflow (the `github-actions[bot]` actor guard is a second line of defence).
+2. **Build** — calls `student-app-test-build.yml` against the bump commit
+   (analyze, test, sign, obfuscated split APKs, signature verification, artifact
+   upload).
+3. **Publish** — calls `publish-student-app.yml` with `release_channel: test`
+   and `same_run: true`, creating a `vX.Y.Z-test.<run_number>` prerelease. The
+   `same_run` flag tells the publisher to skip its completed-run API check: the
+   APKs come from the build job of the same run, already gated by `needs: build`.
+
+Because the in-app update notice surfaces prereleases too, students are pointed
+at the newest test build automatically after each mobile merge — no manual
+release step. The `stable` channel is unchanged: it still requires a manual
+dispatch with a real device smoke test.
+
+Backend (`backend-laravel/**`), admin console (`admin-react/**`), doc, and
+deploy changes do **not** match the `user-flutter/**` path filter and never
+start a release.
+
+The bump commit is pushed directly to `main`, which the repository ruleset
+**Protect Main Branch** normally forbids (it requires a pull request and has no
+admin bypass). This repository is owned by a personal account, where GitHub
+refuses the GitHub Actions integration as a ruleset bypass actor
+(`422 Actor GitHub Actions integration must be part of the ruleset source or
+owner organization`). The release therefore pushes as a dedicated **write deploy
+key** that is listed in the ruleset's bypass actors:
+
+| Setting | Location |
+|---|---|
+| Deploy key `OmniVote auto-release version bump` (write) | **Settings → Deploy keys** |
+| Private half of that key | Actions secret `STUDENT_APP_BUMP_DEPLOY_KEY` |
+| Bypass actor `DeployKey` | **Settings → Rules → Protect Main Branch → Bypass list** |
+
+Keep all three in sync. If the deploy key is rotated, update the secret and the
+ruleset bypass actor together, and delete the old key. If the bypass is removed,
+the `bump` job fails at `git push`; restore the bypass rather than weakening the
+ruleset. The key can only be used to push to this repository, and revoking it
+stops the automation immediately.
+
 ### In-app update notice
 
 Students learn about a new build from the app itself: on launch the app reads

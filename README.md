@@ -54,6 +54,7 @@ GitHub/Tailscale identity to be provisioned before it runs.
 | [`deploy/`](deploy/) | Server provisioning, nginx/PHP-FPM/systemd configuration, backups, and deployment scripts | Bash, nginx, systemd |
 | [`docs/`](docs/) | Architecture, API contract, product references, audits, and operations guides | Markdown |
 | [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) | CI checks, Android release-size gate, and gated production deployment | GitHub Actions |
+| [`.github/workflows/auto-release-student-app.yml`](.github/workflows/auto-release-student-app.yml) | Bumps, builds, and publishes a test-channel app prerelease on every `user-flutter/` change to main | GitHub Actions |
 
 ## Run locally
 

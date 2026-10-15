@@ -1,0 +1,112 @@
+name: Auto release student app (test channel)
+
+# Every push to main that touches anything under user-flutter/ bumps the app
+# version, builds signed APKs and publishes a `test` prerelease. The in-app
+# update banner already surfaces prereleases, so students are notified without
+# any manual release step. The `stable` channel stays a manual, smoke-tested
+# dispatch of publish-student-app.yml.
+#
+# This workflow reuses the two existing workflows via `workflow_call`:
+#   student-app-test-build.yml — analyze, test, sign, build, upload artifacts
+#   publish-student-app.yml    — create the GitHub Release from those artifacts
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'user-flutter/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: student-app-auto-release
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    name: Bump student app version
+    # Loop protection: the CI's own bump commit never starts a release.
+    # (Pushes made with GITHUB_TOKEN do not trigger workflows at all; this is
+    # belt and braces, and also skips any other automation-authored push.)
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      sha: ${{ steps.bump.outputs.sha }}
+    steps:
+      # Always bump from the current tip of main rather than the triggering
+      # SHA, so the release carries the newest mobile code. The concurrency
+      # group above serialises runs, and the push retries on a race.
+      - name: Check out the latest main
+        uses: actions/checkout@v4
+        with:
+          ref: refs/heads/main
+          fetch-depth: 0
+
+      - name: Increment patch and build number in pubspec.yaml
+        id: bump
+        env:
+          # On a user-owned repository GitHub refuses the GitHub Actions
+          # integration as a ruleset bypass actor, so the bump is pushed as a
+          # dedicated write deploy key that IS allowed in the ruleset's bypass
+          # list. See docs/08_BUILD_RELEASE.md (Automatic test-channel releases).
+          BUMP_DEPLOY_KEY: ${{ secrets.STUDENT_APP_BUMP_DEPLOY_KEY }}
+        run: |
+          set -Eeuo pipefail
+          current="$(sed -n 's/^version:[[:space:]]*//p' user-flutter/pubspec.yaml)"
+          if [[ ! "$current" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)\+([0-9]+)$ ]]; then
+            echo "user-flutter/pubspec.yaml version must match X.Y.Z+N (got '$current')." >&2
+            exit 1
+          fi
+          patch=$(( BASH_REMATCH[3] + 1 ))
+          build=$(( BASH_REMATCH[4] + 1 ))
+          version="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${patch}"
+          sed -i "s/^version:.*/version: ${version}+${build}/" user-flutter/pubspec.yaml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add user-flutter/pubspec.yaml
+          # [skip ci] keeps the commit inert even outside GitHub Actions.
+          git commit -m "chore(release): bump student app to ${version}+${build} [skip ci]"
+
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$BUMP_DEPLOY_KEY" > ~/.ssh/bump_deploy_key
+          chmod 600 ~/.ssh/bump_deploy_key
+          ssh-keyscan -t ed25519,rsa github.com >> ~/.ssh/known_hosts 2>/dev/null || true
+          export GIT_SSH_COMMAND='ssh -i ~/.ssh/bump_deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes'
+          git remote set-url origin "git@github.com:${GITHUB_REPOSITORY}.git"
+
+          for attempt in 1 2 3; do
+            if git push origin HEAD:main; then
+              break
+            fi
+            if [[ "$attempt" == 3 ]]; then
+              echo "Could not push the version bump to main." >&2
+              exit 1
+            fi
+            git pull --rebase origin main
+          done
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build signed APKs
+    needs: bump
+    uses: ./.github/workflows/student-app-test-build.yml
+    with:
+      ref: ${{ needs.bump.outputs.sha }}
+    secrets: inherit
+
+  publish:
+    name: Publish test prerelease
+    needs: [bump, build]
+    uses: ./.github/workflows/publish-student-app.yml
+    with:
+      build_run_id: ${{ github.run_id }}
+      release_channel: test
+      smoke_test_passed: false
+      same_run: true
+      source_head_sha: ${{ needs.bump.outputs.sha }}
+    secrets: inherit

@@ -20,6 +20,35 @@ on:
         options:
           - test
           - stable
+  # Called by auto-release-student-app.yml to publish an automatic test-channel
+  # prerelease for every mobile change merged to main. The stable channel stays
+  # a manual, smoke-tested dispatch.
+  workflow_call:
+    inputs:
+      build_run_id:
+        description: Run ID of the Student app test build whose APK should be published
+        required: true
+        type: string
+      smoke_test_passed:
+        description: Confirm arm64 APK login and authenticated screen passed on a non-Tailscale device
+        required: false
+        default: false
+        type: boolean
+      release_channel:
+        description: Release channel; automatic callers must use 'test'
+        required: false
+        default: test
+        type: string
+      same_run:
+        description: Set when the APKs come from this very run (auto-release path); skips the completed-run API check
+        required: false
+        default: false
+        type: boolean
+      source_head_sha:
+        description: Commit the APKs were built from; required when same_run is true
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: write
@@ -43,22 +72,45 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           BUILD_RUN_ID: ${{ inputs.build_run_id }}
+          SAME_RUN: ${{ inputs.same_run }}
+          SOURCE_HEAD_SHA: ${{ inputs.source_head_sha }}
+          THIS_RUN_NUMBER: ${{ github.run_number }}
           REPOSITORY: ${{ github.repository }}
         run: |
           set -Eeuo pipefail
+          if [[ "$SAME_RUN" == "true" ]]; then
+            # Auto-release path: the APKs come from the build job of this very
+            # run, which the orchestrator already gated behind `needs: build`.
+            # The run is still in progress here, so there is no completed run
+            # for the API check below to validate — trust the caller instead.
+            [[ "$SOURCE_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+              echo "source_head_sha must be a full commit SHA when same_run is true." >&2
+              exit 1
+            }
+            echo "head_sha=$SOURCE_HEAD_SHA" >> "$GITHUB_OUTPUT"
+            echo "run_number=$THIS_RUN_NUMBER" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           [[ "$BUILD_RUN_ID" =~ ^[0-9]+$ ]] || {
             echo "Build run ID must be numeric." >&2
             exit 1
           }
-          workflow_id="$(gh api "repos/$REPOSITORY/actions/workflows/student-app-test-build.yml" --jq '.id')"
+          # The APKs may have been produced by a direct dispatch of the test
+          # build workflow, or by the auto-release orchestrator that calls it
+          # (whose run carries the push event). Accept either workflow.
+          build_workflow_id="$(gh api "repos/$REPOSITORY/actions/workflows/student-app-test-build.yml" --jq '.id')"
+          auto_workflow_id="$(gh api "repos/$REPOSITORY/actions/workflows" \
+            --jq '[.workflows[] | select(.path == ".github/workflows/auto-release-student-app.yml") | .id] | first // 0')"
           run="$(gh api "repos/$REPOSITORY/actions/runs/$BUILD_RUN_ID")"
           jq -e \
-            --argjson expected_workflow "$workflow_id" \
-            '(.workflow_id == $expected_workflow) and
-             (.event == "workflow_dispatch") and
+            --argjson build_workflow "$build_workflow_id" \
+            --argjson auto_workflow "$auto_workflow_id" \
+            '((.workflow_id == $build_workflow) or
+              ($auto_workflow != 0 and .workflow_id == $auto_workflow)) and
+             (.event == "workflow_dispatch" or .event == "push") and
              (.head_branch == "main") and
              (.conclusion == "success")' <<<"$run" >/dev/null || {
-              echo "Run must be a successful Student app test build from main." >&2
+              echo "Run must be a successful Student app test build (or auto-release) from main." >&2
               exit 1
             }
           echo "head_sha=$(jq -r '.head_sha' <<<"$run")" >> "$GITHUB_OUTPUT"
@@ -139,10 +191,26 @@ jobs:
           import subprocess
           from pathlib import Path
 
-          commits = subprocess.check_output(
-              ["git", "log", "--no-merges", "--format=%s", "archive/user-flutter..HEAD", "--", "user-flutter/"],
+          raw = subprocess.check_output(
+              [
+                  "git",
+                  "log",
+                  "--no-merges",
+                  "--format=%an\t%s",
+                  "archive/user-flutter..HEAD",
+                  "--",
+                  "user-flutter/",
+              ],
               text=True,
-          ).splitlines()
+          )
+          # The auto-release orchestrator's own `chore(release): bump …` commit
+          # is bookkeeping, not a user-facing change.
+          commits = []
+          for line in raw.splitlines():
+              author, _, subject = line.partition("\t")
+              if author == "github-actions[bot]":
+                  continue
+              commits.append(subject)
           sections = {"Added": [], "Fixed": [], "Changed": []}
           for subject in commits:
               match = re.match(r"^([a-zA-Z]+)(?:\([^)]*\))?:\s*(.+)$", subject)
