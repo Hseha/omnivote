@@ -46,6 +46,12 @@ class AuthState {
   /// `users.role` payload; it only turns true after a successful login.
   final String? role;
 
+  /// True for a freshly-granted SSG President who still holds a one-time setup
+  /// link (in their in-app notifications) and has not yet set their own
+  /// password. Non-blocking: it drives a dashboard prompt, not a route gate, so
+  /// the notification feed carrying the link stays reachable.
+  final bool ssgSetupPending;
+
   AuthState({
     this.student,
     this.isLoading = false,
@@ -53,6 +59,7 @@ class AuthState {
     this.mustChangePassword = false,
     this.retryAfterSeconds,
     this.role,
+    this.ssgSetupPending = false,
   });
 
   AuthState copyWith({
@@ -62,6 +69,7 @@ class AuthState {
     Object? mustChangePassword = _unset,
     Object? retryAfterSeconds = _unset,
     Object? role = _unset,
+    Object? ssgSetupPending = _unset,
   }) {
     return AuthState(
       student: student ?? this.student,
@@ -76,6 +84,9 @@ class AuthState {
       role: identical(role, _unset)
           ? this.role
           : role as String?,
+      ssgSetupPending: identical(ssgSetupPending, _unset)
+          ? this.ssgSetupPending
+          : ssgSetupPending as bool,
     );
   }
 
@@ -151,6 +162,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       mustChangePassword: result?.mustChangePassword ?? false,
       isLoading: false,
       role: result?.student.role,
+      ssgSetupPending: result?.ssgSetupPending ?? false,
     );
   }
 
@@ -167,6 +179,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         student: result.student,
         mustChangePassword: result.mustChangePassword,
         role: result.student.role,
+        ssgSetupPending: result.ssgSetupPending,
       );
       return true;
     } catch (e) {
@@ -202,6 +215,37 @@ class AuthNotifier extends StateNotifier<AuthState> {
       state = state.copyWith(
         isLoading: false,
         errorMessage: apiErrorMessage(e, fallback: 'Could not update password'),
+      );
+      return false;
+    }
+  }
+
+  /// Redeems the SSG President's one-time setup link and sets their password.
+  ///
+  /// Authenticated (the President already signed in) and token-bound: the
+  /// `token` is the secret from the in-app notification link, not a session
+  /// credential. On success the `ssg_setup_pending` prompt is cleared; the
+  /// existing session stays valid.
+  Future<bool> setupSsgPassword({
+    required String token,
+    required String newPassword,
+  }) async {
+    state = state.copyWith(isLoading: true, errorMessage: null);
+
+    try {
+      await _authRepository.setupSsgPassword(
+        token: token,
+        newPassword: newPassword,
+      );
+      state = state.copyWith(isLoading: false, ssgSetupPending: false);
+      return true;
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: apiErrorMessage(
+          e,
+          fallback: 'Could not set your password. The link may have expired.',
+        ),
       );
       return false;
     }

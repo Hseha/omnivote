@@ -42,6 +42,20 @@ class AuthService {
     });
   }
 
+  /// Redeems the SSG President's one-time in-app setup link and sets their own
+  /// password. Authenticated (bearer) and token-bound: the token is the secret
+  /// carried in the notification link, not a session credential.
+  Future<Response> setupSsgPassword({
+    required String token,
+    required String newPassword,
+  }) async {
+    return await _dio.post(ApiConstants.ssgSetupPassword, data: {
+      'token': token,
+      'password': newPassword,
+      'password_confirmation': newPassword,
+    });
+  }
+
   /// Redeems a registrar-issued activation code to set a new password.
   ///
   /// Deliberately unauthenticated: the student cannot sign in precisely because

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_tokens.dart';
@@ -23,6 +24,8 @@ class PresidentDashboardScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final student = ref.watch(authProvider.select((state) => state.student));
     final role = ref.watch(authProvider.select((state) => state.role));
+    final setupPending =
+        ref.watch(authProvider.select((state) => state.ssgSetupPending));
 
     if (student == null) {
       return const Scaffold(body: Center(child: Text('Not authenticated')));
@@ -40,6 +43,8 @@ class PresidentDashboardScreen extends ConsumerWidget {
         child: ListView(
           padding: EdgeInsets.all(AppSpacing.xs),
           children: [
+            if (setupPending) const _SetupPasswordBanner(),
+            if (setupPending) const SizedBox(height: AppSpacing.md),
             _RoleBanner(
               name: student.name,
               studentId: student.studentId,
@@ -51,6 +56,38 @@ class PresidentDashboardScreen extends ConsumerWidget {
             _AnnouncementsSection(ref: ref),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Non-blocking prompt for a freshly-granted President to redeem their one-time
+/// setup link. Tapping it opens the notification feed where the link lives; it
+/// deliberately does not gate the dashboard, so the feed stays reachable.
+class _SetupPasswordBanner extends StatelessWidget {
+  const _SetupPasswordBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      color: scheme.errorContainer,
+      child: ListTile(
+        leading: Icon(Icons.lock_reset, color: scheme.onErrorContainer),
+        title: Text(
+          'Set your password',
+          style: TextStyle(
+            color: scheme.onErrorContainer,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        subtitle: Text(
+          'Open your notifications and tap the setup link to choose your own '
+          'password. It can be used once.',
+          style: TextStyle(color: scheme.onErrorContainer),
+        ),
+        trailing: Icon(Icons.chevron_right, color: scheme.onErrorContainer),
+        onTap: () => context.push('/notifications'),
       ),
     );
   }

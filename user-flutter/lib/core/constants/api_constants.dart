@@ -16,6 +16,11 @@ class ApiConstants {
   static const String me = '/auth/me';
   static const String changePassword = '/auth/password/change';
 
+  // SSG President credential handoff. The token comes from the one-time setup
+  // link delivered to the President's in-app notification feed, so this is
+  // authenticated (bearer) AND token-bound — see SsgSetupController.
+  static const String ssgSetupPassword = '/ssg/setup-password';
+
   // Self-service recovery (assessment M-3).
   //
   // Students have no mailbox — their handle is a name-derived slug — so an

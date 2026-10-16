@@ -303,31 +303,18 @@ export default function UserManagement({ onLogout, activeView = 'user_management
     setGrantLoading(uid);
     try {
       const res = await api.post(`/admin/users/${uid}/grant-ssg`);
-      // The award is the credential handoff point: surface the login (and the
-      // one-time temporary password, when one had to be minted) before the
-      // admin closes the dialog. The same instructions are emailed to the
-      // winner by the backend.
+      // No password ever crosses this screen: the backend delivers a one-time
+      // setup link through the winner's in-app notification feed instead. We
+      // surface only the non-secret handle and the invite status.
       setGrantResult({
         name,
-        credentials: res.data.credentials || {},
+        email: res.data.credentials?.email || '',
+        invite: res.data.invite || { sent: true, channel: 'in_app' },
         replaced: res.data.replaced || [],
       });
       loadUsers(meta.current_page);
     } catch (e) { setSrvErr(e.response?.data?.message || 'Failed to grant SSG President access.'); }
     finally { setGrantLoading(null); }
-  };
-
-  // One-click handoff of the SSG login for the admin clipboard.
-  const copyGrantSecrets = async () => {
-    if (!grantResult) return;
-    const { email, temporary_password } = grantResult.credentials;
-    const text = temporary_password
-      ? `Login:               ${email}\nTemporary password:  ${temporary_password}`
-      : `Login:               ${email}\nPassword:            their existing password (unchanged)`;
-    try {
-      await navigator.clipboard.writeText(text);
-      flash('Credentials copied to clipboard.');
-    } catch { setSrvErr('Could not copy — select the values manually.'); }
   };
 
   // Item 10: CSV export honouring the currently applied filters.
@@ -640,21 +627,19 @@ export default function UserManagement({ onLogout, activeView = 'user_management
                 <h3 className="um-modal-title"><CheckCircle size={18} /> SSG President granted</h3>
                 <p className="um-modal-text">
                   <strong>{grantResult.name}</strong> can now open the SSG President dashboard in the
-                  admin console and keep signing in to the mobile app. Instructions were emailed to{' '}
-                  <strong>{grantResult.credentials.email || 'their address on file'}</strong>.
+                  admin console and keep signing in to the mobile app.
                 </p>
-                <div className="um-secret-block">
-                  <div className="um-secret-row"><span>Login</span><code>{grantResult.credentials.email || '—'}</code></div>
-                  {grantResult.credentials.temporary_password ? (
-                    <div className="um-secret-row"><span>Temporary password</span><code>{grantResult.credentials.temporary_password}</code></div>
-                  ) : (
-                    <div className="um-secret-row"><span>Password</span><code>unchanged — their existing one</code></div>
-                  )}
-                </div>
-                {grantResult.credentials.temporary_password && (
-                  <p className="um-modal-text">
-                    This one-time password is shown only now and must be changed on first sign-in.
-                  </p>
+                <p className="um-modal-text">
+                  For security, no password was generated, emailed, or shown here. A one-time setup
+                  link was delivered to <strong>{grantResult.name}</strong> in their in-app
+                  notifications — it expires in {grantResult.invite?.expires_in_minutes ?? 60} minutes
+                  and can be used once. They choose their own password from there.
+                </p>
+                {grantResult.email && (
+                  <div className="um-secret-block">
+                    <div className="um-secret-row"><span>Login</span><code>{grantResult.email}</code></div>
+                    <div className="um-secret-row"><span>Password</span><code>set by the President via the in-app link</code></div>
+                  </div>
                 )}
                 {grantResult.replaced.length > 0 && (
                   <p className="um-modal-text">
@@ -662,9 +647,6 @@ export default function UserManagement({ onLogout, activeView = 'user_management
                   </p>
                 )}
                 <div className="um-modal-actions">
-                  {grantResult.credentials.temporary_password && (
-                    <button type="button" className="um-btn-ghost" onClick={copyGrantSecrets}><Copy size={14} /> Copy credentials</button>
-                  )}
                   <button type="button" className="um-btn-primary" onClick={() => { setShowGrant(false); setGrantResult(null); }}>Done</button>
                 </div>
               </>
