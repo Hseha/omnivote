@@ -14,6 +14,8 @@ import Departments from './Departments';
 import AuditLog from './AuditLog';
 import SsgPresident from './SsgPresident';
 import TwoFactorEnrollmentScreen from './TwoFactorEnrollmentScreen';
+import ErrorBoundary from './components/ErrorBoundary';
+import OmniVoteMark from './components/OmniVoteMark';
 import { AuthProvider, useAuth } from './lib/AuthContext';
 import { ThemeProvider } from './lib/ThemeContext';
 import { ElectionStatusProvider } from './lib/ElectionStatusContext';
@@ -90,8 +92,12 @@ function AppShell() {
       : ROUTE_TITLES[activeView] || 'Dashboard';
   useDocumentTitle(routeTitle, siteName);
 
+  // Session bootstrap is in flight (validating a cached session against the
+  // server). Show a branded loading screen instead of returning null, so a
+  // slow or briefly unreachable API shows "loading" instead of a blank white
+  // page. The global request timeout in lib/api.js guarantees this resolves.
   if (!ready) {
-    return null;
+    return <BootScreen siteName={siteName} />;
   }
 
   if (!user) {
@@ -236,12 +242,31 @@ function AppShell() {
   return <ElectionStatusProvider>{renderActiveView()}</ElectionStatusProvider>;
 }
 
+/*
+ * First-paint placeholder shown while the cached session is validated against
+ * the server. Static markup only — it must render even before the API answers.
+ */
+function BootScreen({ siteName }) {
+  return (
+    <div className="boot-screen" role="status" aria-live="polite">
+      <div className="boot-brand">
+        <OmniVoteMark className="boot-logo" />
+        <span className="boot-brand-name">{siteName}</span>
+      </div>
+      <div className="boot-spinner" aria-hidden="true" />
+      <p className="boot-text">Loading console…</p>
+    </div>
+  );
+}
+
 export default function App() {
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <AppShell />
-      </AuthProvider>
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
+        <AuthProvider>
+          <AppShell />
+        </AuthProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }
