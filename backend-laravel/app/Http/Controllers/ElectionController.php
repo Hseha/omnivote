@@ -13,6 +13,7 @@ use App\Support\TermArchive;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 
 /**
@@ -210,18 +211,27 @@ class ElectionController extends Controller
 
             // 4. Reset only non-winner candidates (pending/rejected applications).
             //    Winners stay archived as officers — they are never touched here.
+            //    The rejection-tracking columns are guarded because an install
+            //    that never ran 000003 must not 500 the whole reset (it only
+            //    loses the count reset — the clean slate still lands).
+            $candidateUpdate = [
+                'approval_status' => 'pending',
+                'certified_at' => null,
+                'winner_rank' => null,
+                'vote_total' => 0,
+                'election_status' => null,
+                'updated_at' => now(),
+            ];
+            if (Schema::hasColumn('candidates', 'rejection_count')) {
+                $candidateUpdate['rejection_count'] = 0;
+            }
+            if (Schema::hasColumn('candidates', 'reapply_blocked_until')) {
+                $candidateUpdate['reapply_blocked_until'] = null;
+            }
+
             Candidate::query()
                 ->where('certified_winner', false)
-                ->update([
-                    'approval_status' => 'pending',
-                    'certified_at' => null,
-                    'winner_rank' => null,
-                    'vote_total' => 0,
-                    'election_status' => null,
-                    'rejection_count' => 0,
-                    'reapply_blocked_until' => null,
-                    'updated_at' => now(),
-                ]);
+                ->update($candidateUpdate);
 
             // 5. Reset every student's turnout flag so they can vote again.
             User::where('role', 'student')->update([
@@ -230,8 +240,11 @@ class ElectionController extends Controller
                 'updated_at' => now(),
             ]);
 
-            // 6. Truncate the anonymous vote ledger.
-            DB::table('vote_ledger')->truncate();
+            // 6. Clear the anonymous vote ledger. TRUNCATE can 500 on some
+            //    engines/permissions inside a transaction (implicit-commit,
+            //    FK checks, missing DROP rights), so a plain delete is used —
+            //    same end state, same table, no surprises.
+            DB::table('vote_ledger')->delete();
         });
 
         // Record the reset in the audit trail.

@@ -564,6 +564,24 @@
   background-color: var(--surface-3);
 }
 
+.btn-delete {
+  background: none;
+  border: 1px solid #d1d5db;
+  color: #9ca3af;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-delete:hover {
+  background-color: #fef2f2;
+  color: #dc2626;
+  border-color: #fecaca;
+}
+
 /* Pagination */
 .pagination-container {
   display: flex;

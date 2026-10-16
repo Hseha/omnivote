@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from './lib/api';
-import { Check, X, Search, Plus, UserPlus, Flag, Users } from 'lucide-react';
+import { Check, X, Search, Plus, UserPlus, Flag, Users, Trash } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import { defaultUserIconDataUri, fallbackAvatarOnError } from './lib/avatar';
@@ -44,9 +44,11 @@ export default function Candidates({ onLogout, activeView = 'candidates', onNavi
   const [confirmAction, setConfirmAction] = useState(null); // { id, name, status }
   const [confirmSaving, setConfirmSaving] = useState(false);
   const [confirmError, setConfirmError] = useState('');
+  // Confirm Delete (rejected-only) confirmation modal state.
   // Optional committee-supplied explanation shown to the applicant on the
   // My Candidacy screen when the application is rejected. Cleared on open.
   const [confirmReason, setConfirmReason] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(null); // { id, name }
 
   const [positions, setPositions] = useState([]);
   const [userSearch, setUserSearch] = useState('');
@@ -188,6 +190,25 @@ export default function Candidates({ onLogout, activeView = 'candidates', onNavi
     }
   };
 
+  const handleDelete = async (id, name) => {
+    setConfirmDelete({ id, name });
+  };
+
+  const confirmDeleteAction = async () => {
+    if (!confirmDelete) return;
+    setConfirmSaving(true);
+    setConfirmError('');
+    try {
+      await api.delete(`/admin/candidates/${confirmDelete.id}`);
+      setConfirmDelete(null);
+      await fetchCandidates();
+    } catch (err) {
+      setConfirmError(err?.response?.data?.message || 'Could not delete the candidate. Please try again.');
+    } finally {
+      setConfirmSaving(false);
+    }
+  };
+
   const clearFilters = () => {
     setSearch('');
     setDebouncedSearch('');
@@ -277,6 +298,58 @@ export default function Candidates({ onLogout, activeView = 'candidates', onNavi
     }
   }
 
+  const deleteDialog = confirmDelete ? (
+    <div className="cm-modal-overlay" onClick={() => setConfirmDelete(null)}>
+      <div
+        className="cm-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="cm-confirm-delete-title"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="cm-modal-header">
+          <div>
+            <h3 id="cm-confirm-delete-title">Delete {confirmDelete.name}?</h3>
+            <p>The candidate will be permanently removed from the roster (if they can still be reapplied).</p>
+          </div>
+          <button
+            type="button"
+            className="cm-modal-close"
+            onClick={() => setConfirmDelete(null)}
+            disabled={confirmSaving}
+            aria-label="Close"
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <div className="cm-modal-body">
+          <p className="cm-modal-hint">
+            The action is irreversible. Only rejected candidates can be deleted by this path.
+          </p>
+          {confirmError && <div className="cm-modal-error">{confirmError}</div>}
+        </div>
+        <div className="cm-modal-footer">
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => setConfirmDelete(null)}
+            disabled={confirmSaving}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="cm-btn-danger"
+            onClick={confirmDeleteAction}
+            disabled={confirmSaving}
+          >
+            <Trash size={16} />
+            {confirmSaving ? 'Deleting…' : 'Delete Candidate'}
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
   return (
     <div className="dashboard-container">
       {/* Sidebar Navigation */}
@@ -448,6 +521,16 @@ export default function Candidates({ onLogout, activeView = 'candidates', onNavi
                       >
                         <X size={14} /> Reject
                       </button>
+                      {candidate.status === 'rejected' && (
+                        <button
+                          className="btn-delete"
+                          onClick={() => handleDelete(candidate.id, candidate.name)}
+                          title="Delete candidate (rejected)"
+                          aria-label="Delete rejected candidate"
+                        >
+                          <Trash size={14} />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))
@@ -767,17 +850,18 @@ export default function Candidates({ onLogout, activeView = 'candidates', onNavi
               </button>
               <button
                 type="button"
-                className={confirmAction.status === 'rejected' ? 'cm-btn-danger' : 'cm-btn-primary'}
-                onClick={confirmStatusChange}
+                className="cm-btn-danger"
+                onClick={confirmDeleteAction}
                 disabled={confirmSaving}
               >
-                {confirmAction.status === 'approved' ? <Check size={16} /> : <X size={16} />}
-                {confirmSaving ? 'Saving…' : confirmAction.status === 'approved' ? 'Approve Candidate' : 'Reject Candidate'}
+                <Trash size={16} />
+                {confirmSaving ? 'Deleting…' : 'Delete Candidate'}
               </button>
             </div>
           </div>
         </div>
       )}
-    </div>
-  );
+    {deleteDialog}
+  </div>
+);
 }
