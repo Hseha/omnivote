@@ -161,6 +161,52 @@ export default function Candidates({ onLogout, activeView = 'candidates', onNavi
     apply();
   };
 
+  // Approve / Reject status change (PATCH /admin/candidates/{id}).
+  // Kept separate from the rejected-only hard delete below: this flips
+  // approval_status (optionally with a rejection reason), it never removes
+  // the row. Shared `confirmSaving`/`confirmError` drive the status modal.
+  const handleStatusChange = async (id, newStatus, reason = '') => {
+    const normalized = (newStatus || '').toLowerCase();
+    const body = { status: normalized };
+    // Only rejections carry a reason; the backend clears it on approval.
+    if (normalized === 'rejected' && reason.trim()) {
+      body.rejection_reason = reason.trim();
+    }
+    await api.patch(`/admin/candidates/${id}`, body);
+    await fetchCandidates();
+  };
+
+  const confirmStatusChange = async () => {
+    if (!confirmAction) return;
+    const wasRejection = (confirmAction.status || '').toLowerCase() === 'rejected';
+    setConfirmSaving(true);
+    setConfirmError('');
+    try {
+      await handleStatusChange(
+        confirmAction.id,
+        confirmAction.status,
+        confirmReason,
+      );
+      setConfirmAction(null);
+      // Rejections vanish from the default table (it hides rejected by
+      // design), so jump the filter to `rejected` — immediate feedback, the
+      // row is visible with its trash icon. Approvals stay on the current
+      // filter untouched.
+      if (wasRejection) {
+        setPage(1);
+        setStatus('rejected');
+      }
+    } catch (err) {
+      setConfirmError(err?.response?.data?.message || 'Could not update the candidate status. Please try again.');
+    } finally {
+      setConfirmSaving(false);
+    }
+  };
+
+  // Hard delete (DELETE /admin/candidates/{id}), rejected-only trash bin.
+  // Uses its own confirmDelete state so it can never collide with the
+  // approve/reject modal above. Shares confirmSaving/confirmError with the
+  // delete dialog only — never with confirmAction.
   const handleDelete = async (id, name) => {
     setConfirmDelete({ id, name });
   };
@@ -431,8 +477,6 @@ export default function Candidates({ onLogout, activeView = 'candidates', onNavi
               </tr>
             </thead>
             <tbody>
-              // Clean slate: no active election → no candidates to list.
-              // Phase is null after an admin reset, voting_closed when results are out.
               {livePhase === null || livePhase === 'voting_closed' ? (
                 <tr>
                   <td colSpan="7" className="no-data-cell">
@@ -821,12 +865,12 @@ export default function Candidates({ onLogout, activeView = 'candidates', onNavi
               </button>
               <button
                 type="button"
-                className="cm-btn-danger"
-                onClick={confirmDeleteAction}
+                className={confirmAction.status === 'rejected' ? 'cm-btn-danger' : 'cm-btn-primary'}
+                onClick={confirmStatusChange}
                 disabled={confirmSaving}
               >
-                <Trash size={16} />
-                {confirmSaving ? 'Deleting…' : 'Delete Candidate'}
+                {confirmAction.status === 'approved' ? <Check size={16} /> : <X size={16} />}
+                {confirmSaving ? 'Saving…' : confirmAction.status === 'approved' ? 'Approve Candidate' : 'Reject Candidate'}
               </button>
             </div>
           </div>

@@ -5,6 +5,8 @@ namespace App\Support;
 use App\Models\Candidate;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Winner term-archiving lifecycle ("End of Term").
@@ -68,19 +70,40 @@ class TermArchive
      * Archive every currently-certified winner that has not already been
      * archived. Returns the number of candidates tagged. Idempotent: re-runs
      * only touch the winners left over from an earlier (partial) pass.
+     *
+     * Schema-safe: no-op (0) when the archive columns or the winner flag do
+     * not exist (older install) or the table is missing — archiving must
+     * never 500 a caller such as ElectionController::reset().
      */
     public static function archiveNow(?Carbon $at = null): int
     {
-        $stamp = ($at ?? now())->toDateTimeString();
-        $label = self::labelFor($at);
+        try {
+            if (! Schema::hasTable('candidates')) {
+                return 0;
+            }
+            if (! Schema::hasColumn('candidates', 'certified_winner')
+                || ! Schema::hasColumn('candidates', 'archived_at')
+                || ! Schema::hasColumn('candidates', 'term_label')) {
+                return 0;
+            }
 
-        return Candidate::query()
-            ->where('certified_winner', true)
-            ->whereNull('archived_at')
-            ->update([
+            $stamp = ($at ?? now())->toDateTimeString();
+            $label = self::labelFor($at);
+
+            $query = Candidate::query()->where('certified_winner', true);
+            if (Schema::hasColumn('candidates', 'archived_at')) {
+                $query->whereNull('archived_at');
+            }
+
+            return $query->update([
                 'archived_at' => $stamp,
                 'term_label' => $label,
             ]);
+        } catch (\Throwable $e) {
+            Log::warning('TermArchive::archiveNow skipped: '.$e->getMessage());
+
+            return 0;
+        }
     }
 
     /**
