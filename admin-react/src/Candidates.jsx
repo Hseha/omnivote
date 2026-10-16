@@ -4,6 +4,7 @@ import { Check, X, Search, Plus, UserPlus, Flag, Users } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import { defaultUserIconDataUri, fallbackAvatarOnError } from './lib/avatar';
+import { useElectionStatus } from './lib/ElectionStatusContext';
 import './Candidates.css';
 
 const TIER_LABELS = { national: 'National', provincial: 'Provincial' };
@@ -23,6 +24,11 @@ export default function Candidates({ onLogout, activeView = 'candidates', onNavi
   const [department, setDepartment] = useState('');
   const [party, setParty] = useState('');
   const [status, setStatus] = useState('');
+
+  // Live election phase — when the admin resets the voting window the phase
+  // becomes null, and when results are out it becomes voting_closed. In both
+  // cases the candidates list should show a clean slate instead of stale rows.
+  const { phase: livePhase } = useElectionStatus();
 
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(20);
@@ -381,7 +387,17 @@ export default function Candidates({ onLogout, activeView = 'candidates', onNavi
               </tr>
             </thead>
             <tbody>
-              {loading ? (
+              // Clean slate: no active election → no candidates to list.
+              // Phase is null after an admin reset, voting_closed when results are out.
+              {livePhase === null || livePhase === 'voting_closed' ? (
+                <tr>
+                  <td colSpan="7" className="no-data-cell">
+                    {livePhase === null
+                      ? 'No election configured — the candidates list is on a clean slate. Set the voting windows to start a new cycle.'
+                      : 'Voting has closed and results are out — the candidates list is on a clean slate.'}
+                  </td>
+                </tr>
+              ) : loading ? (
                 <tr><td colSpan="7" className="no-data-cell">Loading candidates...</td></tr>
               ) : candidates.length === 0 ? (
                 <tr><td colSpan="7" className="no-data-cell">No candidates found yet — submissions will appear here once students file their applications during Registration.</td></tr>

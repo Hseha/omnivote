@@ -1,8 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../data/models/candidate_model.dart';
+import '../../../data/models/election_status_model.dart';
 import '../../../data/models/position_model.dart';
 import '../../../data/repositories/candidate_repository.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../../dashboard/providers/election_status_provider.dart';
 
 final positionsProvider = FutureProvider<List<Position>>((ref) async {
   return await ref.watch(candidateRepositoryProvider).getPositions();
@@ -61,6 +63,14 @@ final filteredCandidatesProvider = FutureProvider<List<Candidate>>((ref) async {
   final filter = ref.watch(candidatesFilterProvider);
   final student = ref.watch(authProvider).student;
   final repository = ref.watch(candidateRepositoryProvider);
+  final electionStatus = ref.watch(electionStatusProvider);
+
+  // Clean slate: no active election → no candidates to list.
+  // Phase is unknown after an admin reset, votingClosed when results are out.
+  final phase = electionStatus.valueOrNull?.phase;
+  if (phase == null || phase == ElectionPhase.votingClosed) {
+    return const <Candidate>[];
+  }
 
   // Provincial candidates are departmental races: a student always sees only
   // their own department's slate (when known), plus whatever party they pick.
