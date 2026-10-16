@@ -703,6 +703,135 @@ button.voting-status-badge {
 }
 
 /* ============================================================
+   Boot screen + top-level error boundary.
+   Shown while the cached session is validated (boot) or when a render
+   crash unmounts the tree (boundary). Uses the shared theme tokens so
+   both follow light/dark mode. These screens must render before the
+   API answers, so they avoid network-dependent assets and layout.
+   ============================================================ */
+
+.boot-screen {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background-color: var(--bg);
+  color: var(--text);
+  padding: 24px;
+}
+
+.boot-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.boot-logo {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background-color: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.boot-brand-name {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--heading);
+  letter-spacing: 0.01em;
+}
+
+.boot-spinner {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 3px solid var(--border);
+  border-top-color: var(--brand-primary);
+  animation: boot-spin 0.9s linear infinite;
+}
+
+@keyframes boot-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.boot-text {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.error-boundary-screen {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--bg);
+  padding: 24px;
+}
+
+.error-boundary-card {
+  max-width: 560px;
+  width: 100%;
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 28px;
+}
+
+.error-boundary-card h1 {
+  margin: 0 0 8px 0;
+  font-size: 1.35rem;
+  color: var(--heading);
+}
+
+.error-boundary-card p {
+  margin: 0 0 16px 0;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.error-boundary-detail {
+  background-color: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  padding: 12px 14px;
+  margin: 0 0 20px 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.error-boundary-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 8px;
+  background: var(--brand-primary);
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.875rem;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.error-boundary-btn:hover {
+  background: #1d4ed8;
+}
+
+/* ============================================================
    Responsive admin shell — adapts the shared shell (sidebar,
    top header, main column) to tablets and phones.
    ============================================================ */

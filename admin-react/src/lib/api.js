@@ -21,6 +21,15 @@ let csrfGeneration = 0;
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
 /**
+ * Hard ceiling on every API call. Without it a slow or silently dropped
+ * connection can leave a request — notably the boot-time `/admin/me` session
+ * check — hanging indefinitely, which the shell renders as a blank page.
+ * 15 s is comfortably above a healthy round-trip but short enough that the
+ * UI always reaches a real state (loaded or error) instead of freezing.
+ */
+export const API_TIMEOUT_MS = 15000;
+
+/**
  * Fetches the CSRF cookie (and therefore the XSRF-TOKEN cookie) that Laravel
  * Sanctum issues to first-party SPA clients. The token is then read by axios
  * (via `xsrfCookieName`) and attached to the next stateful request.
@@ -70,6 +79,7 @@ export function resetCsrfCookie() {
 
 const api = axios.create({
   baseURL: `${API_BASE_URL}/api`,
+  timeout: API_TIMEOUT_MS,
   withCredentials: true,
   withXSRFToken: true,
   headers: {
