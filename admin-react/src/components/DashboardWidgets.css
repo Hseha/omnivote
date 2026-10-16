@@ -520,6 +520,12 @@
   font-variant-numeric: tabular-nums;
 }
 
+.velocity-summary {
+  margin: 6px 2px 0;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ===== Responsive ===== */
 @media (max-width: 1024px) {
   .primary-grid,

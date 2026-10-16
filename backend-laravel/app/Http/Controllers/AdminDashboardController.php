@@ -106,60 +106,82 @@ class AdminDashboardController extends Controller
     }
 
     /**
-     * Counts of `vote_ledger` rows bucketed per hour over the trailing 24 h.
+     * Distinct-ballot counts bucketed per hour over the trailing 24 h.
+     *
+     * A submission writes one `vote_ledger` row per selected candidate, so a
+     * raw row `COUNT(*)` reports *selections* and is inflated by the number of
+     * positions on the ballot. Every row of a single ballot shares its
+     * `receipt_hmac`, so `COUNT(DISTINCT receipt_hmac)` is the true number of
+     * ballots cast in the hour.
+     *
+     * Buckets are keyed on the full hour stamp (not hour-of-day) and the window
+     * is exactly the 24 hour-slots shown — the current hour plus the 23 before
+     * it, each anchored to the start of its hour — so a bucket can never absorb
+     * a partial hour from roughly 24 h earlier.
      *
      * The bucket expression is chosen from the active driver (SQLite's
-     * `strftime`, MySQL/MariaDB's `DATE_FORMAT`, PostgreSQL's `TO_CHAR`) so
-     * the aggregation stays in SQL on every supported engine; any other
-     * driver falls back to bucketing plain `recorded_at` timestamps in PHP.
+     * `strftime`, MySQL/MariaDB's `DATE_FORMAT`, PostgreSQL's `TO_CHAR`) so the
+     * aggregation stays in SQL on every supported engine; any other driver
+     * falls back to bucketing in PHP.
      *
      * @return array<int, array{hour: string, count: int}>
      */
     private function hourlyVoteVelocity(): array
     {
-        // 24 hourly slots: the current hour plus the 23 before it.
-        $slots = collect(range(23, 0))->map(fn (int $back) => now()->subHours($back))->values();
+        // 24 hourly slots ending with the current hour: the current hour plus
+        // the 23 before it, each anchored to the start of its hour.
+        $currentHour = now()->startOfHour();
+        $slots = collect(range(23, 0))
+            ->map(fn (int $back) => $currentHour->copy()->subHours($back))
+            ->values();
 
-        // Plain array keyed by hour-of-day ('00' … '23') — a Collection's
-        // ArrayAccess offset can't be modified by reference, so the merge
-        // loop below writes into an array and we re-wrap at the end.
+        // Plain array keyed by the full 'Y-m-d H:00' stamp so two different
+        // days' same clock-hour can never collide; a Collection's ArrayAccess
+        // offset can't be modified by reference, so we merge into an array.
         $buckets = [];
 
         foreach ($slots as $slot) {
-            $buckets[$slot->format('H')] = ['hour' => $slot->format('H:00'), 'count' => 0];
+            $buckets[$slot->format('Y-m-d H:00')] = ['hour' => $slot->format('H:00'), 'count' => 0];
         }
 
         if (! Schema::hasTable('vote_ledger')) {
             return array_values($buckets);
         }
 
+        // Start of the oldest slot — anything earlier is outside the window.
+        $windowStart = $slots->first();
+
         $driver = DB::connection()->getDriverName();
 
-        $hourExpression = match ($driver) {
-            'sqlite' => "strftime('%H', recorded_at)",
-            'mysql', 'mariadb' => "DATE_FORMAT(recorded_at, '%H')",
-            'pgsql' => "TO_CHAR(recorded_at, 'HH24')",
+        $bucketExpression = match ($driver) {
+            'sqlite' => "strftime('%Y-%m-%d %H:00', recorded_at)",
+            'mysql', 'mariadb' => "DATE_FORMAT(recorded_at, '%Y-%m-%d %H:00')",
+            'pgsql' => "TO_CHAR(recorded_at, 'YYYY-MM-DD HH24:00')",
             default => null,
         };
 
-        if ($hourExpression !== null) {
+        if ($bucketExpression !== null) {
+            // COUNT(DISTINCT receipt_hmac): one ballot, many rows, one ballot.
             $counts = DB::table('vote_ledger')
-                ->selectRaw($hourExpression.' as bucket_hour, COUNT(*) as aggregate')
-                ->where('recorded_at', '>=', now()->subHours(24))
-                ->groupByRaw($hourExpression)
+                ->selectRaw($bucketExpression.' as bucket, COUNT(DISTINCT receipt_hmac) as aggregate')
+                ->where('recorded_at', '>=', $windowStart)
+                ->groupByRaw($bucketExpression)
                 ->get()
-                ->pluck('aggregate', 'bucket_hour');
+                ->pluck('aggregate', 'bucket');
         } else {
-            // Portable fallback: pull only the timestamp column and bucket
-            // with Carbon. Still fully decoupled from any user identity.
+            // Portable fallback: bucket in PHP, still counting distinct ballots
+            // and still fully decoupled from any user identity.
             $counts = DB::table('vote_ledger')
-                ->where('recorded_at', '>=', now()->subHours(24))
-                ->pluck('recorded_at')
-                ->countBy(fn ($recordedAt) => Carbon::parse($recordedAt)->format('H'));
+                ->where('recorded_at', '>=', $windowStart)
+                ->get(['recorded_at', 'receipt_hmac'])
+                ->groupBy(fn ($row) => Carbon::parse($row->recorded_at)->format('Y-m-d H:00'))
+                ->map(fn ($rows) => $rows->pluck('receipt_hmac')->unique()->count());
         }
 
-        foreach ($counts as $hourKey => $count) {
-            $key = sprintf('%02d', (int) $hourKey);
+        foreach ($counts as $bucketKey => $count) {
+            // SQLite returns the strftime() string verbatim; MySQL/Postgres may
+            // pad/format slightly, so normalize to the same 'Y-m-d H:00' key.
+            $key = Carbon::parse($bucketKey)->format('Y-m-d H:00');
 
             if (isset($buckets[$key])) {
                 $buckets[$key]['count'] = (int) $count;

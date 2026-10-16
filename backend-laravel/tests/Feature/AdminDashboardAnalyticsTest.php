@@ -13,7 +13,7 @@ use Tests\TestCase;
  * Unified admin analytics feed backing the two live monitoring panels:
  *
  *   GET /api/admin/dashboard/analytics
- *     - `velocity`: 24 hourly buckets of anonymous vote_ledger counts
+ *     - `velocity`: 24 hourly buckets of anonymous distinct-ballot counts
  *     - `security_logs`: latest 6 audit trail events with severity mapping
  *
  * Permission-gated (`permission:dashboard.view`) like the overview endpoint
@@ -59,7 +59,7 @@ class AdminDashboardAnalyticsTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_velocity_buckets_vote_ledger_rows_by_hour(): void
+    public function test_velocity_counts_distinct_ballots_per_hour(): void
     {
         $admin = $this->makeUser(['role' => 'admin']);
 
@@ -88,9 +88,10 @@ class AdminDashboardAnalyticsTest extends TestCase
 
         $this->assertSame(3, collect($velocity)->sum('count'));
 
-        // The 2- and 1-hour-ago buckets must hold their exact counts.
-        $twoHoursAgo = now()->subHours(2)->format('H:00');
-        $oneHourAgo = now()->subHours(1)->format('H:00');
+        // The 2- and 1-hour-ago buckets must hold their exact counts (each row
+        // here carries a distinct receipt_hmac, i.e. a distinct ballot).
+        $twoHoursAgo = now()->startOfHour()->subHours(2)->format('H:00');
+        $oneHourAgo = now()->startOfHour()->subHour()->format('H:00');
         $this->assertSame(2, collect($velocity)->firstWhere('hour', $twoHoursAgo)['count']);
         $this->assertSame(1, collect($velocity)->firstWhere('hour', $oneHourAgo)['count']);
 
@@ -99,6 +100,54 @@ class AdminDashboardAnalyticsTest extends TestCase
         foreach ($velocity as $bucket) {
             $this->assertSame(['hour', 'count'], array_keys($bucket));
         }
+    }
+
+    public function test_velocity_counts_one_ballot_with_many_positions_once(): void
+    {
+        $admin = $this->makeUser(['role' => 'admin']);
+
+        // One ballot filling two positions = two rows sharing one receipt_hmac.
+        // A second, separate ballot in the same hour shares nothing.
+        DB::table('vote_ledger')->insert([
+            ['position_key' => 'president', 'candidate_ref' => 'c1', 'receipt_hmac' => 'ballot-a', 'recorded_at' => now()->subHours(1)],
+            ['position_key' => 'auditor', 'candidate_ref' => 'c2', 'receipt_hmac' => 'ballot-a', 'recorded_at' => now()->subHours(1)],
+            ['position_key' => 'president', 'candidate_ref' => 'c3', 'receipt_hmac' => 'ballot-b', 'recorded_at' => now()->subHours(1)],
+        ]);
+
+        $velocity = $this->actingAs($admin)
+            ->stateful()
+            ->getJson('/api/admin/dashboard/analytics')
+            ->assertOk()
+            ->json('velocity');
+
+        // 3 rows but only 2 ballots.
+        $this->assertSame(2, collect($velocity)->sum('count'));
+
+        $oneHourAgo = now()->startOfHour()->subHour()->format('H:00');
+        $this->assertSame(2, collect($velocity)->firstWhere('hour', $oneHourAgo)['count']);
+    }
+
+    public function test_velocity_excludes_the_same_clock_hour_from_a_day_ago(): void
+    {
+        $admin = $this->makeUser(['role' => 'admin']);
+
+        // Same clock-hour as now but ~24 h ago: outside the 24-slot window and
+        // must NOT fold into today's current-hour bucket.
+        DB::table('vote_ledger')->insert([
+            ['position_key' => 'president', 'candidate_ref' => 'c1', 'receipt_hmac' => 'stale', 'recorded_at' => now()->subHours(24)],
+            ['position_key' => 'president', 'candidate_ref' => 'c2', 'receipt_hmac' => 'fresh', 'recorded_at' => now()],
+        ]);
+
+        $velocity = $this->actingAs($admin)
+            ->stateful()
+            ->getJson('/api/admin/dashboard/analytics')
+            ->assertOk()
+            ->json('velocity');
+
+        $this->assertSame(1, collect($velocity)->sum('count'));
+
+        $currentHour = now()->startOfHour()->format('H:00');
+        $this->assertSame(1, collect($velocity)->firstWhere('hour', $currentHour)['count']);
     }
 
     public function test_security_logs_surface_latest_six_audit_events_with_severity(): void
