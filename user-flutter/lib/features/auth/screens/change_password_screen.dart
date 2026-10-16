@@ -37,10 +37,13 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
     super.dispose();
   }
 
+  /// Mirrors the server-side password policy (Settings → Security: 12 chars,
+  /// lowercase + uppercase + number + special). The server re-validates
+  /// regardless; this only tells the student what is wrong before a round trip.
   String? _validateNewPassword(String? value) {
     final password = value ?? '';
     if (password.isEmpty) return 'Please enter a new password';
-    if (password.length < 8) return 'Use at least 8 characters';
+    if (password.length < 12) return 'Use at least 12 characters';
     if (!RegExp(r'[a-z]').hasMatch(password)) {
       return 'Include a lowercase letter';
     }
@@ -49,6 +52,9 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
     }
     if (!RegExp(r'[0-9]').hasMatch(password)) {
       return 'Include a number';
+    }
+    if (!RegExp(r'[^A-Za-z0-9]').hasMatch(password)) {
+      return 'Include a special character';
     }
     return null;
   }
@@ -134,8 +140,8 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
                         controller: _newController,
                         obscure: true,
                         label: 'New password',
-                        helper: 'At least 8 characters, including uppercase, '
-                            'lowercase and a number.',
+                        helper: 'At least 12 characters, including uppercase, '
+                            'lowercase, a number and a special character.',
                         prefixIcon: const Icon(Icons.lock_outline),
                         validator: _validateNewPassword,
                       ),
