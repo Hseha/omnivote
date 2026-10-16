@@ -179,11 +179,17 @@ class ElectionController extends Controller
      *   - Active phase deactivated (dashboard shows "Not Configured")
      *   - Non-winner candidates reset to pending (applications cleared)
      *   - All student turnout flags reset (has_voted = false)
-     *   - Anonymous vote ledger truncated
+     *   - Anonymous vote ledger + ballot drafts cleared
      *
      * What is PRESERVED (winners become officers, never deleted):
      *   - Certified winners are archived via TermArchive → Past Terms roster
      *   - Their certified_winner, vote_total, winner_rank, certified_at stay intact
+     *
+     * Schema-robustness: every optional column/table write is guarded by
+     * Schema::hasColumn/hasTable so a host that skipped a migration gets a
+     * clean slate instead of a 500 mid-transaction. Guards never widen
+     * access — permission (`election.reset`) and confirm validation above are
+     * unchanged.
      *
      * Admin only (`permission:election.reset`).
      */
@@ -196,55 +202,89 @@ class ElectionController extends Controller
         DB::transaction(function () use ($request) {
             // 1. Archive certified winners so they become preserved officers
             //    (Past Terms roster) before anything else is wiped.
+            //    No-op on schemas lacking the archive columns (see TermArchive).
             TermArchive::archiveNow();
 
             // 2. Clear the election timeline so no phase can be derived.
-            foreach (['registration_opens_at', 'registration_closes_at', 'voting_opens_at', 'voting_closes_at'] as $key) {
-                DB::table('election_settings')->updateOrInsert(
-                    ['key' => $key],
-                    ['value' => null, 'updated_at' => now()],
-                );
+            if (Schema::hasTable('election_settings')) {
+                foreach (['registration_opens_at', 'registration_closes_at', 'voting_opens_at', 'voting_closes_at'] as $key) {
+                    DB::table('election_settings')->updateOrInsert(
+                        ['key' => $key],
+                        ['value' => null, 'updated_at' => now()],
+                    );
+                }
             }
 
             // 3. Deactivate every phase row so Phase::current() returns null.
-            Phase::query()->update(['is_active' => false]);
+            if (Schema::hasTable('phases')) {
+                Phase::query()->update(['is_active' => false]);
+            }
 
             // 4. Reset only non-winner candidates (pending/rejected applications).
             //    Winners stay archived as officers — they are never touched here.
-            //    The rejection-tracking columns are guarded because an install
-            //    that never ran 000003 must not 500 the whole reset (it only
-            //    loses the count reset — the clean slate still lands).
-            $candidateUpdate = [
-                'approval_status' => 'pending',
-                'certified_at' => null,
-                'winner_rank' => null,
-                'vote_total' => 0,
-                'election_status' => null,
-                'updated_at' => now(),
-            ];
-            if (Schema::hasColumn('candidates', 'rejection_count')) {
-                $candidateUpdate['rejection_count'] = 0;
-            }
-            if (Schema::hasColumn('candidates', 'reapply_blocked_until')) {
-                $candidateUpdate['reapply_blocked_until'] = null;
-            }
+            //    `election_status` is NOT NULL DEFAULT 'pending' in production
+            //    (2026_09_20_000004), so it must reset to 'pending' — writing
+            //    null 500s on MySQL strict mode (the dashboard "Server Error").
+            //    Every optional column is guarded so an install that skipped a
+            //    migration still lands the clean slate instead of 500ing.
+            if (Schema::hasTable('candidates')) {
+                $candidateQuery = Candidate::query();
+                if (Schema::hasColumn('candidates', 'certified_winner')) {
+                    $candidateQuery->where('certified_winner', false);
+                }
 
-            Candidate::query()
-                ->where('certified_winner', false)
-                ->update($candidateUpdate);
+                $candidateUpdate = ['updated_at' => now()];
+                if (Schema::hasColumn('candidates', 'approval_status')) {
+                    $candidateUpdate['approval_status'] = 'pending';
+                }
+                if (Schema::hasColumn('candidates', 'certified_at')) {
+                    $candidateUpdate['certified_at'] = null;
+                }
+                if (Schema::hasColumn('candidates', 'winner_rank')) {
+                    $candidateUpdate['winner_rank'] = null;
+                }
+                if (Schema::hasColumn('candidates', 'vote_total')) {
+                    $candidateUpdate['vote_total'] = 0;
+                }
+                if (Schema::hasColumn('candidates', 'election_status')) {
+                    $candidateUpdate['election_status'] = 'pending';
+                }
+                if (Schema::hasColumn('candidates', 'rejection_count')) {
+                    $candidateUpdate['rejection_count'] = 0;
+                }
+                if (Schema::hasColumn('candidates', 'reapply_blocked_until')) {
+                    $candidateUpdate['reapply_blocked_until'] = null;
+                }
+
+                $candidateQuery->update($candidateUpdate);
+            }
 
             // 5. Reset every student's turnout flag so they can vote again.
-            User::where('role', 'student')->update([
-                'has_voted' => false,
-                'voted_at' => null,
-                'updated_at' => now(),
-            ]);
+            $userUpdate = ['updated_at' => now()];
+            if (Schema::hasColumn('users', 'has_voted')) {
+                $userUpdate['has_voted'] = false;
+            }
+            if (Schema::hasColumn('users', 'voted_at')) {
+                $userUpdate['voted_at'] = null;
+            }
+            User::where('role', 'student')->update($userUpdate);
 
             // 6. Clear the anonymous vote ledger. TRUNCATE can 500 on some
             //    engines/permissions inside a transaction (implicit-commit,
             //    FK checks, missing DROP rights), so a plain delete is used —
             //    same end state, same table, no surprises.
-            DB::table('vote_ledger')->delete();
+            if (Schema::hasTable('vote_ledger')) {
+                DB::table('vote_ledger')->delete();
+            }
+
+            // 7. Clear pre-submission ballot drafts (user-scoped, pre-vote
+            //    artifacts). Without this a student keeps a stale
+            //    status='submitted' row after reset and the next cycle's
+            //    My Ballot screen misreads. Anonymous ledger secrecy (H-1)
+            //    is unaffected — drafts hold no receipts post-submit.
+            if (Schema::hasTable('ballot_drafts')) {
+                DB::table('ballot_drafts')->delete();
+            }
         });
 
         // Record the reset in the audit trail.

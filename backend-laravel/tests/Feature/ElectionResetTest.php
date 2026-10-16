@@ -135,6 +135,17 @@ class ElectionResetTest extends TestCase
         $voter = $this->makeStudent();
         $voter->update(['has_voted' => true, 'voted_at' => now()]);
 
+        // Stale pre-submission draft — must not survive the reset.
+        DB::table('ballot_drafts')->insert([
+            'user_id' => $voter->id,
+            'selections' => json_encode(['president' => 'ref-loser']),
+            'status' => 'submitted',
+            'receipt_token' => null,
+            'submitted_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
         $this->actingAs($admin);
 
         $this->stateful()
@@ -166,9 +177,17 @@ class ElectionResetTest extends TestCase
         $this->assertFalse($loser->certified_winner);
         $this->assertSame(0, $loser->vote_total);
         $this->assertNull($loser->winner_rank);
+        // Production schema is NOT NULL DEFAULT 'pending' — a null write 500s
+        // on MySQL strict mode (the reported "Server Error"). The reset must
+        // restore the domain default, never null.
+        $this->assertSame('pending', $loser->election_status);
+        $this->assertSame('pending', DB::table('candidates')->where('id', $loser->id)->value('election_status'));
 
         // Vote ledger truncated.
         $this->assertFalse(DB::table('vote_ledger')->exists());
+
+        // Ballot drafts cleared (no stale submitted row into the next cycle).
+        $this->assertFalse(DB::table('ballot_drafts')->exists());
 
         // Voter turnout reset.
         $this->assertFalse($voter->fresh()->has_voted);
@@ -306,11 +325,24 @@ class ElectionResetTest extends TestCase
             $table->timestamp('reapply_blocked_until')->nullable();
             $table->boolean('certified_winner')->default(false);
             $table->timestamp('certified_at')->nullable();
-            $table->string('election_status')->nullable();
+            // Production-faithful: NOT NULL DEFAULT 'pending' (mirrors
+            // 2026_09_20_000004). Must stay non-nullable here or a `null`
+            // reset slips through SQLite while 500ing on MySQL strict mode.
+            $table->string('election_status', 16)->default('pending');
             $table->integer('winner_rank')->nullable();
             $table->integer('vote_total')->default(0);
             $table->timestamp('archived_at')->nullable();
             $table->string('term_label')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('ballot_drafts', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('user_id')->unique();
+            $table->json('selections')->nullable();
+            $table->string('status', 20)->default('draft');
+            $table->string('receipt_token', 64)->nullable();
+            $table->timestamp('submitted_at')->nullable();
             $table->timestamps();
         });
 
