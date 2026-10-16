@@ -161,35 +161,6 @@ export default function Candidates({ onLogout, activeView = 'candidates', onNavi
     apply();
   };
 
-  const handleStatusChange = async (id, newStatus, reason = '') => {
-    const normalized = (newStatus || '').toLowerCase();
-    const body = { status: normalized };
-    // Only rejections carry a reason; the backend clears it on approval.
-    if (normalized === 'rejected' && reason.trim()) {
-      body.rejection_reason = reason.trim();
-    }
-    await api.patch(`/admin/candidates/${id}`, body);
-    await fetchCandidates();
-  };
-
-  const confirmStatusChange = async () => {
-    if (!confirmAction) return;
-    setConfirmSaving(true);
-    setConfirmError('');
-    try {
-      await handleStatusChange(
-        confirmAction.id,
-        confirmAction.status,
-        confirmReason,
-      );
-      setConfirmAction(null);
-    } catch (err) {
-      setConfirmError(err?.response?.data?.message || 'Could not update the candidate status. Please try again.');
-    } finally {
-      setConfirmSaving(false);
-    }
-  };
-
   const handleDelete = async (id, name) => {
     setConfirmDelete({ id, name });
   };
