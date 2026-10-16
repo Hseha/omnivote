@@ -74,16 +74,19 @@ function humanizeSecurityAction(action) {
 /*
  * Hourly Voting Velocity — inline SVG timeline, no chart library.
  *
- * Maps the anonymous `vote_ledger` time-series ({hour, count}) into a bar
+ * Maps the anonymous hourly ballot time-series ({hour, count}) into a bar
  * strip plus a smoothed polyline. Y coordinates scale off the series maximum
- * so the graph stays legible whether the peak is 3 votes or 3,000. Counts are
- * position-level ledger rows — never joined against user accounts (H-1).
+ * so the graph stays legible whether the peak is 3 ballots or 3,000. Counts
+ * are distinct ballots per hour (one ballot = many ledger rows sharing a
+ * receipt) — never joined against user accounts (H-1).
  */
 const VELOCITY_CHART = { width: 640, height: 170, padX: 8, padTop: 14, padBottom: 24 };
 
 function VelocityTimeline({ data, loading, apiOk }) {
   const points = Array.isArray(data) ? data : [];
-  const maxCount = Math.max(1, ...points.map((p) => toNumber(p.count)));
+  const counts = points.map((point) => toNumber(point.count));
+  const total = counts.reduce((sum, count) => sum + count, 0);
+  const maxCount = Math.max(1, ...counts);
   const { width, height, padX, padTop, padBottom } = VELOCITY_CHART;
   const innerW = width - padX * 2;
   const innerH = height - padTop - padBottom;
@@ -92,6 +95,23 @@ function VelocityTimeline({ data, loading, apiOk }) {
 
   const yFor = (count) => padTop + innerH - (toNumber(count) / maxCount) * innerH;
   const xFor = (index) => padX + slot * index + slot / 2;
+
+  // The backend always returns 24 zero-filled buckets, so an idle window is a
+  // flat all-zero series rather than an empty array — treat that as empty too,
+  // otherwise the "no ballots" message below would never show.
+  if (points.length === 0 || (!loading && apiOk && total === 0)) {
+    return (
+      <div className="velocity-chart-box">
+        <p className="no-data-text">
+          {loading
+            ? 'Loading voting velocity…'
+            : apiOk
+              ? 'No ballots recorded in the last 24 hours.'
+              : 'Analytics feed unreachable — velocity data may be stale.'}
+        </p>
+      </div>
+    );
+  }
 
   const barNodes = points.map((point, index) => {
     const y = yFor(point.count);
@@ -116,57 +136,46 @@ function VelocityTimeline({ data, loading, apiOk }) {
 
   // Axis ticks: first, middle and last hour labels only — keeps the strip
   // clean at 24 buckets without crowding.
-  const ticks = points.length > 0
-    ? [0, Math.floor((points.length - 1) / 2), points.length - 1]
-    : [];
+  const ticks = [0, Math.floor((points.length - 1) / 2), points.length - 1];
 
   return (
     <div className="velocity-chart-box">
-      {points.length === 0 ? (
-        <p className="no-data-text">
-          {loading
-            ? 'Loading voting velocity…'
-            : apiOk
-              ? 'No votes recorded in the last 24 hours.'
-              : 'Analytics feed unreachable — velocity data may be stale.'}
-        </p>
-      ) : (
-        <>
-          <svg
-            className="velocity-chart-svg"
-            viewBox={`0 0 ${width} ${height}`}
-            preserveAspectRatio="none"
-            role="img"
-            aria-label={`Hourly voting velocity, last ${points.length} hours, peak ${maxCount} votes`}
-          >
-            {/* Baseline + soft gridlines at 25/50/75/100 % of the peak */}
-            {[0.25, 0.5, 0.75, 1].map((fraction) => (
-              <line
-                key={fraction}
-                className="velocity-gridline"
-                x1={padX}
-                x2={width - padX}
-                y1={(padTop + innerH - innerH * fraction).toFixed(2)}
-                y2={(padTop + innerH - innerH * fraction).toFixed(2)}
-              />
-            ))}
-            {barNodes}
-            <polyline className="velocity-line" points={linePoints} fill="none" />
-            <line
-              className="velocity-baseline"
-              x1={padX}
-              x2={width - padX}
-              y1={padTop + innerH}
-              y2={padTop + innerH}
-            />
-          </svg>
-          <div className="chart-x-axis" aria-hidden="true">
-            {ticks.map((index) => (
-              <span key={index}>{points[index]?.hour}</span>
-            ))}
-          </div>
-        </>
-      )}
+      <svg
+        className="velocity-chart-svg"
+        viewBox={`0 0 ${width} ${height}`}
+        preserveAspectRatio="none"
+        role="img"
+        aria-label={`Hourly voting velocity, last ${points.length} hours, ${total} ballots, peak ${maxCount} per hour`}
+      >
+        {/* Baseline + soft gridlines at 25/50/75/100 % of the peak */}
+        {[0.25, 0.5, 0.75, 1].map((fraction) => (
+          <line
+            key={fraction}
+            className="velocity-gridline"
+            x1={padX}
+            x2={width - padX}
+            y1={(padTop + innerH - innerH * fraction).toFixed(2)}
+            y2={(padTop + innerH - innerH * fraction).toFixed(2)}
+          />
+        ))}
+        {barNodes}
+        <polyline className="velocity-line" points={linePoints} fill="none" />
+        <line
+          className="velocity-baseline"
+          x1={padX}
+          x2={width - padX}
+          y1={padTop + innerH}
+          y2={padTop + innerH}
+        />
+      </svg>
+      <div className="chart-x-axis" aria-hidden="true">
+        {ticks.map((index) => (
+          <span key={index}>{points[index]?.hour}</span>
+        ))}
+      </div>
+      <p className="velocity-summary muted-text">
+        {total} {total === 1 ? 'ballot' : 'ballots'} in the last 24 h · peak {maxCount}/h
+      </p>
     </div>
   );
 }
