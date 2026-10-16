@@ -59,6 +59,8 @@ class CandidacyController extends Controller
         return response()->json([
             'status' => $candidate->approval_status,
             'rejection_reason' => $candidate->rejection_reason,
+            'rejection_count' => $candidate->rejection_count,
+            'reapply_blocked_until' => $candidate->reapply_blocked_until?->toIso8601String(),
             'created_at' => $candidate->created_at?->toIso8601String(),
             'updated_at' => $candidate->updated_at?->toIso8601String(),
             'applicants_count' => $applicantsCount,

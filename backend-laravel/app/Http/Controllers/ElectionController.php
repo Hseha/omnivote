@@ -218,6 +218,8 @@ class ElectionController extends Controller
                     'winner_rank' => null,
                     'vote_total' => 0,
                     'election_status' => null,
+                    'rejection_count' => 0,
+                    'reapply_blocked_until' => null,
                     'updated_at' => now(),
                 ]);
 

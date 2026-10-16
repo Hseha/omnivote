@@ -149,6 +149,21 @@ class CandidateController extends Controller
             ], 409);
         }
 
+        // 3-strike lockout: if blocked, refuse with the exact time they can retry.
+        if ($existing && $existing->reapply_blocked_until && now()->lt($existing->reapply_blocked_until)) {
+            return response()->json([
+                'message' => 'You cannot reapply for 24 hours after being rejected 3 times. You can reapply after '.$existing->reapply_blocked_until->format('M d, Y h:i A').'.',
+                'code' => 'reapply_blocked',
+                'blocked_until' => $existing->reapply_blocked_until->toIso8601String(),
+            ], 429);
+        }
+
+        // If the 24-hour lockout has expired, reset the counter so the student
+        // gets a fresh cycle of attempts.
+        if ($existing && $existing->reapply_blocked_until && now()->gte($existing->reapply_blocked_until)) {
+            $existing->update(['rejection_count' => 0, 'reapply_blocked_until' => null]);
+        }
+
         // Seat-cap gate: a party may field at most `seat_count` candidates
         // per position (1 everywhere, 12 for Senator). Both `pending` and
         // `approved` claims reserve the seat; `rejected`/`withdrawn` free it.
@@ -178,21 +193,43 @@ class CandidateController extends Controller
 
         $sanitized = strip_tags($validated['platform_statement'], '<p><br><strong><em><ul><ol><li>');
 
-        $candidate = Candidate::create([
-            'user_id' => $request->user()->id,
-            'position_id' => $validated['position_id'],
-            'candidate_ref' => (string) Str::uuid(),
-            'slogan' => $validated['slogan'] ?? null,
-            'party_name' => $validated['party_name'] ?? null,
-            'platform_statement' => $sanitized,
-            'platform_points' => array_values(array_filter(array_map('trim', explode("\n", $sanitized)))),
-            'approval_status' => 'pending',
-        ]);
+        // Reapply: a rejected candidate's row is reset to pending (no duplicate).
+        // The rejection counter stays at its current value so the 3-strike lockout
+        // keeps tracking across multiple rejections.
+        if ($existing && $existing->approval_status === 'rejected') {
+            $existing->update([
+                'position_id' => $validated['position_id'],
+                'slogan' => $validated['slogan'] ?? null,
+                'party_name' => $validated['party_name'] ?? null,
+                'platform_statement' => $sanitized,
+                'platform_points' => array_values(array_filter(array_map('trim', explode("\n", $sanitized)))),
+                'approval_status' => 'pending',
+                'rejection_reason' => null,
+            ]);
+            $candidate = $existing;
 
-        if ($request->hasFile('photo')) {
-            $path = $request->file('photo')->store('candidates', 'public');
-            $candidate->photo_path = $path;
-            $candidate->save();
+            if ($request->hasFile('photo')) {
+                $path = $request->file('photo')->store('candidates', 'public');
+                $candidate->photo_path = $path;
+                $candidate->save();
+            }
+        } else {
+            $candidate = Candidate::create([
+                'user_id' => $request->user()->id,
+                'position_id' => $validated['position_id'],
+                'candidate_ref' => (string) Str::uuid(),
+                'slogan' => $validated['slogan'] ?? null,
+                'party_name' => $validated['party_name'] ?? null,
+                'platform_statement' => $sanitized,
+                'platform_points' => array_values(array_filter(array_map('trim', explode("\n", $sanitized)))),
+                'approval_status' => 'pending',
+            ]);
+
+            if ($request->hasFile('photo')) {
+                $path = $request->file('photo')->store('candidates', 'public');
+                $candidate->photo_path = $path;
+                $candidate->save();
+            }
         }
 
         Notifier::toAdmins(

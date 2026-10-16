@@ -100,6 +100,9 @@ Route::prefix('admin')->group(function () {
             ->middleware('permission:candidates.review');
         Route::patch('/candidates/{candidate}', [AdminCandidateController::class, 'update'])
             ->middleware('permission:candidates.review');
+        // Delete a rejected candidate (trash-bin action on the React screen).
+        Route::delete('/candidates/{candidate}', [AdminCandidateController::class, 'destroy'])
+            ->middleware('permission:candidates.review');
 
         // Registrar CSV import (React Student Registry screen)
         Route::post('/registrar/import', [RegistrarImportController::class, 'import'])

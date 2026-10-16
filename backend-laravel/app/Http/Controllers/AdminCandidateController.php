@@ -15,6 +15,7 @@ use App\Support\Notifier;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Log;
 use Illuminate\Support\Str;
 
 /**
@@ -97,7 +98,14 @@ class AdminCandidateController extends Controller
         // (position_id is nullable) have no place in the hierarchy and are
         // pushed to the end rather than sorted to the front, because MySQL
         // orders NULLs first.
+        // Default listing excludes rejected candidates (clean slate for the
+        // main table). Pass ?status=rejected to fetch rejected only, which the
+        // "Rejected" filter button on the React Candidates screen uses.
         $candidates = (clone $base)
+            ->when(
+                ! $request->query('status') || $request->query('status') === 'all',
+                fn ($q) => $q->where('approval_status', '!=', 'rejected'),
+            )
             ->when($request->query('status'), fn ($q, $s) => $q->where('approval_status', $s))
             ->leftJoin('positions', 'positions.id', '=', 'candidates.position_id')
             ->orderByRaw('CASE WHEN positions.id IS NULL THEN 1 ELSE 0 END')
@@ -263,16 +271,45 @@ class AdminCandidateController extends Controller
             }
         }
 
-        // The reason only accompanies a rejection; an approval (or a flip back
-        // to pending) clears it so a stale note never survives a status change.
+        // Rejection tracking: increment the counter on each reject. At the 3rd
+        // rejection the candidate is locked out from reapplying for 24 hours.
+        // Both admin and SSG Adviser rejections count.
+        $wasRejected = $candidate->approval_status === 'rejected';
+        $isRejecting = $status === 'rejected';
+
+        $extraUpdate = [];
+        if ($isRejecting && ! $wasRejected) {
+            $currentCount = (int) ($candidate->rejection_count ?? 0);
+            $newCount = $currentCount + 1;
+            $extraUpdate['rejection_count'] = $newCount;
+            if ($newCount >= 3) {
+                $extraUpdate['reapply_blocked_until'] = now()->addHours(24);
+
+                // Notify the student about the lockout on the 3rd rejection.
+                if ($candidate->user_id) {
+                    Notifier::notifyUser(
+                        $candidate->user_id,
+                        'warning',
+                        'Candidacy reapply locked',
+                        'You have been rejected 3 times. You cannot reapply for 24 hours.',
+                        '/candidacy',
+                    );
+                }
+            }
+        } elseif (! $isRejecting && $wasRejected) {
+            // Re-approval clears the rejection counter and any active lockout.
+            $extraUpdate['rejection_count'] = 0;
+            $extraUpdate['reapply_blocked_until'] = null;
+        }
+
         $reason = $status === 'rejected'
             ? trim((string) ($request->validated('rejection_reason') ?? ''))
             : '';
 
-        $candidate->update([
+        $candidate->update(array_merge([
             'approval_status' => $status,
             'rejection_reason' => $reason === '' ? null : $reason,
-        ]);
+        ], $extraUpdate));
 
         $candidateName = $candidate->user?->name ?? $candidate->candidate_ref;
 
@@ -463,5 +500,33 @@ class AdminCandidateController extends Controller
     public function export(): JsonResponse
     {
         return response()->json(['message' => 'Use /api/admin/results with Accept: text/csv for a file export.'], 501);
+    }
+
+    /**
+     * DELETE /api/admin/candidates/{candidate} — permanently remove a rejected
+     * candidate (trash-bin action on the React Candidates screen). Only
+     * `rejected` candidates may be deleted; a pending or approved one must go
+     * through status changes first so a click can never wipe an active race.
+     */
+    public function destroy(Request $request, Candidate $candidate): JsonResponse
+    {
+        if ($candidate->approval_status !== 'rejected') {
+            return response()->json([
+                'message' => 'Only rejected candidates can be deleted.',
+            ], 409);
+        }
+
+        $name = $candidate->user?->name ?? $candidate->candidate_ref;
+        $candidate->delete();
+
+        AuditLog::record(
+            $request,
+            'candidate_deleted',
+            ($request->user()?->name ?? 'Admin')." deleted rejected candidate {$name} ({$candidate->candidate_ref}).",
+            'candidate',
+            $candidate->id,
+        );
+
+        return response()->json(['message' => 'Rejected candidate deleted.']);
     }
 }

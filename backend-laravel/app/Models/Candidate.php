@@ -18,6 +18,8 @@ class Candidate extends Model
         'photo_path',
         'approval_status',
         'rejection_reason',
+        'rejection_count',
+        'reapply_blocked_until',
         'certified_winner',
         'certified_at',
         'election_status',
@@ -32,6 +34,8 @@ class Candidate extends Model
         'winner_rank' => 'integer',
         'vote_total' => 'integer',
         'archived_at' => 'datetime',
+        'rejection_count' => 'integer',
+        'reapply_blocked_until' => 'datetime',
     ];
 
     public function user(): BelongsTo

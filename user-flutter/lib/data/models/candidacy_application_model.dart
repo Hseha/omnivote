@@ -59,6 +59,14 @@ class CandidacyApplication {
   /// screen. Null unless the application was rejected with a reason.
   final String? rejectionReason;
 
+  /// How many times this candidacy has been rejected in the current cycle.
+  /// At 3 the student is locked out for 24 hours (see `reapplyBlockedUntil`).
+  final int rejectionCount;
+
+  /// ISO timestamp after which the student may reapply again. Null when no
+  /// lockout is active.
+  final String? reapplyBlockedUntil;
+
   /// ISO timestamps from the server; null on bare apply responses.
   final String? createdAt;
   final String? updatedAt;
@@ -79,6 +87,8 @@ class CandidacyApplication {
     this.photoUrl,
     this.status,
     this.rejectionReason,
+    this.rejectionCount = 0,
+    this.reapplyBlockedUntil,
     this.createdAt,
     this.updatedAt,
     this.applicantsCount,
@@ -101,6 +111,11 @@ class CandidacyApplication {
       status: (json['status'] ?? json['approval_status']) as String?,
       rejectionReason: (json['rejection_reason'] ?? json['rejectionReason'])
           as String?,
+      rejectionCount: json['rejection_count'] is int
+          ? json['rejection_count'] as int
+          : int.tryParse('${json['rejection_count'] ?? 0}') ?? 0,
+      reapplyBlockedUntil: (json['reapply_blocked_until'] ??
+          json['reapplyBlockedUntil']) as String?,
       createdAt: (json['created_at'] ?? json['createdAt']) as String?,
       updatedAt: (json['updated_at'] ?? json['updatedAt']) as String?,
       applicantsCount: json['applicants_count'] is int
