@@ -21,6 +21,7 @@ use App\Http\Controllers\RegistrationController;
 use App\Http\Controllers\ResultsController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\SsgOfficerController;
+use App\Http\Controllers\SsgSetupController;
 use App\Http\Controllers\StudentAuthController;
 use App\Http\Controllers\VoteController;
 use App\Http\Middleware\EnsurePasswordChanged;
@@ -321,11 +322,6 @@ Route::middleware(['auth:sanctum', 'role:student', 'passwordChanged'])->group(fu
     // Dashboard card
     Route::get('/registration/me', [ElectionController::class, 'registrationMe']);
 
-    // In-app notification center (Flutter bell + badge). Scoped to the caller;
-    // no permission middleware — every student sees only their own rows.
-    Route::get('/notifications', [NotificationController::class, 'index']);
-    Route::post('/notifications/read', [NotificationController::class, 'markRead']);
-
     // Candidacy application (registration phase only) + status
     Route::get('/candidacy/me', [CandidacyController::class, 'me']);
     // Per-party seat availability for the apply screen (see
@@ -362,6 +358,22 @@ Route::middleware(['auth:sanctum', 'role:student', 'passwordChanged'])->group(fu
 });
 
 // ------------------------------------------------------------------------
+// In-app notification center (Flutter bell + badge)
+//
+// Shared by students and the SSG President: a promoted President must be able
+// to read the one-time setup link delivered to their feed (see
+// AdminUserController::grantSsg), and they have no mailbox to receive it any
+// other way. Scoped to the caller; no permission middleware — every account
+// sees only their own rows. The rest of the student flow (vote, ballot,
+// candidacy, results) stays `role:student`-only so a President cannot act as a
+// voter after taking office.
+// ------------------------------------------------------------------------
+Route::middleware(['auth:sanctum', 'role:student,ssg_president', 'passwordChanged'])->group(function () {
+    Route::get('/notifications', [NotificationController::class, 'index']);
+    Route::post('/notifications/read', [NotificationController::class, 'markRead']);
+});
+
+// ------------------------------------------------------------------------
 // SSG President (Flutter client)
 //
 // The President signs in through the mobile login above and carries a Sanctum
@@ -377,4 +389,10 @@ Route::middleware(['auth:sanctum', 'role:student', 'passwordChanged'])->group(fu
 // ------------------------------------------------------------------------
 Route::middleware(['auth:sanctum', 'role:ssg_president', 'passwordChanged'])->group(function () {
     Route::get('/ssg/officers', [SsgOfficerController::class, 'index']);
+
+    // Redeem the one-time setup link carried in the President's notification
+    // feed and set their own password. Authenticated + token-bound (see
+    // SsgSetupController); throttled because it sets a credential.
+    Route::post('/ssg/setup-password', [SsgSetupController::class, 'setupPassword'])
+        ->middleware('throttle:ssg-setup');
 });

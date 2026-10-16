@@ -6,6 +6,7 @@ use App\Models\Candidate;
 use App\Models\Course;
 use App\Models\Department;
 use App\Models\RegistrarImport;
+use App\Models\SsgPresidentInvite;
 use App\Models\User;
 use App\Support\AuditLog;
 use App\Support\DepartmentCatalog;
@@ -510,6 +511,7 @@ class AdminUserController extends Controller
             'course' => $user->course,
             'needs_review' => (bool) $user->needs_review,
             'review_reason' => $user->review_reason,
+            'ssg_setup_pending' => (bool) $user->ssg_setup_pending,
             'archived' => $user->archived_at !== null,
             'archived_at_date' => $user->archived_at?->format('M d, Y'),
             'date_added' => $user->created_at?->format('M d, Y'),
@@ -952,8 +954,6 @@ class AdminUserController extends Controller
             ], 422);
         }
 
-        $previousRole = $user->role;
-
         $previous = User::where('role', 'ssg_president')
             ->where('id', '!=', $user->id)
             ->get();
@@ -962,51 +962,61 @@ class AdminUserController extends Controller
             // Single-seat role: demote any previous holder to student first.
             foreach ($previous as $holder) {
                 $holder->role = 'student';
+                $holder->ssg_setup_pending = false;
                 $holder->save();
                 $holder->tokens()->delete();
+
+                // The seat is gone, so the old holder's outstanding setup link
+                // must die with it — a stale invite can never be redeemed to
+                // re-take the account after a new President is seated.
+                SsgPresidentInvite::query()
+                    ->where('user_id', $holder->id)
+                    ->whereNull('used_at')
+                    ->update(['used_at' => now()]);
             }
             $user->role = 'ssg_president';
+            // The account works (same sign-in) but its SSG governance features
+            // stay locked until the President sets their own password via the
+            // one-time invite — see SsgPresidentInvite and SsgSetupController.
+            $user->ssg_setup_pending = true;
             $user->save();
             $user->tokens()->delete();
         });
 
-        // --- Credentials handoff -------------------------------------------
-        // The SSG President is a promoted existing student, so their login is
-        // the same email + password they already have. If they never had one
-        // (no registrar password), mint a temporary one exactly like the
-        // account-creation flow does and email it to them. The plaintext is
-        // only ever known here (the model hashes on save) and in the email —
-        // the hash is never sent, only the freshly minted value.
-        $credentials = ['email' => $user->email, 'role' => $user->role];
-        $temporaryPassword = null;
+        // --- Secure credential handoff -------------------------------------
+        // No password is generated, emailed, or returned anywhere: a promoted
+        // SSG President receives a one-time, expiring, single-use setup link
+        // through their in-app notification feed. Only the link's SHA-256 hash
+        // is stored (SsgPresidentInvite); the raw token lives solely in the
+        // notification payload until it is redeemed, and the account's existing
+        // password is never transmitted. Because most student handles are
+        // name-derived slugs with no deliverable mailbox, in-app is the only
+        // channel that actually reaches them.
+        $setupToken = SsgPresidentInvite::issue($user, $request->user()?->id);
 
-        if (empty($user->password)) {
-            $temporaryPassword = TemporaryPassword::generate();
-            $user->forceFill([
-                'password' => $temporaryPassword,
-                'must_change_password' => true,
-            ])->save();
-            $credentials['temporary_password'] = $temporaryPassword;
-        }
-
-        if ($user->email) {
-            $passwordLine = $temporaryPassword !== null
-                ? "Password:     {$temporaryPassword} (temporary — you will be asked to change it after sign-in)"
-                : "Password:     the one you already use (unchanged by this promotion)";
-
-            Notifier::emailUser(
-                $user->id,
-                'emailOnAdminAction',
-                'Your OmniVote SSG President account',
-                "Your SSG President account is active. Sign in at the admin dashboard or the mobile app with:\n\nEmail:     {$user->email}\n{$passwordLine}\n\nThe account was promoted from '{$previousRole}' to 'ssg_president'.",
-                null,
-                true,
-            );
-        }
+        Notifier::notifyUser(
+            $user->id,
+            'info',
+            'You are now the SSG President',
+            "Set your SSG President password to activate your governance dashboard. "
+                ."For your security no password was sent to you — open the setup link below and choose your own. "
+                ."This link expires in ".SsgPresidentInvite::TTL_MINUTES." minutes and can be used once.",
+            '/ssg-setup?token='.$setupToken,
+        );
 
         return response()->json([
             'data' => $this->present($user),
-            'credentials' => $credentials,
+            // Non-secret handles only; the credential itself never leaves the
+            // server. `invite` reports the delivery, not the secret.
+            'credentials' => [
+                'email' => $user->email,
+                'role' => $user->role,
+            ],
+            'invite' => [
+                'sent' => true,
+                'channel' => 'in_app',
+                'expires_in_minutes' => SsgPresidentInvite::TTL_MINUTES,
+            ],
             'replaced' => $previous->map(fn (User $u) => [
                 'id' => $u->id, 'name' => $u->name, 'email' => $u->email,
             ])->values(),

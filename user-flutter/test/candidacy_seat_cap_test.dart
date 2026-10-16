@@ -43,6 +43,11 @@ class _StubAuthRepository implements AuthRepository {
     required String code,
     required String newPassword,
   }) async {}
+  @override
+  Future<void> setupSsgPassword({
+    required String token,
+    required String newPassword,
+  }) async {}
 }
 
 class _FakeCandidacyRepository extends CandidacyRepository {

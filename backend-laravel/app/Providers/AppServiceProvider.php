@@ -72,6 +72,13 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(3)->by($request->ip());
         });
 
+        // Redeeming an SSG President setup link sets a password, so it shares the
+        // password-reset threat model (a guessing surface for the token). Keyed
+        // per account as well as IP, since the route is authenticated.
+        RateLimiter::for('ssg-setup', function (Request $request) {
+            return Limit::perMinute(5)->by($request->user()?->id.'|'.$request->ip());
+        });
+
         // Receipt verification compares a caller-supplied token against an
         // HMAC, so it is an offline-guessing oracle if left unlimited. Keyed per
         // account (the route is student-authenticated), because a voting hall

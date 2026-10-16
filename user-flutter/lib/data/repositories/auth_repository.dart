@@ -33,6 +33,7 @@ class AuthRepository {
     return LoginResult(
       student: student,
       mustChangePassword: response.data['must_change_password'] == true,
+      ssgSetupPending: student.ssgSetupPending,
     );
   }
 
@@ -52,6 +53,16 @@ class AuthRepository {
       currentPassword: currentPassword,
       newPassword: newPassword,
     );
+  }
+
+  /// Redeems the SSG President's one-time in-app setup link and sets the
+  /// password they chose. The link is single-use and expires; the server keeps
+  /// the current session valid and revokes any other tokens.
+  Future<void> setupSsgPassword({
+    required String token,
+    required String newPassword,
+  }) async {
+    await _authService.setupSsgPassword(token: token, newPassword: newPassword);
   }
 
   /// Sets a new password using a registrar-issued activation code.
@@ -82,9 +93,11 @@ class AuthRepository {
       final raw = response.data;
       final studentData = raw is Map && raw.containsKey('user') ? raw['user'] : raw;
       final map = Map<String, dynamic>.from(studentData as Map);
+      final student = Student.fromJson(map);
       return LoginResult(
-        student: Student.fromJson(map),
+        student: student,
         mustChangePassword: map['must_change_password'] == true,
+        ssgSetupPending: student.ssgSetupPending,
       );
     } catch (_) {
       await _tokenStore.delete();
@@ -101,5 +114,13 @@ class LoginResult {
   final Student student;
   final bool mustChangePassword;
 
-  const LoginResult({required this.student, required this.mustChangePassword});
+  /// True for a freshly-granted SSG President who still holds a one-time setup
+  /// link (in their in-app notifications) and has not yet set a password.
+  final bool ssgSetupPending;
+
+  const LoginResult({
+    required this.student,
+    required this.mustChangePassword,
+    this.ssgSetupPending = false,
+  });
 }

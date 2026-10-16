@@ -22,6 +22,7 @@ import '../../features/settings/screens/settings_screen.dart';
 import 'app_shell.dart';
 
 import '../../features/ssg_president/screens/president_dashboard_screen.dart';
+import '../../features/ssg_president/screens/ssg_setup_screen.dart';
 
 class AppRouter {
   // Splash is the bootstrap route: it checks auth once and redirects to
@@ -109,6 +110,13 @@ class AppRouter {
       GoRoute(
         path: '/ssg-president',
         builder: (context, state) => const PresidentDashboardScreen(),
+      ),
+      // One-time credential handoff for a newly granted SSG President. The
+      // token rides the query string of the notification link (`/ssg-setup?
+      // token=...`), which the notification center pushes verbatim.
+      GoRoute(
+        path: '/ssg-setup',
+        builder: (context, state) => const SsgSetupScreen(),
       ),
       GoRoute(
         path: '/candidate-profile',
