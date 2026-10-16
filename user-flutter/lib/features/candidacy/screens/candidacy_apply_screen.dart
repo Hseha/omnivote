@@ -324,8 +324,10 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
               case 'withdrawn':
                 return _StatusView(
                   status: status,
-                  actionLabel: 'Apply Again',
+                  actionLabel: 'Re-apply',
                   onAction: _applyAgain,
+                  rejectionReason: _application?.rejectionReason,
+                  reapplyBlockedUntil: _application?.reapplyBlockedUntil,
                 );
               default:
                 return _buildForm(positions);
@@ -694,12 +696,23 @@ class _StatusView extends StatelessWidget {
   final String status;
   final String? actionLabel;
   final VoidCallback? onAction;
+  final String? rejectionReason;
+  final String? reapplyBlockedUntil;
 
   const _StatusView({
     required this.status,
     this.actionLabel,
     this.onAction,
+    this.rejectionReason,
+    this.reapplyBlockedUntil,
   });
+
+  /// True when the 24-hour lockout (set on the 3rd rejection) is still active.
+  bool get _isBlocked {
+    if (reapplyBlockedUntil == null) return false;
+    final until = DateTime.tryParse(reapplyBlockedUntil!);
+    return until != null && until.isAfter(DateTime.now());
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -727,6 +740,12 @@ class _StatusView extends StatelessWidget {
           'election committee publishes approvals.',
     };
 
+    // Show the exact reapply time when blocked (3-strike lockout).
+    final blockedMessage = _isBlocked
+        ? 'You have been rejected 3 times. You cannot reapply until '
+            '${_formatBlockedUntil()}.'
+        : null;
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.xl),
@@ -745,15 +764,85 @@ class _StatusView extends StatelessWidget {
               textAlign: TextAlign.center,
               style: appText.bodySmall,
             ),
+            // Committee rejection reason, when supplied.
+            if (status == 'rejected' && (rejectionReason ?? '').isNotEmpty) ...[
+              AppSpacing.vMd,
+              Container(
+                padding: const EdgeInsets.all(AppSpacing.md),
+                decoration: BoxDecoration(
+                  color: scheme.error.withValues(alpha: 0.08),
+                  borderRadius: AppRadius.mdAll,
+                  border: Border.all(color: scheme.error.withValues(alpha: 0.3)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Reason for rejection',
+                      style: appText.labelSmall.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: scheme.error,
+                      ),
+                    ),
+                    AppSpacing.vXs,
+                    Text(rejectionReason!, style: appText.bodySmall),
+                  ],
+                ),
+              ),
+            ],
+            // 3-strike lockout warning when the 24h block is active.
+            if (blockedMessage != null) ...[
+              AppSpacing.vMd,
+              Container(
+                padding: const EdgeInsets.all(AppSpacing.md),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withValues(alpha: 0.08),
+                  borderRadius: AppRadius.mdAll,
+                  border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.timer_off_outlined, color: Colors.orange, size: 20),
+                    AppSpacing.hSm,
+                    Expanded(
+                      child: Text(blockedMessage, style: appText.bodySmall),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             AppSpacing.vLg,
-            AppButton.primary(
-              label: actionLabel ?? 'Back to Dashboard',
-              onPressed: onAction ?? () => context.go('/dashboard'),
-            ),
+            if (_isBlocked)
+              // Blocked: show disabled button so the student knows reapply exists.
+              AppButton.primary(
+                label: 'Re-apply (locked)',
+                onPressed: null,
+              )
+            else
+              AppButton.primary(
+                label: actionLabel ?? 'Back to Dashboard',
+                onPressed: onAction ?? () => context.go('/dashboard'),
+              ),
           ],
         ),
       ),
     );
+  }
+
+  /// "Oct 16, 2026 03:15 PM" from the ISO lockout timestamp.
+  String _formatBlockedUntil() {
+    final until = DateTime.tryParse(reapplyBlockedUntil ?? '');
+    if (until == null) return '24 hours';
+    final local = until.toLocal();
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    final h = local.hour % 12 == 0 ? 12 : local.hour % 12;
+    final amPm = local.hour >= 12 ? 'PM' : 'AM';
+    final minute = local.minute.toString().padLeft(2, '0');
+    return '${months[local.month - 1]} ${local.day}, ${local.year} '
+        '$h:$minute $amPm';
   }
 }
 

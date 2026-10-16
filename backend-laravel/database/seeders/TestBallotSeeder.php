@@ -40,6 +40,25 @@ class TestBallotSeeder extends Seeder
     ];
 
     /**
+     * Races left EMPTY on purpose so real users can file for them (e.g. the
+     * instructor demonstrating the apply flow live). A test candidate would
+     * consume the per-party seat (seat_count = 1 for each of these) and a real
+     * applicant would hit a 409 `seat_taken`. Skipping the slug outright — not
+     * just the insert — also means a re-run never disturbs a real application
+     * that already occupies the seat.
+     *
+     * National: the two executive seats (both ASLE + SVEA slots).
+     */
+    private const RESERVED_NATIONAL_POSITIONS = ['president', 'vice_president'];
+
+    /**
+     * Provincial seats left empty for real users, in EVERY college (the
+     * provincial tier is contested college-by-college, so the skip applies to
+     * each college's own slate).
+     */
+    private const RESERVED_PROVINCIAL_POSITIONS = ['governor', 'vice_governor'];
+
+    /**
      * Positions that field MORE THAN ONE candidate per party. Senators are the
      * only multi-seat national race: 12 seats, 12 nominees per party (24 total),
      * and the voter picks 12. That makes it a real contest rather than a
@@ -86,7 +105,11 @@ class TestBallotSeeder extends Seeder
         $i = 0;
 
         foreach (self::NATIONAL_POSITIONS as $positionSlug) {
-            if ($positionSlug === 'year_level_representative') {
+            // year_level_representative is scoped by YEAR, not party-vs-college,
+            // so it gets its own loop in run(); RESERVED_NATIONAL_POSITIONS are
+            // left for real users to contest.
+            if ($positionSlug === 'year_level_representative'
+                || in_array($positionSlug, self::RESERVED_NATIONAL_POSITIONS, true)) {
                 continue;
             }
 
@@ -197,6 +220,12 @@ class TestBallotSeeder extends Seeder
         // ---- Provincial: full 1 ASLE + 1 SVEA slate per college ----
         foreach (DepartmentCatalog::collegeNames() as $college) {
             foreach (self::PROVINCIAL_POSITIONS as $positionSlug) {
+                // Governor / Vice Governor stay open in every college for real
+                // users (demo apply flow).
+                if (in_array($positionSlug, self::RESERVED_PROVINCIAL_POSITIONS, true)) {
+                    continue;
+                }
+
                 $positionId = DB::table('positions')->where('slug', $positionSlug)->value('id');
                 if ($positionId === null) {
                     continue;
@@ -246,6 +275,14 @@ class TestBallotSeeder extends Seeder
         Candidate::query()
             ->whereRaw('LOWER(party_name) = ?', ['asle'])
             ->update(['party_name' => 'ASLE']);
+
+        $this->command?->info(
+            'Left empty for real-user applications: '
+            .implode(', ', array_merge(
+                self::RESERVED_NATIONAL_POSITIONS,
+                self::RESERVED_PROVINCIAL_POSITIONS,
+            )).'.'
+        );
 
         $this->command?->info(
             "Test ballot seeded: {$counters['createdStudents']} students, "

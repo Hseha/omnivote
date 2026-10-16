@@ -400,6 +400,8 @@ class CandidacyMeEnrichedTest extends TestCase
             $table->string('photo_path')->nullable();
             $table->string('approval_status')->default('pending');
             $table->string('rejection_reason', 1000)->nullable();
+            $table->unsignedInteger('rejection_count')->default(0);
+            $table->timestamp('reapply_blocked_until')->nullable();
             $table->boolean('certified_winner')->default(false);
             $table->timestamp('certified_at')->nullable();
             $table->string('election_status', 16)->default('pending');
