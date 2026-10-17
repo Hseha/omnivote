@@ -33,14 +33,7 @@ To prevent code conflicts, duplicate file rewrites, and race conditions across a
 
 Work listed here is actively being edited by another agent. Do not touch the listed files until it is committed and pushed; check `git status` and `git branch --show-current` first, and confirm the working tree is clean for those paths before starting.
 
-- **Antigravity CLI — backend data integrity** (`fix/security-vulnerabilities-and-integrity`, uncommitted at last check):
-  - Electorate-scope eligibility enforcement via `Position::voterIsInScope` in `CandidateController::store/update` and `AdminCandidateController::store`.
-  - Party seat-cap guards on admin-created candidacy and on candidacy update (prevents switching into a full party).
-  - Self-registration field propagation from registrar imports (`RegistrationController`): `year_level`, `block_number`, `department`, `course`, `is_active`, `has_voted`.
-  - Individual account unlock recovery (`AdminUserController::unlock` now accepts the `Request`).
-  - nginx real-client-IP hardening (`deploy/nginx-funnel-api.conf` → `HTTP_X_FORWARDED_FOR $remote_addr`).
-  - Matching feature tests: `CandidacySeatCapTest`, `LoginBackoffRecoveryTest`, `SelfRegistrationActivationCodeTest`.
-  - **Files other agents must leave untouched until this lands:** `AdminCandidateController.php`, `AdminUserController.php`, `CandidateController.php`, `RegistrationController.php`, and the three tests above.
+_None currently._ The Antigravity CLI backend data-integrity work on `fix/security-vulnerabilities-and-integrity` (electorate-scope + party seat-cap enforcement, post-submit ballot lock, registrar field propagation on self-registration, individual unlock audit, and `X-Forwarded-For` hardening) has been committed and is awaiting review. `AdminCandidateController.php`, `AdminUserController.php`, `CandidateController.php`, `RegistrationController.php` and their tests are no longer reserved.
 
 ## Pending Handoffs
 
