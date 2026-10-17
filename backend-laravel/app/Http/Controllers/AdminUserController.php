@@ -25,13 +25,13 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  *
  * GET    /api/admin/users                        — paginated listing + global role stats
  * POST   /api/admin/users                        — create a staff account (teacher/admin)
- * PATCH  /api/admin/users/{user}/role        — assign an approved role
  * PATCH  /api/admin/users/{user}/status      — toggle is_active
  * PATCH  /api/admin/users/{user}/email       — correct the sign-in email address
  * POST   /api/admin/users/{user}/password-reset  — one-time temp password
  * POST   /api/admin/users/{user}/unlock          — clear the failed-login lockout
  * POST   /api/admin/users/{user}/grant-ssg       — grant ssg_president to a certified winner
  * GET    /api/admin/users/certified-winners      — winners eligible for the SSG grant
+ * DELETE /api/admin/users/{user}                 — permanently delete an archived account
  * GET    /api/admin/users/export                 — CSV export honouring current filters
  *
  * All routes require auth + permission:manage_accounts (admin only).
@@ -39,14 +39,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 class AdminUserController extends Controller
 {
     /**
-     * Roles an administrator may assign by hand. `candidate` is derived from a
-     * live candidacy (App\Support\CandidateRoleSync) and `ssg_president` is the
-     * single seat granted through the certified-winner flow, so neither is
-     * ever set directly — listing/filtering still recognises them (ROLE_FILTERS).
+     * Roles a listing may be filtered by, including derived/appointed roles.
      */
-    private const SAFE_ROLES = ['admin', 'teacher', 'student'];
-
-    /** Every role the listing may be filtered by, including derived/appointed. */
     private const ROLE_FILTERS = ['admin', 'teacher', 'candidate', 'student', 'ssg_president'];
 
     /** Roles creatable via the create-staff-account endpoint. */
@@ -606,34 +600,6 @@ class AdminUserController extends Controller
         return [$department, $course];
     }
 
-    public function updateRole(Request $request, User $user): JsonResponse
-    {
-        $validated = $request->validate([
-            'role' => ['required', 'string', Rule::in(self::SAFE_ROLES)],
-        ]);
-
-        $acting = $request->user();
-        if ($acting->id === $user->id) {
-            return response()->json(['message' => 'You cannot change your own role.'], 422);
-        }
-
-        $user->role = $validated['role'];
-        $user->save();
-        $user->tokens()->delete();
-
-        $this->audit($request, 'user_role_changed', "{$acting->name} set {$user->name}'s role to {$user->role}.", 'user');
-
-        Notifier::toAdmins(
-            'emailOnAdminAction',
-            'info',
-            'User role changed',
-            "{$acting->name} set {$user->name}'s role to {$user->role}.",
-            '/users',
-        );
-
-        return response()->json(['data' => $this->present($user)]);
-    }
-
     public function updateStatus(Request $request, User $user): JsonResponse
     {
         $validated = $request->validate([
@@ -787,6 +753,78 @@ class AdminUserController extends Controller
         );
 
         return response()->json(['data' => $this->present($user)]);
+    }
+
+    /**
+     * DELETE /api/admin/users/{user} — permanently delete an archived account.
+     *
+     * The irreversible counterpart to archive(): the row and everything that
+     * cascades from it is removed for good. To keep it a deliberate, last-resort
+     * action it is only reachable once the account has already been archived, so
+     * archive()'s own guardrails (final active admin, live candidacy) are
+     * upstream. The checks are repeated here as defence in depth — an archived
+     * row can still be hand-edited, and the guards are cheap.
+     *
+     * Vote tallies are anonymous (vote_ledger carries no user_id), so removing
+     * an archived voter never disturbs published results.
+     */
+    public function destroy(Request $request, User $user): JsonResponse
+    {
+        $acting = $request->user();
+        if ($acting->id === $user->id) {
+            return response()->json(['message' => 'You cannot delete your own account.'], 422);
+        }
+        if ($user->archived_at === null) {
+            return response()->json([
+                'message' => 'Archive the account before deleting it permanently.',
+            ], 409);
+        }
+        if ($user->role === 'admin') {
+            $otherActiveAdmins = User::where('role', 'admin')
+                ->where('is_active', true)
+                ->whereNull('archived_at')
+                ->where('id', '!=', $user->id)
+                ->count();
+            if ($otherActiveAdmins < 1) {
+                return response()->json(['message' => 'Cannot delete the final active administrator.'], 409);
+            }
+        }
+
+        $hasActiveCandidacy = Candidate::where('user_id', $user->id)
+            ->where(function ($q) {
+                $q->whereIn('approval_status', ['pending', 'approved'])
+                    ->orWhere('certified_winner', true);
+            })
+            ->exists();
+        if ($hasActiveCandidacy) {
+            return response()->json([
+                'message' => 'This user has a pending/approved candidacy or a certified-winner record. Resolve it before deleting the account.',
+            ], 409);
+        }
+        if ($user->role === 'ssg_president') {
+            return response()->json([
+                'message' => 'Unseat the SSG President before deleting this account.',
+            ], 409);
+        }
+
+        $name = $user->name;
+
+        // Sanctum tokens are not foreign-keyed to the user, so they must be
+        // revoked explicitly; every other owned record cascades on delete.
+        $user->tokens()->delete();
+        $user->delete();
+
+        $this->audit($request, 'user_deleted', "{$acting->name} permanently deleted {$name}'s account.", 'user');
+
+        Notifier::toAdmins(
+            'emailOnAdminAction',
+            'danger',
+            'User account permanently deleted',
+            "{$acting->name} permanently deleted {$name}'s account.",
+            '/users',
+        );
+
+        return response()->json(['message' => 'Account permanently deleted.']);
     }
 
     /**

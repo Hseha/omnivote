@@ -106,6 +106,9 @@
 .um-status-archived { background: rgba(100,116,139,0.18); color: #94a3b8; border: 1px solid rgba(148,163,184,0.3); }
 .btn-archive { background: rgba(100,116,139,0.1); border: 1px solid rgba(148,163,184,0.3); color: #cbd5e1; }
 .btn-archive:hover { background: rgba(100,116,139,0.22); }
+/* Permanent delete — stronger/darker red than the reversible disable toggle */
+.btn-delete { background: rgba(220,38,38,0.16); border: 1px solid rgba(248,113,113,0.45); color: #fca5a5; }
+.btn-delete:hover { background: rgba(220,38,38,0.3); color: #fecaca; }
 .um-modal-title-danger { color: #f87171; }
 .um-modal-danger-note { font-weight: 600; color: #fca5a5; }
 .um-archive-confirm-name { font-weight: 700; color: var(--heading); background: var(--surface-2); border: 1px dashed rgba(148,163,184,0.4); border-radius: 8px; padding: 10px 12px; text-align: center; margin-bottom: 12px; letter-spacing: 0.01em; }

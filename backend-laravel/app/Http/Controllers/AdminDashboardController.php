@@ -265,6 +265,7 @@ class AdminDashboardController extends Controller
                 'login_backoff_triggered',
                 'login_denied',
                 'user_disabled',
+                'user_deleted',
                 '2fa_failed',
             ], true) => 'critical',
             // Manual overrides an operator should review.

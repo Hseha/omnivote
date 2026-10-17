@@ -212,8 +212,6 @@ Route::prefix('admin')->group(function () {
             ->middleware('permission:manage_accounts');
         Route::delete('/users/courses', [AdminUserController::class, 'deleteCourse'])
             ->middleware('permission:manage_accounts');
-        Route::patch('/users/{user}/role', [AdminUserController::class, 'updateRole'])
-            ->middleware('permission:manage_accounts');
         Route::patch('/users/{user}/status', [AdminUserController::class, 'updateStatus'])
             ->middleware('permission:manage_accounts');
         Route::patch('/users/{user}/email', [AdminUserController::class, 'updateEmail'])
@@ -229,6 +227,10 @@ Route::prefix('admin')->group(function () {
         Route::post('/users/{user}/archive', [AdminUserController::class, 'archive'])
             ->middleware('permission:manage_accounts');
         Route::post('/users/{user}/unarchive', [AdminUserController::class, 'unarchive'])
+            ->middleware('permission:manage_accounts');
+        // Permanent delete is declared after /users/courses so the literal
+        // segment keeps winning over the {user} placeholder.
+        Route::delete('/users/{user}', [AdminUserController::class, 'destroy'])
             ->middleware('permission:manage_accounts');
 
         // Certified-winner ratification (drives the SSG President grant flow).
