@@ -404,9 +404,11 @@ class RegistrarImportController extends Controller
                         // A corrected re-import (complete row) clears the flag.
                         'needs_review' => $row['_needs_review'],
                         'review_reason' => $row['_review_reason'],
-                        'role' => in_array($user->role, ['teacher', 'admin'], true)
-                            ? $user->role
-                            : 'student',
+                        // Never clobber a derived/appointed role. A re-imported
+                        // candidate keeps `candidate` (its candidacy is still
+                        // live) and staff keep theirs; only an unset role is
+                        // normalised to student.
+                        'role' => $user->role ?: 'student',
                     ]);
                     // Counted separately from the eligibility-feed update above:
                     // one re-imported row touches both the feed row and the
@@ -421,7 +423,7 @@ class RegistrarImportController extends Controller
                     // on every re-import would lock out people mid-term. A reset
                     // stays a deliberate action (User Management reset, or
                     // `php artisan security:rotate-student-credentials`).
-                    if (($user->role ?? 'student') === 'student') {
+                    if (in_array($user->role ?? 'student', User::VOTER_ROLES, true)) {
                         $existingCredentials[] = [
                             'student_id' => $row['student_id'],
                             'full_name' => $user->name,

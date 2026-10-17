@@ -1,0 +1,103 @@
+<?php
+
+namespace App\Support;
+
+use App\Models\Candidate;
+use App\Models\SsgPresidentInvite;
+use App\Models\User;
+use Illuminate\Support\Facades\DB;
+
+/**
+ * Seating and unseating of the single-seat `ssg_president` role.
+ *
+ * Extracted from AdminUserController so the same handoff (single-seat demotion,
+ * session revocation, one-time password-setup invite, in-app notification) is
+ * reused by both the manual admin grant and the automatic grant that runs when
+ * the election results are published (see ResultsPublisher).
+ *
+ * SECURITY: the seat is handed over without ever transmitting a password. A
+ * promoted President receives a one-time, expiring, single-use setup link via
+ * their in-app feed and chooses their own password; only the SHA-256 digest of
+ * the token is stored.
+ */
+class SsgPresidentGrant
+{
+    /** Whether the account owns a certified election winner record. */
+    public static function isCertifiedWinner(User $user): bool
+    {
+        return Candidate::query()
+            ->where('user_id', $user->id)
+            ->where('certified_winner', true)
+            ->exists();
+    }
+
+    /** Whether the results have been published (the seat may be awarded). */
+    public static function resultsPublished(): bool
+    {
+        return (bool) DB::table('election_settings')
+            ->where('key', 'results_published')
+            ->value('value');
+    }
+
+    /**
+     * Seat `$user` as SSG President: demote any current holder back to student,
+     * flip the role, revoke live sessions on both accounts, and issue a fresh
+     * one-time setup invite.
+     *
+     * The caller is responsible for eligibility (certified winner + published
+     * results); this method only performs the handover.
+     */
+    public static function grant(User $user, ?User $actor = null): User
+    {
+        $previous = User::query()
+            ->where('role', 'ssg_president')
+            ->where('id', '!=', $user->id)
+            ->get();
+
+        DB::transaction(function () use ($user, $previous) {
+            // Single-seat role: demote any previous holder to student first.
+            foreach ($previous as $holder) {
+                $holder->role = 'student';
+                $holder->ssg_setup_pending = false;
+                $holder->save();
+                $holder->tokens()->delete();
+
+                // The seat is gone, so the old holder's outstanding setup link
+                // must die with it — a stale invite can never be redeemed to
+                // re-take the account after a new President is seated.
+                SsgPresidentInvite::query()
+                    ->where('user_id', $holder->id)
+                    ->whereNull('used_at')
+                    ->update(['used_at' => now()]);
+            }
+
+            $user->role = 'ssg_president';
+            // The account works (same sign-in) but its SSG governance features
+            // stay locked until the President sets their own password via the
+            // one-time invite — see SsgPresidentInvite and SsgSetupController.
+            $user->ssg_setup_pending = true;
+            $user->save();
+            $user->tokens()->delete();
+        });
+
+        // --- Secure credential handoff -------------------------------------
+        // No password is generated, emailed, or returned anywhere: a promoted
+        // SSG President receives a one-time, expiring, single-use setup link
+        // through their in-app notification feed. Because most student handles
+        // are name-derived slugs with no deliverable mailbox, in-app is the
+        // only channel that actually reaches them.
+        $setupToken = SsgPresidentInvite::issue($user, $actor?->id);
+
+        Notifier::notifyUser(
+            $user->id,
+            'info',
+            'You are now the SSG President',
+            "Set your SSG President password to activate your governance dashboard. "
+                ."For your security no password was sent to you — open the setup link below and choose your own. "
+                ."This link expires in ".SsgPresidentInvite::TTL_MINUTES." minutes and can be used once.",
+            '/ssg-setup?token='.$setupToken,
+        );
+
+        return $user;
+    }
+}

@@ -127,7 +127,7 @@ class Notifier
         // that do not carry the notification tables and must not fail.
         try {
             $query = User::query()
-                ->where('role', 'student')
+                ->voters()
                 ->where('is_active', true);
 
             foreach (['year_level', 'department', 'course'] as $field) {

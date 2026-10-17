@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Support\AuditLog;
 use App\Support\DepartmentCatalog;
 use App\Support\Notifier;
+use App\Support\SsgPresidentGrant;
 use App\Support\TemporaryPassword;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -37,7 +38,16 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class AdminUserController extends Controller
 {
-    private const SAFE_ROLES = ['admin', 'teacher', 'candidate', 'student', 'ssg_president'];
+    /**
+     * Roles an administrator may assign by hand. `candidate` is derived from a
+     * live candidacy (App\Support\CandidateRoleSync) and `ssg_president` is the
+     * single seat granted through the certified-winner flow, so neither is
+     * ever set directly — listing/filtering still recognises them (ROLE_FILTERS).
+     */
+    private const SAFE_ROLES = ['admin', 'teacher', 'student'];
+
+    /** Every role the listing may be filtered by, including derived/appointed. */
+    private const ROLE_FILTERS = ['admin', 'teacher', 'candidate', 'student', 'ssg_president'];
 
     /** Roles creatable via the create-staff-account endpoint. */
     private const CREATABLE_ROLES = ['admin', 'teacher'];
@@ -46,7 +56,7 @@ class AdminUserController extends Controller
     {
         $request->validate([
             'search' => ['nullable', 'string'],
-            'role' => ['nullable', 'string', Rule::in(self::SAFE_ROLES)],
+            'role' => ['nullable', 'string', Rule::in(self::ROLE_FILTERS)],
             'is_active' => ['nullable', 'string', 'in:true,false,1,0'],
             'status' => ['nullable', 'string', 'in:active,inactive,locked'],
             'department' => ['nullable', 'string', 'max:100'],
@@ -666,7 +676,7 @@ class AdminUserController extends Controller
         // Tell the account owner their eligibility changed. Best-effort: a
         // disabled student cannot sign in to read it, but the row is waiting
         // if the account is later re-enabled.
-        if ($user->role === 'student') {
+        if (in_array($user->role, User::VOTER_ROLES, true)) {
             Notifier::notifyUser(
                 $user->id,
                 $validated['is_active'] ? 'success' : 'warning',
@@ -932,11 +942,7 @@ class AdminUserController extends Controller
      */
     public function grantSsg(Request $request, User $user): JsonResponse
     {
-        $isCertified = Candidate::where('user_id', $user->id)
-            ->where('certified_winner', true)
-            ->exists();
-
-        if (! $isCertified) {
+        if (! SsgPresidentGrant::isCertifiedWinner($user)) {
             return response()->json([
                 'message' => 'This user has no certified election winner record. Only certified winners can be granted SSG President access.',
             ], 422);
@@ -944,65 +950,22 @@ class AdminUserController extends Controller
 
         // The SSG seat is a post-certification governance role. Refuse to
         // grant it before the results are published.
-        $resultsPublished = (bool) DB::table('election_settings')
-            ->where('key', 'results_published')
-            ->value('value');
-
-        if (! $resultsPublished) {
+        if (! SsgPresidentGrant::resultsPublished()) {
             return response()->json([
                 'message' => 'SSG President access can only be granted after the election results are published. Current status: not published.',
             ], 422);
         }
 
+        // Capture the incumbent(s) before the handover demotes them, so the
+        // response can report who was replaced.
         $previous = User::where('role', 'ssg_president')
             ->where('id', '!=', $user->id)
             ->get();
 
-        DB::transaction(function () use ($user, $previous) {
-            // Single-seat role: demote any previous holder to student first.
-            foreach ($previous as $holder) {
-                $holder->role = 'student';
-                $holder->ssg_setup_pending = false;
-                $holder->save();
-                $holder->tokens()->delete();
-
-                // The seat is gone, so the old holder's outstanding setup link
-                // must die with it — a stale invite can never be redeemed to
-                // re-take the account after a new President is seated.
-                SsgPresidentInvite::query()
-                    ->where('user_id', $holder->id)
-                    ->whereNull('used_at')
-                    ->update(['used_at' => now()]);
-            }
-            $user->role = 'ssg_president';
-            // The account works (same sign-in) but its SSG governance features
-            // stay locked until the President sets their own password via the
-            // one-time invite — see SsgPresidentInvite and SsgSetupController.
-            $user->ssg_setup_pending = true;
-            $user->save();
-            $user->tokens()->delete();
-        });
-
-        // --- Secure credential handoff -------------------------------------
-        // No password is generated, emailed, or returned anywhere: a promoted
-        // SSG President receives a one-time, expiring, single-use setup link
-        // through their in-app notification feed. Only the link's SHA-256 hash
-        // is stored (SsgPresidentInvite); the raw token lives solely in the
-        // notification payload until it is redeemed, and the account's existing
-        // password is never transmitted. Because most student handles are
-        // name-derived slugs with no deliverable mailbox, in-app is the only
-        // channel that actually reaches them.
-        $setupToken = SsgPresidentInvite::issue($user, $request->user()?->id);
-
-        Notifier::notifyUser(
-            $user->id,
-            'info',
-            'You are now the SSG President',
-            "Set your SSG President password to activate your governance dashboard. "
-                ."For your security no password was sent to you — open the setup link below and choose your own. "
-                ."This link expires in ".SsgPresidentInvite::TTL_MINUTES." minutes and can be used once.",
-            '/ssg-setup?token='.$setupToken,
-        );
+        // Handover (single-seat demotion, session revocation, one-time setup
+        // invite, in-app notification) is shared with the automatic grant that
+        // runs when results are published — see ResultsPublisher.
+        SsgPresidentGrant::grant($user, $request->user());
 
         return response()->json([
             'data' => $this->present($user),

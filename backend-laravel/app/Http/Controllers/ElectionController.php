@@ -9,6 +9,7 @@ use App\Models\Position;
 use App\Models\RegistrarImport;
 use App\Models\User;
 use App\Support\AuditLog;
+use App\Support\CandidateRoleSync;
 use App\Support\ElectionRecordArchive;
 use App\Support\TermArchive;
 use Illuminate\Http\JsonResponse;
@@ -81,9 +82,9 @@ class ElectionController extends Controller
                 'has_voted' => (bool) $user->has_voted,
                 'voted_at' => $user->voted_at?->toIso8601String(),
                 // Null while polls are open, published after they close.
-                'registered_students' => $pollsClosed ? User::where('role', 'student')->count() : null,
+                'registered_students' => $pollsClosed ? User::query()->voters()->count() : null,
                 'total_students' => $pollsClosed
-                    ? (RegistrarImport::count() ?: User::where('role', 'student')->count())
+                    ? (RegistrarImport::count() ?: User::query()->voters()->count())
                     : null,
                 'actual_ballots_cast' => $pollsClosed ? User::where('has_voted', true)->count() : null,
             ],
@@ -206,6 +207,13 @@ class ElectionController extends Controller
             'confirm' => ['required', Rule::in(['reset_election'])],
         ]);
 
+        // Accounts whose candidacy ends with this reset. Captured before the
+        // slate is wiped (non-winners deleted, winners archived) so their
+        // derived candidate role can be reverted to student afterwards.
+        $affectedUserIds = Schema::hasTable('candidates')
+            ? Candidate::query()->pluck('user_id')
+            : collect();
+
         DB::transaction(function () use ($request, &$resetMessage, &$auditDetail) {
             // 1. Archive certified winners so they become preserved officers
             //    (Past Terms roster) before anything else is wiped.
@@ -227,6 +235,13 @@ class ElectionController extends Controller
                         ['value' => null, 'updated_at' => now()],
                     );
                 }
+
+                // A new cycle starts unpublished: re-arm the gate that blocks
+                // the SSG grant until the next set of results is finalized.
+                DB::table('election_settings')->updateOrInsert(
+                    ['key' => 'results_published'],
+                    ['value' => '0', 'updated_at' => now()],
+                );
             }
 
             // 3. Deactivate every phase row so Phase::current() returns null.
@@ -264,7 +279,7 @@ class ElectionController extends Controller
                 'election',
                 null,
             );
-            // 5. Reset every student's turnout flag so they can vote again.
+            // 5. Reset every voter's turnout flag so they can vote again.
             $userUpdate = ['updated_at' => now()];
             if (Schema::hasColumn('users', 'has_voted')) {
                 $userUpdate['has_voted'] = false;
@@ -272,7 +287,7 @@ class ElectionController extends Controller
             if (Schema::hasColumn('users', 'voted_at')) {
                 $userUpdate['voted_at'] = null;
             }
-            User::where('role', 'student')->update($userUpdate);
+            User::query()->voters()->update($userUpdate);
 
             // 6. Clear the anonymous vote ledger. TRUNCATE can 500 on some
             //    engines/permissions inside a transaction (implicit-commit,
@@ -291,6 +306,10 @@ class ElectionController extends Controller
                 DB::table('ballot_drafts')->delete();
             }
         });
+
+        // The slate is clear: any account that held a candidacy is no longer a
+        // candidate, so re-derive their role back to student.
+        CandidateRoleSync::syncMany($affectedUserIds);
 
         return response()->json([
             'message' => $resetMessage,

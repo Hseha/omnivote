@@ -10,8 +10,10 @@ use App\Models\Party;
 use App\Models\Position;
 use App\Models\User;
 use App\Support\AuditLog;
+use App\Support\CandidateRoleSync;
 use App\Support\DepartmentCatalog;
 use App\Support\Notifier;
+use App\Support\ResultsPublisher;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
@@ -345,6 +347,10 @@ class AdminCandidateController extends Controller
             'rejection_reason' => $reason === '' ? null : $reason,
         ], $extraUpdate));
 
+        // Approval promotes the applicant to `candidate`; a rejection hands
+        // them back the plain student role (App\Support\CandidateRoleSync).
+        CandidateRoleSync::syncId($candidate->user_id);
+
         $candidateName = $candidate->user?->name ?? $candidate->candidate_ref;
 
         Notifier::toAdmins(
@@ -508,6 +514,17 @@ class AdminCandidateController extends Controller
                 'certified_at' => now(),
             ])->save();
         }
+
+        // The winner keeps the candidate role; the tied runners-up this
+        // decision passed over are now `pending` and revert to student
+        // (results are already published at tie-break time).
+        CandidateRoleSync::syncMany(
+            Candidate::query()->where('position_id', $positionId)->pluck('user_id')
+        );
+
+        // If this was the contested Presidency seat, seating the winner also
+        // completes the SSG handover that the tie had blocked at finalize.
+        ResultsPublisher::publish($request->user());
 
         app(ResultsController::class)->refreshResultsAnnouncement($request->user());
 

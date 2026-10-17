@@ -154,7 +154,9 @@ class StudentAuthController extends Controller
             return $generic;
         }
 
-        $user = User::where('student_id', $import->student_id)->where('role', 'student')->first();
+        $user = User::where('student_id', $import->student_id)
+            ->whereIn('role', User::VOTER_ROLES)
+            ->first();
 
         if (! $user || ! $user->is_active) {
             return $generic;

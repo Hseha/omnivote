@@ -17,10 +17,11 @@ const ROLES = {
   student: 'Student',
   ssg_president: 'SSG President',
 };
-// ssg_president is intentionally NOT a generic dropdown option: it is a
-// single-seat role granted only to a certified election winner via the
-// dedicated "Grant SSG President Access" action.
-const ROLE_OPTIONS = ['admin', 'teacher', 'candidate', 'student'];
+// ssg_president and candidate are intentionally NOT generic dropdown options:
+// ssg_president is a single-seat role granted only to a certified election
+// winner via the dedicated "Grant SSG President Access" action, and candidate
+// is derived automatically from an approved candidacy.
+const ROLE_OPTIONS = ['admin', 'teacher', 'student'];
 const ROLE_CLS = {
   admin: 'role-admin', teacher: 'role-teacher', candidate: 'role-candidate',
   student: 'role-student', ssg_president: 'role-ssg',
@@ -457,7 +458,10 @@ export default function UserManagement({ onLogout, activeView = 'user_management
                           <button className="um-toggle-btn btn-enable" onClick={() => doUnarchive(u)} disabled={actionLoading === u.id} title="Restore this archived account — returns it to the counts and sign-in"><ArchiveRestore size={14} /> Restore</button>
                         ) : (
                           <>
-                            <select className="um-role-select" value={u.role} onChange={e => doRoleChange(u.id, e.target.value)} disabled={actionLoading === u.id || u.id === 1} title="Change this user's role (SSG President is granted separately to certified winners only)">
+                            <select className="um-role-select" value={u.role} onChange={e => doRoleChange(u.id, e.target.value)} disabled={actionLoading === u.id || u.id === 1} title="Change this user's role (candidate is derived from an approved candidacy and SSG President is granted separately to certified winners only)">
+                              {!ROLE_OPTIONS.includes(u.role) && (
+                                <option value={u.role} disabled>{ROLES[u.role] || u.role}</option>
+                              )}
                               {ROLE_OPTIONS.map(v => <option key={v} value={v}>{ROLES[v]}</option>)}
                             </select>
                             {u.id !== 1 && locked && <button className="um-toggle-btn btn-unlock" onClick={() => doUnlock(u.id)} disabled={actionLoading === u.id} title="Unlock account — clears the failed-login lockout"><Unlock size={14} /> Unlock</button>}

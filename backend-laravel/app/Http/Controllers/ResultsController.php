@@ -8,12 +8,15 @@ use App\Models\Phase;
 use App\Models\Position;
 use App\Models\User;
 use App\Models\VoteLedger;
+use App\Support\CandidateRoleSync;
 use App\Support\ElectionTally;
 use App\Support\Notifier;
+use App\Support\ResultsPublisher;
 use App\Support\TermArchive;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Public results + anonymous receipt verification.
@@ -231,6 +234,21 @@ class ResultsController extends Controller
                 'certified_winner' => true,
                 'certified_at' => now(),
             ]);
+
+        // Publication: raise the results_published flag (unblocking the SSG
+        // grant) and automatically hand the single seat to the elected winner
+        // of the configured Presidency position.
+        ResultsPublisher::publish($request->user());
+
+        // Keep the derived candidate role in step with the decided race.
+        // Re-deriving per account (rather than a blanket demote) keeps a
+        // recount correct: elected/tie-break candidates keep the role, everyone
+        // the tally decided against reverts to student.
+        CandidateRoleSync::syncMany(
+            Candidate::query()
+                ->whereIn('position_id', $positions->pluck('id'))
+                ->pluck('user_id')
+        );
 
         $announcement = $this->refreshResultsAnnouncement($request->user());
 
@@ -470,7 +488,17 @@ class ResultsController extends Controller
      */
     public function archiveTerm(Request $request): JsonResponse
     {
+        // Capture the certified winners before they are archived: once their
+        // candidacy carries an `archived_at` it is no longer live, so their
+        // derived candidate role reverts to student.
+        $archivedUserIds = Candidate::query()
+            ->where('certified_winner', true)
+            ->when(Schema::hasColumn('candidates', 'archived_at'), fn ($q) => $q->whereNull('archived_at'))
+            ->pluck('user_id');
+
         $count = TermArchive::archiveNow();
+
+        CandidateRoleSync::syncMany($archivedUserIds);
 
         return response()->json([
             'message' => $count > 0

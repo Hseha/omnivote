@@ -6,6 +6,7 @@ namespace App\Models;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -24,6 +25,17 @@ class User extends Authenticatable
 
     /** Failed logins before the account starts backing off. */
     public const MAX_LOGIN_ATTEMPTS = 5;
+
+    /**
+     * The voter roles: every account that may cast a ballot and hold a
+     * candidacy. A `candidate` is just a student with a live, approved
+     * candidacy (see App\Support\CandidateRoleSync); both share the full
+     * student feature set, so scope turnouts/gates on these roles rather than
+     * the `student` literal.
+     *
+     * @var list<string>
+     */
+    public const VOTER_ROLES = ['student', 'candidate'];
 
     /**
      * Ceiling on the backoff window.
@@ -191,6 +203,12 @@ class User extends Authenticatable
         $this->failed_login_attempts = 0;
         $this->locked_until = null;
         $this->save();
+    }
+
+    /** Restrict a query to voter accounts (student + candidate). */
+    public function scopeVoters(Builder $query): Builder
+    {
+        return $query->whereIn('role', self::VOTER_ROLES);
     }
 
     public function candidate(): HasOne

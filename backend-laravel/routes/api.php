@@ -310,7 +310,7 @@ Route::prefix('auth')->group(function () {
     // (a promoted account may carry a registrar-issued temporary credential)
     // must resolve for that role too. Without this, a President's token is
     // discarded on every cold start and the app appears permanently signed out.
-    Route::middleware(['auth:sanctum', 'role:student,ssg_president', 'passwordChanged'])->group(function () {
+    Route::middleware(['auth:sanctum', 'role:student,candidate,ssg_president', 'passwordChanged'])->group(function () {
         Route::post('/logout', [StudentAuthController::class, 'logout'])
             ->withoutMiddleware(EnsurePasswordChanged::class);
         Route::get('/me', [StudentAuthController::class, 'me'])
@@ -326,7 +326,7 @@ Route::prefix('auth')->group(function () {
 // `passwordChanged` blocks every flow below while the account still carries a
 // registrar-issued temporary credential (security assessment C-1).
 // ------------------------------------------------------------------------
-Route::middleware(['auth:sanctum', 'role:student', 'passwordChanged'])->group(function () {
+Route::middleware(['auth:sanctum', 'role:student,candidate', 'passwordChanged'])->group(function () {
     // Dashboard card
     Route::get('/registration/me', [ElectionController::class, 'registrationMe']);
 
@@ -376,7 +376,7 @@ Route::middleware(['auth:sanctum', 'role:student', 'passwordChanged'])->group(fu
 // candidacy, results) stays `role:student`-only so a President cannot act as a
 // voter after taking office.
 // ------------------------------------------------------------------------
-Route::middleware(['auth:sanctum', 'role:student,ssg_president', 'passwordChanged'])->group(function () {
+Route::middleware(['auth:sanctum', 'role:student,candidate,ssg_president', 'passwordChanged'])->group(function () {
     Route::get('/notifications', [NotificationController::class, 'index']);
     Route::post('/notifications/read', [NotificationController::class, 'markRead']);
 });
