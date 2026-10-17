@@ -206,11 +206,13 @@ class ElectionResetTest extends TestCase
         $this->assertStringContainsString('reset', (string) $auditRow->details);
     }
 
-    public function test_reset_mid_registration_preserves_applications(): void
+    public function test_reset_mid_registration_deletes_applications_and_records_them(): void
     {
         $admin = $this->makeUser(['role' => 'admin']);
 
         // No voting has happened: registration phase is live, empty ledger.
+        // A reset is still a full clean slate — non-winners are deleted — but
+        // the roster is preserved first in Election Records.
         DB::table('phases')->where('name', 'registration')->update(['is_active' => true]);
         DB::table('election_settings')->insert([
             ['key' => 'registration_opens_at', 'value' => now()->subDays(2)->toIso8601String(), 'created_at' => now(), 'updated_at' => now()],
@@ -238,13 +240,18 @@ class ElectionResetTest extends TestCase
         // Phase/timeline cleared as before.
         $this->assertNull(Phase::current());
 
-        // Applications PRESERVED — mid-registration error resets must not
-        // delete fresh applications.
-        $this->assertTrue(DB::table('candidates')->where('id', $loser->id)->exists());
-        $this->assertSame('pending', DB::table('candidates')->where('id', $loser->id)->value('approval_status'));
+        // Applications DELETED — a reset is always a full clean slate, so the
+        // old rows can never resurface on the next configured cycle.
+        $this->assertFalse(DB::table('candidates')->where('id', $loser->id)->exists());
+        $this->assertFalse(Candidate::where('id', $loser->id)->exists());
 
-        // No snapshot was taken for an unconcluded cycle.
-        $this->assertSame(0, DB::table('election_candidate_records')->count());
+        // The roster is preserved for review in Election Records.
+        $this->assertSame(1, DB::table('election_candidate_records')->count());
+        $this->assertTrue(DB::table('election_candidate_records')
+            ->where('party_name', 'Opposition')
+            ->where('certified_winner', false)
+            ->where('election_status', 'pending')
+            ->exists());
     }
 
     public function test_reset_after_voting_records_all_parties_and_deletes_losers(): void

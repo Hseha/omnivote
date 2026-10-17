@@ -178,13 +178,19 @@ class ElectionController extends Controller
      * What gets reset (the cycle is wiped for a fresh start):
      *   - Election timeline (all four date keys cleared → no phase derivable)
      *   - Active phase deactivated (dashboard shows "Not Configured")
-     *   - Non-winner candidates reset to pending (applications cleared)
+     *   - Non-winner candidates DELETED (applications cleared) — every cycle,
+     *     including a mid-registration reset; this matches the confirmation
+     *     dialog's promise that non-winner applications are permanently removed
      *   - All student turnout flags reset (has_voted = false)
      *   - Anonymous vote ledger + ballot drafts cleared
      *
-     * What is PRESERVED (winners become officers, never deleted):
-     *   - Certified winners are archived via TermArchive → Past Terms roster
-     *   - Their certified_winner, vote_total, winner_rank, certified_at stay intact
+     * What is PRESERVED (never silently lost):
+     *   - Certified winners are archived via TermArchive → Past Terms roster,
+     *     and their certified_winner, vote_total, winner_rank, certified_at
+     *     stay intact
+     *   - The FULL roster (winners + non-winners, all parties) is snapshotted
+     *     into Election Records before the non-winners are deleted, so history
+     *     remains reviewable even for an abandoned mid-registration cycle
      *
      * Schema-robustness: every optional column/table write is guarded by
      * Schema::hasColumn/hasTable so a host that skipped a migration gets a
@@ -206,8 +212,10 @@ class ElectionController extends Controller
             //    No-op on schemas lacking the archive columns (see TermArchive).
             TermArchive::archiveNow();
 
-            // Capture the phase BEFORE it is cleared, so we know whether this
-            // reset happened mid-registration or after voting concluded.
+            // Capture the phase BEFORE it is cleared. It no longer changes
+            // what is reset (every reset is a full clean slate) — it is kept
+            // for the audit trail so a reset can be tied to the phase it
+            // interrupted.
             $preResetPhase = Phase::current()?->name;
             $cycleId = now()->toDateTimeString();
 
@@ -226,30 +234,27 @@ class ElectionController extends Controller
                 Phase::query()->update(['is_active' => false]);
             }
 
-            // 4. Record a full-cycle snapshot (all parties, winners + non-winners)
-            //    before the wipe, then clear every non-winner application so the
-            //    next cycle starts with a clean slate. Mid-registration error
-            //    resets (no voting opened yet) preserve applications so students
-            //    do not lose them.
-            $cycleConcluded = in_array($preResetPhase, ['voting_open', 'voting_closed'], true)
-                || DB::table('vote_ledger')->exists();
-
-            if ($cycleConcluded && Schema::hasTable('candidates')) {
+            // 4. Snapshot the full roster (all parties, winners + non-winners)
+            //    into Election Records, then delete every non-winner
+            //    application. This is UNCONDITIONAL: a reset is always a full
+            //    clean slate — including a mid-registration reset — matching
+            //    the confirmation dialog, which promises non-winner
+            //    applications are permanently removed. Certified winners were
+            //    archived as officers above and are preserved.
+            if (Schema::hasTable('candidates')) {
                 ElectionRecordArchive::snapshot(TermArchive::labelFor(), $cycleId);
             }
 
-            if ($cycleConcluded && Schema::hasTable('candidates')
+            if (Schema::hasTable('candidates')
                 && Schema::hasColumn('candidates', 'certified_winner')) {
                 Candidate::query()->where('certified_winner', false)->delete();
             }
 
-            $auditDetail = $cycleConcluded
-                ? 'Admin reset the election cycle (post-voting): full candidate record archived to Election Records, timeline cleared, phase deactivated, non-winner candidates deleted, votes cleared, vote ledger truncated. Certified winners archived as officers (Past Terms) and preserved.'
-                : 'Admin reset the election cycle mid-registration: timeline cleared, phase deactivated, votes cleared, vote ledger truncated. Applications were preserved because no voting had concluded.';
+            $phaseNote = $preResetPhase ? "pre-reset phase: {$preResetPhase}" : 'no active phase';
 
-            $resetMessage = $cycleConcluded
-                ? 'Election cycle reset to a clean slate. Every candidate was archived to Election Records, then non-winner applications were deleted. Certified winners were archived as officers (Past Terms) and are preserved.'
-                : 'Election cycle reset mid-registration. Timeline and phase were cleared; applications were preserved because no voting had concluded.';
+            $auditDetail = "Admin reset the election cycle ({$phaseNote}): full candidate record archived to Election Records, timeline cleared, phase deactivated, non-winner candidates deleted, votes cleared, vote ledger truncated. Certified winners archived as officers (Past Terms) and preserved.";
+
+            $resetMessage = 'Election cycle reset to a clean slate. Every candidate was archived to Election Records, then non-winner applications were deleted. Certified winners were archived as officers (Past Terms) and are preserved.';
 
             // Record the reset in the audit trail (inside the transaction).
             AuditLog::record(
