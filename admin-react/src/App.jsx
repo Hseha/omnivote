@@ -14,10 +14,12 @@ import UserManagement from './UserManagement';
 import Departments from './Departments';
 import AuditLog from './AuditLog';
 import SsgPresident from './SsgPresident';
+import SetupConsole from './SetupConsole';
 import TwoFactorEnrollmentScreen from './TwoFactorEnrollmentScreen';
 import ErrorBoundary from './components/ErrorBoundary';
 import OmniVoteMark from './components/OmniVoteMark';
 import { AuthProvider, useAuth } from './lib/AuthContext';
+import { IS_SSG_CONSOLE } from './lib/api';
 import { ThemeProvider } from './lib/ThemeContext';
 import { ElectionStatusProvider } from './lib/ElectionStatusContext';
 import { useBranding } from './lib/branding';
@@ -78,6 +80,25 @@ function AppShell() {
     setAuthMode('login');
   }, []);
 
+  // --- SSG President console onboarding -----------------------------------
+  // The setup link (/ssg/setup?token=...) is public; a signed-in President who
+  // was promoted while already holding a student credential lands here too
+  // (ssg_setup_pending), where the gate blocks the console until they finish.
+  // Captured once so clearing ?token= from the URL after a successful setup
+  // does not blank the token out from under the (still-mounted) screen.
+  const [setupToken] = useState(() => new URLSearchParams(window.location.search).get('token'));
+  const onSetupRoute = IS_SSG_CONSOLE && /^\/ssg\/setup\/?$/.test(window.location.pathname);
+  const needsConsoleSetup =
+    onSetupRoute || (IS_SSG_CONSOLE && Boolean(user?.ssg_setup_pending));
+
+  // Drop ?token= after a successful setup so the one-time link cannot be
+  // replayed from browser history once it has been burned server-side.
+  const clearSetupLink = useCallback(() => {
+    const url = new URL(window.location.href);
+    url.search = '';
+    window.history.replaceState({}, '', url);
+  }, []);
+
   // Unique browser-tab title per role/route. Computed up front and applied
   // through one unconditional hook so the Rules of Hooks are never violated
   // by the early returns below (login screen → 2FA interstitial → panel).
@@ -100,6 +121,12 @@ function AppShell() {
   // page. The global request timeout in lib/api.js guarantees this resolves.
   if (!ready) {
     return <BootScreen siteName={siteName} />;
+  }
+
+  // Onboarding takes precedence over both the login screen and the shell: a
+  // pending President cannot use the console until the setup link is redeemed.
+  if (needsConsoleSetup) {
+    return <SetupConsole token={onSetupRoute ? setupToken : null} onCompleted={clearSetupLink} />;
   }
 
   if (!user) {
