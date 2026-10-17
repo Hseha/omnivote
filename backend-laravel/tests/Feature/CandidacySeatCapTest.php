@@ -272,6 +272,45 @@ class CandidacySeatCapTest extends TestCase
         $this->assertSame(12, $positions['senator']['seat_count']);
     }
 
+    public function test_candidacy_update_cannot_bypass_party_seat_cap(): void
+    {
+        $presidentId = $this->positionId('president');
+        $this->makeCandidate('ref-ana', 'Ana', 'president', 'approved', 'ASLE');
+
+        // Bob applied as SVEA
+        $bobUser = $this->makeUser(['name' => 'Bob']);
+        $this->makeCandidate('ref-bob', 'Bob', 'president', 'pending', 'SVEA', $bobUser);
+
+        // Bob tries to edit his candidacy to switch to ASLE (which is full)
+        $this->actingAs($bobUser, 'sanctum')
+            ->putJson('/api/candidate/apply', [
+                'position_id' => $presidentId,
+                'party_name' => 'ASLE',
+                'platform_statement' => "Updated\nPlatform",
+                'certify' => true,
+            ])
+            ->assertStatus(409)
+            ->assertJsonPath('code', 'seat_taken')
+            ->assertJsonPath('party_name', 'ASLE');
+    }
+
+    public function test_candidacy_update_can_keep_own_party(): void
+    {
+        $presidentId = $this->positionId('president');
+        $anaUser = $this->makeUser(['name' => 'Ana']);
+        $this->makeCandidate('ref-ana', 'Ana', 'president', 'approved', 'ASLE', $anaUser);
+
+        // Ana edits her platform while keeping ASLE (her own seat should not block her)
+        $this->actingAs($anaUser, 'sanctum')
+            ->putJson('/api/candidate/apply', [
+                'position_id' => $presidentId,
+                'party_name' => 'ASLE',
+                'platform_statement' => "New\nStatement",
+                'certify' => true,
+            ])
+            ->assertOk();
+    }
+
     /* ------------------------------------------------------------------ */
 
     private function makeCandidate(

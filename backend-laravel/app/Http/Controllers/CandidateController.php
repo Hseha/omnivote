@@ -174,6 +174,15 @@ class CandidateController extends Controller
         // No-party candidates bucket separately. See
         // docs/HANDOFF_CANDIDACY_SEAT_CAP.md §1.1.
         $position = Position::findOrFail($validated['position_id']);
+
+        if (! $position->voterIsInScope($request->user())) {
+            return response()->json([
+                'message' => 'You are not eligible to apply for '.$position->label.' based on your year level or department.',
+                'code' => 'out_of_scope',
+                'position_id' => $position->id,
+            ], 422);
+        }
+
         $party = $validated['party_name'] ?? null;
 
         $partyCandidates = Candidate::query()
@@ -273,14 +282,48 @@ class CandidateController extends Controller
         }
 
         $validated = $request->validated();
+
+        $targetPositionId = $candidate->approval_status === 'approved'
+            ? $candidate->position_id
+            : $validated['position_id'];
+        $targetPosition = Position::findOrFail($targetPositionId);
+
+        if (! $targetPosition->voterIsInScope($request->user())) {
+            return response()->json([
+                'message' => 'You are not eligible to apply for '.$targetPosition->label.' based on your year level or department.',
+                'code' => 'out_of_scope',
+                'position_id' => $targetPosition->id,
+            ], 422);
+        }
+
+        $targetParty = $validated['party_name'] ?? null;
+
+        $othersQuery = Candidate::query()
+            ->where('position_id', $targetPosition->id)
+            ->where('id', '!=', $candidate->id)
+            ->whereIn('approval_status', ['pending', 'approved']);
+
+        if ($targetParty === null) {
+            $othersQuery->whereNull('party_name');
+        } else {
+            $othersQuery->whereRaw('UPPER(TRIM(party_name)) = ?', [strtoupper($targetParty)]);
+        }
+
+        if ($othersQuery->count() >= $targetPosition->seat_count) {
+            return response()->json([
+                'message' => 'Sorry — the '.($targetParty ?? 'independent').' seat for '.$targetPosition->label.' is already taken.',
+                'code' => 'seat_taken',
+                'position_id' => $targetPosition->id,
+                'party_name' => $targetParty,
+            ], 409);
+        }
+
         $sanitized = strip_tags($validated['platform_statement'], '<p><br><strong><em><ul><ol><li>');
 
         $candidate->update([
             // The position is locked once approved; pending applications may
             // still change office before the committee reviews them.
-            'position_id' => $candidate->approval_status === 'approved'
-                ? $candidate->position_id
-                : $validated['position_id'],
+            'position_id' => $targetPositionId,
             'slogan' => $validated['slogan'] ?? null,
             'party_name' => $validated['party_name'] ?? null,
             'platform_statement' => $sanitized,

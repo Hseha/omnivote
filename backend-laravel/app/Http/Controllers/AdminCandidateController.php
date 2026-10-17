@@ -182,6 +182,37 @@ class AdminCandidateController extends Controller
             ? strip_tags($validated['platform_statement'], '<p><br><strong><em><ul><ol><li>')
             : null;
 
+        $position = Position::findOrFail($validated['position_id']);
+
+        if (! $position->voterIsInScope($user)) {
+            return response()->json([
+                'message' => 'This student is not eligible for '.$position->label.' based on their year level or department.',
+                'code' => 'out_of_scope',
+                'position_id' => $position->id,
+            ], 422);
+        }
+
+        $party = $validated['party_name'] ?? null;
+
+        $partyCandidates = Candidate::query()
+            ->where('position_id', $position->id)
+            ->whereIn('approval_status', ['pending', 'approved']);
+
+        if ($party === null) {
+            $partyCandidates->whereNull('party_name');
+        } else {
+            $partyCandidates->whereRaw('UPPER(TRIM(party_name)) = ?', [strtoupper($party)]);
+        }
+
+        if ($partyCandidates->count() >= $position->seat_count) {
+            return response()->json([
+                'message' => 'The '.($party ?? 'independent').' seat for '.$position->label.' is already taken.',
+                'code' => 'seat_taken',
+                'position_id' => $position->id,
+                'party_name' => $party,
+            ], 409);
+        }
+
         $candidate = Candidate::create([
             'user_id' => $user->id,
             'position_id' => $validated['position_id'],
