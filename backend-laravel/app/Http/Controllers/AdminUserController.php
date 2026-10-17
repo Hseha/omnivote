@@ -833,7 +833,7 @@ class AdminUserController extends Controller
      * POST /api/admin/users/{user}/unlock — clear the failed-login backoff
      * (the same state the login controllers set after repeated bad passwords).
      */
-    public function unlock(User $user): JsonResponse
+    public function unlock(Request $request, User $user): JsonResponse
     {
         if (! $user->isLocked() && (int) $user->failed_login_attempts === 0) {
             return response()->json(['message' => 'Account is not locked.'], 409);
