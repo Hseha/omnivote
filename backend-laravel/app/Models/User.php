@@ -38,6 +38,21 @@ class User extends Authenticatable
     public const VOTER_ROLES = ['student', 'candidate'];
 
     /**
+     * Roles that keep the full Flutter student experience.
+     *
+     * This is NOT the same set as VOTER_ROLES. The seated `ssg_president` is
+     * still a student in the app (dashboard, results, announcements,
+     * notifications, profile) but is deliberately excluded from VOTER_ROLES so
+     * they are never counted in turnout totals (scopeVoters) or silently
+     * re-derived by CandidateRoleSync::sync, which would demote the seat back to
+     * `student`/`candidate`. Gate mobile student routes on these roles; keep
+     * voter/turnout math on VOTER_ROLES.
+     *
+     * @var list<string>
+     */
+    public const STUDENT_ROLES = ['student', 'candidate', 'ssg_president'];
+
+    /**
      * Ceiling on the backoff window.
      *
      * SECURITY (assessment M-3): this used to be a flat hard lockout — five

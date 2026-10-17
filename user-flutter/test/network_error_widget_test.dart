@@ -151,7 +151,7 @@ void main() {
       expect(f.isAuth, isTrue);
     });
 
-    test('403 maps to the re-login prompt', () {
+    test('403 maps to a no-access message, not the re-login prompt', () {
       final f = classifyNetworkError(
         DioException(
           requestOptions: RequestOptions(path: '/ballot/me/submit'),
@@ -162,7 +162,11 @@ void main() {
           ),
         ),
       );
-      expect(f.needsReauth, isTrue);
+      // Forbidden is not an expired session: the account is signed in, so we
+      // must not prompt a re-login (that would loop). Prefer the server's own
+      // explanation, and fall back to a generic no-access message.
+      expect(f.needsReauth, isFalse);
+      expect(f.message, "You don't have access to this action.");
     });
 
     test('5xx maps to the busy-server message', () {

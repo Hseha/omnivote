@@ -63,9 +63,12 @@ class NetworkFailure {
 ///    Check your status before trying again."* — [NetworkFailure.needsStatusCheck]
 ///    is true so the submit flow calls the status endpoint and only then shows
 ///    a retry option.
-///  * **Session expired (401/403)**: *"Your session has expired. Please sign
-///    in again."* — the vote screen keeps the selections held in memory and
+///  * **Session expired (401)**: *"Your session has expired. Please sign in
+///    again."* — the vote screen keeps the selections held in memory and
 ///    prompts re-login.
+///  * **Forbidden (403)**: the server's own message, or a generic "no access"
+///    — never the "session expired" prompt, because the account is signed in
+///    and re-authenticating would not help.
 ///  * **5xx / 429**: generic-but-nice retry hints.
 ///  * **409**: already-recorded confirmation.
 ///
@@ -148,6 +151,20 @@ NetworkFailure classifyNetworkError(
           message: data is Map && data['message'] is String
               ? (data['message'] as String)
               : 'Invalid email or password. Please try again.',
+          isAuth: true,
+          needsReauth: false,
+          isRetryable: false,
+        );
+      }
+      // 403 Forbidden is NOT an expired session: the account is authenticated
+      // but not permitted (wrong role, disabled, or a feature it lacks). Show
+      // the server's explanation instead of the misleading "session expired"
+      // and never prompt a re-login — that would just loop.
+      if (status == 403) {
+        return NetworkFailure(
+          message: data is Map && data['message'] is String
+              ? (data['message'] as String)
+              : "You don't have access to this action.",
           isAuth: true,
           needsReauth: false,
           isRetryable: false,

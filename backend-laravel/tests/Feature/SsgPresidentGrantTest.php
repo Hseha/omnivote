@@ -97,6 +97,8 @@ class SsgPresidentGrantTest extends TestCase
 
         $winner = $this->makeUser(['role' => 'student']);
         $this->certify($winner);
+        // The winner is already signed in on the mobile app when the seat opens.
+        $winner->createToken('mobile');
         $originalHash = $winner->password;
 
         $response = $this->actingAs($admin)
@@ -113,12 +115,13 @@ class SsgPresidentGrantTest extends TestCase
         $this->assertArrayNotHasKey('temporary_password', $response->json('credentials'));
         $this->assertNull($response->json('credentials.temporary_password'));
 
-        // Single seat: the previous holder is demoted and both parties lose
-        // their mobile tokens so the promotion forces a fresh sign-in.
+        // Single seat: the previous holder is demoted and loses their mobile
+        // tokens (they lost the seat). The incoming President keeps their own
+        // live session so the promotion does NOT force a re-login.
         $this->assertSame('student', $previousHolder->fresh()->role);
         $this->assertFalse((bool) $previousHolder->fresh()->ssg_setup_pending);
         $this->assertSame(0, $previousHolder->tokens()->count());
-        $this->assertSame(0, $winner->tokens()->count());
+        $this->assertSame(1, $winner->fresh()->tokens()->count());
         $this->assertSame([['id' => $previousHolder->id, 'name' => $previousHolder->name, 'email' => $previousHolder->email]], $response->json('replaced'));
 
         // The winner keeps their existing password — it is not rotated, and the
@@ -290,6 +293,24 @@ class SsgPresidentGrantTest extends TestCase
             ->assertJsonPath('must_change_password', false);
 
         $this->assertNotEmpty($president->fresh()->tokens()->pluck('id'));
+    }
+
+    public function test_ssg_president_keeps_the_full_student_feature_set(): void
+    {
+        $president = $this->makeUser(['role' => 'ssg_president']);
+
+        // The in-app feed is in the shared student group; a 401/403 here is the
+        // "lost the app" bug this change fixes. `user_notifications` is in the
+        // minimal schema, so we can assert a clean 200 rather than merely
+        // "not blocked".
+        $this->actingAs($president, 'sanctum')
+            ->getJson('/api/notifications')
+            ->assertOk();
+
+        // ...but they must NOT be counted as a voter in turnout math, and must
+        // stay out of the voter-role set that CandidateRoleSync re-derives.
+        $this->assertNotContains('ssg_president', User::VOTER_ROLES);
+        $this->assertContains('ssg_president', User::STUDENT_ROLES);
     }
 
     public function test_disabled_ssg_president_cannot_mint_a_mobile_token(): void

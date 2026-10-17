@@ -5,15 +5,15 @@ import 'package:omnivote/features/auth/providers/auth_provider.dart';
 /// SSG President routing (award flow):
 ///
 /// After the admin promotes a certified winner, the mobile app must (a) carry
-/// the `role` off the login/restore payload and (b) route the President to
-/// the dedicated `/ssg-president` shell on both the login transition and the
-/// cold-start splash bootstrap — never to the student dashboard.
+/// the `role` off the login/restore payload and (b) land the President on the
+/// shared student dashboard — the seated President keeps the full student app;
+/// the governance console is web-only and reached from the one-time setup link.
 void main() {
   group('destinationForRole', () {
-    test('routes an SSG President to the dedicated governance shell', () {
+    test('routes an SSG President to the shared student dashboard', () {
       final state = AuthState(student: Student.fromJson(_payload), role: 'ssg_president');
 
-      expect(destinationForRole(state), '/ssg-president');
+      expect(destinationForRole(state), '/dashboard');
     });
 
     test('routes a student to the shared dashboard', () {

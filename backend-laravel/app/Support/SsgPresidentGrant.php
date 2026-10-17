@@ -41,8 +41,9 @@ class SsgPresidentGrant
 
     /**
      * Seat `$user` as SSG President: demote any current holder back to student,
-     * flip the role, revoke live sessions on both accounts, and issue a fresh
-     * one-time setup invite.
+     * flip the role, revoke the outgoing holder's live sessions (the incoming
+     * President keeps their own session so the mobile app does not force a
+     * re-login), and issue a fresh one-time setup invite.
      *
      * The caller is responsible for eligibility (certified winner + published
      * results); this method only performs the handover.
@@ -77,7 +78,14 @@ class SsgPresidentGrant
             // one-time invite — see SsgPresidentInvite and SsgSetupController.
             $user->ssg_setup_pending = true;
             $user->save();
-            $user->tokens()->delete();
+
+            // The winner's live session is intentionally NOT revoked. The role
+            // is read from the database on every request, so the existing token
+            // immediately carries the new role; deleting it would only force a
+            // re-login and surface as "your session expired" in the app. The
+            // President keeps using the mobile app as a student throughout, and
+            // activates the governance console separately via the setup link.
+            // (A *previous* holder is still revoked above — they lost the seat.)
         });
 
         // --- Secure credential handoff -------------------------------------

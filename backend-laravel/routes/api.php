@@ -323,10 +323,16 @@ Route::prefix('auth')->group(function () {
 // ------------------------------------------------------------------------
 // Student-authenticated flows (Flutter client)
 //
+// The seated `ssg_president` keeps the full student experience (dashboard,
+// candidacy status, results, notifications, profile), so it is included in the
+// role gate alongside students and candidates. Voting/ballot routes below are
+// additionally phase-gated (`checkPhase:voting_open`), so a President cannot
+// cast a ballot once the polls have closed to seat them.
+//
 // `passwordChanged` blocks every flow below while the account still carries a
 // registrar-issued temporary credential (security assessment C-1).
 // ------------------------------------------------------------------------
-Route::middleware(['auth:sanctum', 'role:student,candidate', 'passwordChanged'])->group(function () {
+Route::middleware(['auth:sanctum', 'role:student,candidate,ssg_president', 'passwordChanged'])->group(function () {
     // Dashboard card
     Route::get('/registration/me', [ElectionController::class, 'registrationMe']);
 
@@ -369,12 +375,12 @@ Route::middleware(['auth:sanctum', 'role:student,candidate', 'passwordChanged'])
 // In-app notification center (Flutter bell + badge)
 //
 // Shared by students and the SSG President: a promoted President must be able
-// to read the one-time setup link delivered to their feed (see
+// to read the one-time console-setup link delivered to their feed (see
 // AdminUserController::grantSsg), and they have no mailbox to receive it any
 // other way. Scoped to the caller; no permission middleware — every account
-// sees only their own rows. The rest of the student flow (vote, ballot,
-// candidacy, results) stays `role:student`-only so a President cannot act as a
-// voter after taking office.
+// sees only their own rows. The President keeps the full student feature set
+// (see the student group above); the voting/ballot routes stay phase-gated so
+// no one can cast a ballot once the polls have closed.
 // ------------------------------------------------------------------------
 Route::middleware(['auth:sanctum', 'role:student,candidate,ssg_president', 'passwordChanged'])->group(function () {
     Route::get('/notifications', [NotificationController::class, 'index']);

@@ -155,7 +155,7 @@ class StudentAuthController extends Controller
         }
 
         $user = User::where('student_id', $import->student_id)
-            ->whereIn('role', User::VOTER_ROLES)
+            ->whereIn('role', User::STUDENT_ROLES)
             ->first();
 
         if (! $user || ! $user->is_active) {
