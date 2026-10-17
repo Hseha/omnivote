@@ -28,8 +28,11 @@ class AdminCandidateController extends Controller
     {
         // Base query WITHOUT the status filter so the per-status counts reflect
         // every candidate matching the position/tier/party/search filters.
+        // Archived winners live in Past Terms and are excluded from the live list.
         $base = Candidate::query()
             ->with(['user:id,name,email,student_id', 'position:id,slug,label,tier'])
+            // Archived winners (Past Terms) are excluded from the live list.
+            ->when(Schema::hasColumn('candidates', 'archived_at'), fn ($q) => $q->whereNull('archived_at'))
             ->when($request->query('search'), fn ($q, $s) => $q->where(
                 fn ($inner) => $inner
                     ->whereHas('user', fn ($u) => $u->where('name', 'like', "%{$s}%"))

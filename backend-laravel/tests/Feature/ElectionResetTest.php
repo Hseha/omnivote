@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Candidate;
 use App\Models\Phase;
 use App\Models\User;
+use App\Support\TermArchive;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -171,17 +172,22 @@ class ElectionResetTest extends TestCase
         $this->assertNotNull($winner->archived_at, 'Winner must be archived as officer (Past Terms)');
         $this->assertNotNull($winner->term_label, 'Winner must have a term label');
 
-        // NON-WINNER RESET: back to pending, vote cleared.
-        $loser->refresh();
-        $this->assertSame('pending', $loser->approval_status);
-        $this->assertFalse($loser->certified_winner);
-        $this->assertSame(0, $loser->vote_total);
-        $this->assertNull($loser->winner_rank);
-        // Production schema is NOT NULL DEFAULT 'pending' — a null write 500s
-        // on MySQL strict mode (the reported "Server Error"). The reset must
-        // restore the domain default, never null.
-        $this->assertSame('pending', $loser->election_status);
-        $this->assertSame('pending', DB::table('candidates')->where('id', $loser->id)->value('election_status'));
+        // NON-WINNER DELETED: clean slate — the row is gone, not merely
+        // flipped back to pending.
+        $this->assertFalse(DB::table('candidates')->where('id', $loser->id)->exists());
+        $this->assertNull(Candidate::where('id', $loser->id)->first());
+
+        // RECORD ARCHIVED: full cycle snapshot kept for review (both parties).
+        $this->assertTrue(DB::table('election_candidate_records')
+            ->where('party_name', 'Unity')
+            ->where('certified_winner', true)
+            ->exists());
+        $this->assertTrue(DB::table('election_candidate_records')
+            ->where('party_name', 'Opposition')
+            ->where('certified_winner', false)
+            ->where('election_status', 'lost')
+            ->exists());
+        $this->assertSame(2, DB::table('election_candidate_records')->count());
 
         // Vote ledger truncated.
         $this->assertFalse(DB::table('vote_ledger')->exists());
@@ -198,6 +204,249 @@ class ElectionResetTest extends TestCase
         $this->assertNotNull($auditRow);
         $this->assertSame($admin->id, (int) $auditRow->user_id);
         $this->assertStringContainsString('reset', (string) $auditRow->details);
+    }
+
+    public function test_reset_mid_registration_preserves_applications(): void
+    {
+        $admin = $this->makeUser(['role' => 'admin']);
+
+        // No voting has happened: registration phase is live, empty ledger.
+        DB::table('phases')->where('name', 'registration')->update(['is_active' => true]);
+        DB::table('election_settings')->insert([
+            ['key' => 'registration_opens_at', 'value' => now()->subDays(2)->toIso8601String(), 'created_at' => now(), 'updated_at' => now()],
+            ['key' => 'registration_closes_at', 'value' => now()->addDay()->toIso8601String(), 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        $applicant = $this->makeStudent();
+        $loser = Candidate::create([
+            'user_id' => $applicant->id,
+            'position_id' => 1,
+            'candidate_ref' => 'ref-applicant',
+            'slogan' => 'Also ran',
+            'party_name' => 'Opposition',
+            'approval_status' => 'pending',
+            'certified_winner' => false,
+            'election_status' => 'pending',
+        ]);
+
+        $this->actingAs($admin);
+
+        $this->stateful()
+            ->postJson('/api/admin/election/reset', ['confirm' => 'reset_election'])
+            ->assertOk();
+
+        // Phase/timeline cleared as before.
+        $this->assertNull(Phase::current());
+
+        // Applications PRESERVED — mid-registration error resets must not
+        // delete fresh applications.
+        $this->assertTrue(DB::table('candidates')->where('id', $loser->id)->exists());
+        $this->assertSame('pending', DB::table('candidates')->where('id', $loser->id)->value('approval_status'));
+
+        // No snapshot was taken for an unconcluded cycle.
+        $this->assertSame(0, DB::table('election_candidate_records')->count());
+    }
+
+    public function test_reset_after_voting_records_all_parties_and_deletes_losers(): void
+    {
+        $admin = $this->makeUser(['role' => 'admin']);
+
+        DB::table('phases')->where('name', 'voting_open')->update(['is_active' => true]);
+        DB::table('election_settings')->insert([
+            ['key' => 'voting_opens_at', 'value' => now()->subHours(5)->toIso8601String(), 'created_at' => now(), 'updated_at' => now()],
+            ['key' => 'voting_closes_at', 'value' => now()->addDay()->toIso8601String(), 'created_at' => now(), 'updated_at' => now()],
+        ]);
+        DB::table('vote_ledger')->insert([
+            ['position_key' => 'president', 'candidate_ref' => 'ref-winner', 'receipt_hmac' => 'hmac-1', 'recorded_at' => now()],
+        ]);
+
+        // Winner from Unity party.
+        $winner = Candidate::create([
+            'user_id' => $this->makeStudent()->id,
+            'position_id' => 1,
+            'candidate_ref' => 'ref-winner',
+            'slogan' => 'Vote for me',
+            'party_name' => 'Unity',
+            'approval_status' => 'approved',
+            'certified_winner' => true,
+            'certified_at' => now(),
+            'winner_rank' => 1,
+            'vote_total' => 42,
+            'election_status' => 'elected',
+        ]);
+        // Loser from Opposition party.
+        $loser = Candidate::create([
+            'user_id' => $this->makeStudent()->id,
+            'position_id' => 1,
+            'candidate_ref' => 'ref-loser',
+            'slogan' => 'Also ran',
+            'party_name' => 'Opposition',
+            'approval_status' => 'approved',
+            'certified_winner' => false,
+            'vote_total' => 10,
+            'election_status' => 'lost',
+        ]);
+
+        $this->actingAs($admin);
+
+        $this->stateful()
+            ->postJson('/api/admin/election/reset', ['confirm' => 'reset_election'])
+            ->assertOk();
+
+        // Winner preserved as officer.
+        $this->assertSame(1, DB::table('candidates')->where('id', $winner->id)->value('certified_winner'));
+        $this->assertNotNull(DB::table('candidates')->where('id', $winner->id)->value('archived_at'));
+
+        // Loser deleted — clean slate.
+        $this->assertFalse(DB::table('candidates')->where('id', $loser->id)->exists());
+
+        // Record kept for review: both parties present in the snapshot.
+        $this->assertTrue(DB::table('election_candidate_records')
+            ->where('party_name', 'Unity')->where('certified_winner', true)->exists());
+        $this->assertTrue(DB::table('election_candidate_records')
+            ->where('party_name', 'Opposition')->where('certified_winner', false)->exists());
+        $this->assertSame(2, DB::table('election_candidate_records')->count());
+    }
+
+    public function test_election_records_endpoint_returns_full_roster(): void
+    {
+        $admin = $this->makeUser(['role' => 'admin']);
+        $term = TermArchive::labelFor(now());
+        $cycleId = '2026-10-17 12:00:00';
+
+        DB::table('election_candidate_records')->insert([
+            [
+                'term_label' => $term,
+                'cycle_id' => $cycleId,
+                'user_name' => 'Alice Voter',
+                'student_id' => '2024-01001',
+                'department' => 'CCS',
+                'year_level' => '3',
+                'position_label' => 'President',
+                'position_tier' => 'national',
+                'party_name' => 'Unity',
+                'election_status' => 'elected',
+                'vote_total' => 42,
+                'winner_rank' => 1,
+                'certified_winner' => true,
+                'snapshot_at' => now(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'term_label' => $term,
+                'cycle_id' => $cycleId,
+                'user_name' => 'Bob Voter',
+                'student_id' => '2024-01002',
+                'department' => 'CCS',
+                'year_level' => '2',
+                'position_label' => 'President',
+                'position_tier' => 'national',
+                'party_name' => 'Opposition',
+                'election_status' => 'lost',
+                'vote_total' => 10,
+                'winner_rank' => null,
+                'certified_winner' => false,
+                'snapshot_at' => now(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $this->actingAs($admin);
+
+        $this->stateful()
+            ->get('/api/admin/election-records')
+            ->assertOk()
+            ->assertJsonStructure([
+                'terms' => [
+                    '*' => [
+                        'term_label', 'snapshot_at', 'cycle_id', 'total', 'winners',
+                        'parties' => [
+                            '*' => [
+                                'party', 'count',
+                                'candidates' => [
+                                    '*' => [
+                                        'name', 'student_id', 'department',
+                                        'year_level', 'position', 'tier', 'result',
+                                        'winner_rank', 'vote_total',
+                                        'certified_winner', 'slogan',
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+                'filters' => ['parties', 'positions', 'results'],
+            ]);
+
+        $decoded = json_decode($this->stateful()
+            ->get('/api/admin/election-records')
+            ->getContent(), true);
+        $this->assertSame(1, count($decoded['terms']));
+        $this->assertSame($term, $decoded['terms'][0]['term_label']);
+        $this->assertSame(2, $decoded['terms'][0]['total']);
+        $this->assertSame(1, $decoded['terms'][0]['winners']);
+    }
+
+    public function test_archived_winner_kept_off_next_ballot(): void
+    {
+        // Open the voting window so the /vote phase middleware passes.
+        // insertOrIgnore keeps this idempotent across tests: the isolated
+        // in-memory DB may already carry a valid window from an earlier test.
+        DB::table('election_settings')->insertOrIgnore([
+            ['key' => 'voting_opens_at', 'value' => now()->subHour()->toIso8601String(), 'created_at' => now(), 'updated_at' => now()],
+            ['key' => 'voting_closes_at', 'value' => now()->addDay()->toIso8601String(), 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        DB::table('positions')->insert([
+            'id' => 1, 'slug' => 'president', 'label' => 'President', 'tier' => 'national',
+            'seat_count' => 1, 'is_active' => true, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $winnerUser = $this->makeStudent();
+        $activeUser = $this->makeStudent();
+
+        // Archived winner — still certified, but must not appear on a new ballot.
+        // archived_at is set via a direct query update (mirrors TermArchive in
+        // production); it is not mass-assignable on the Candidate model.
+        $winner = Candidate::create([
+            'user_id' => $winnerUser->id,
+            'position_id' => 1,
+            'candidate_ref' => 'ref-archived',
+            'slogan' => 'Past winner',
+            'party_name' => 'Unity',
+            'approval_status' => 'approved',
+            'certified_winner' => true,
+            'certified_at' => now(),
+            'election_status' => 'elected',
+            'vote_total' => 42,
+            'winner_rank' => 1,
+        ]);
+        DB::table('candidates')->where('id', $winner->id)->update(['archived_at' => now()]);
+        // Active candidate for the next cycle.
+        Candidate::create([
+            'user_id' => $activeUser->id,
+            'position_id' => 1,
+            'candidate_ref' => 'ref-active',
+            'slogan' => 'Fresh applicant',
+            'party_name' => 'Opposition',
+            'approval_status' => 'approved',
+            'certified_winner' => false,
+            'election_status' => 'pending',
+            'vote_total' => 0,
+        ]);
+
+        $listed = collect(json_decode($this->get('/api/candidates')->getContent(), true)['data'] ?? []);
+        $this->assertFalse($listed->contains('candidate_ref', 'ref-archived'));
+        $this->assertTrue($listed->contains('candidate_ref', 'ref-active'));
+
+        // Submitting a vote for the archived winner must be rejected.
+        $this->actingAs($winnerUser);
+        $this->stateful()
+            ->postJson('/api/vote', ['selections' => ['president' => 'ref-archived']])
+            ->assertUnprocessable()
+            ->assertJsonFragment(["message" => "Invalid or unapproved candidate for position 'president'."]);
     }
 
 
@@ -333,6 +582,41 @@ class ElectionResetTest extends TestCase
             $table->integer('vote_total')->default(0);
             $table->timestamp('archived_at')->nullable();
             $table->string('term_label')->nullable();
+            $table->timestamps();
+        });
+
+        // Election Records snapshot table (mirrors the real migration). Kept
+        // minimal: only the columns the snapshot writes/reads.
+        Schema::create('election_candidate_records', function (Blueprint $table) {
+            $table->id();
+            $table->string('term_label');
+            $table->string('cycle_id');
+            $table->string('user_name')->nullable();
+            $table->string('user_email')->nullable();
+            $table->string('student_id')->nullable();
+            $table->string('department')->nullable();
+            $table->string('year_level')->nullable();
+            $table->string('position_slug')->nullable();
+            $table->string('position_label')->nullable();
+            $table->string('position_tier')->nullable();
+            $table->string('party_name')->nullable();
+            $table->string('approval_status')->nullable();
+            $table->string('election_status')->nullable();
+            $table->integer('vote_total')->default(0);
+            $table->integer('winner_rank')->nullable();
+            $table->boolean('certified_winner')->default(false);
+            $table->text('slogan')->nullable();
+            $table->timestamp('snapshot_at')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('positions', function (Blueprint $table) {
+            $table->id();
+            $table->string('slug')->unique();
+            $table->string('label');
+            $table->string('tier');
+            $table->unsignedInteger('seat_count')->default(1);
+            $table->boolean('is_active')->default(true);
             $table->timestamps();
         });
 

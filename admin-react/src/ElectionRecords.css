@@ -1,0 +1,238 @@
+.election-records-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.page-body {
+  flex: 1;
+  padding: 24px;
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.page-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 20px;
+}
+
+.page-header h1 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.page-sub {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-muted, #64748b);
+}
+
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+.banner-ok {
+  background: #f0fdf4;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+.banner-error {
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.filter-group label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted, #64748b);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+select.select {
+  padding: 8px 10px;
+  font-size: 14px;
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: 8px;
+  background: #fff;
+  min-width: 150px;
+}
+
+.btn.refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  font-size: 14px;
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}
+.btn.refresh:hover {
+  border-color: var(--primary, #2563eb);
+}
+
+.empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--text-muted, #64748b);
+}
+
+.term-section {
+  margin-bottom: 28px;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.term-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  background: var(--muted, #f8fafc);
+  border-bottom: 1px solid var(--border, #e2e8f0);
+}
+
+.term-header h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.term-meta {
+  font-size: 12px;
+  color: var(--text-muted, #64748b);
+}
+
+.party-block {
+  padding: 12px 18px;
+}
+
+.party-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted, #64748b);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+  padding-left: 2px;
+}
+
+.records-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.records-table th {
+  text-align: left;
+  padding: 8px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted, #64748b);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 2px solid var(--border, #e2e8f0);
+  white-space: nowrap;
+}
+
+.records-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border, #f1f5f9);
+  vertical-align: top;
+}
+
+.records-table tr.row-winner td {
+  background: #f0fdf4;
+}
+
+.candidate-cell {
+  min-width: 170px;
+}
+
+.candidate-name {
+  font-weight: 600;
+  color: var(--text, #0f172a);
+}
+
+.candidate-slogan {
+  font-size: 11px;
+  color: var(--text-muted, #64748b);
+  font-style: italic;
+  margin-top: 3px;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.badge-winner {
+  background: #dcfce7;
+  color: #166534;
+}
+.badge-lost {
+  background: #fef2f2;
+  color: #991b1b;
+}
+.badge-pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+.badge-rejected {
+  background: #e2e8f0;
+  color: #475569;
+}
+.badge-withdrawn {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.page-footer {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border, #e2e8f0);
+}
+
+.foot-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted, #64748b);
+}

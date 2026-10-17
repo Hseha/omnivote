@@ -50,6 +50,8 @@ class CandidateController extends Controller
         $candidates = Candidate::query()
             ->with(['user:id,name,email,department,year_level', 'position:id,slug,label,tier,seat_count'])
             ->where('approval_status', 'approved')
+            // Archived winners (Past Terms) are excluded from the live ballot.
+            ->when(Schema::hasColumn('candidates', 'archived_at'), fn ($q) => $q->whereNull('archived_at'))
             ->when($request->query('position'), fn ($q, $p) => $q->where('position_id', $p))
             ->when($request->query('tier'), fn ($q, $t) => $q->whereHas('position', fn ($p) => $p->where('tier', $t)))
             ->when($request->query('department'), fn ($q, $d) => $q->whereHas('user', fn ($u) => $u->where('department', $d)))
@@ -124,6 +126,8 @@ class CandidateController extends Controller
         $candidate = Candidate::query()
             ->with(['user:id,name,email,department,year_level', 'position:id,slug,label,tier,seat_count'])
             ->where('approval_status', 'approved')
+            // Archived winners (Past Terms) must not be shown on the live ballot.
+            ->when(Schema::hasColumn('candidates', 'archived_at'), fn ($q) => $q->whereNull('archived_at'))
             ->find($candidate);
 
         if (! $candidate) {

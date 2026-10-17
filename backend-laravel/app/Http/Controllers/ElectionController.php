@@ -9,6 +9,7 @@ use App\Models\Position;
 use App\Models\RegistrarImport;
 use App\Models\User;
 use App\Support\AuditLog;
+use App\Support\ElectionRecordArchive;
 use App\Support\TermArchive;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -199,11 +200,16 @@ class ElectionController extends Controller
             'confirm' => ['required', Rule::in(['reset_election'])],
         ]);
 
-        DB::transaction(function () use ($request) {
+        DB::transaction(function () use ($request, &$resetMessage, &$auditDetail) {
             // 1. Archive certified winners so they become preserved officers
             //    (Past Terms roster) before anything else is wiped.
             //    No-op on schemas lacking the archive columns (see TermArchive).
             TermArchive::archiveNow();
+
+            // Capture the phase BEFORE it is cleared, so we know whether this
+            // reset happened mid-registration or after voting concluded.
+            $preResetPhase = Phase::current()?->name;
+            $cycleId = now()->toDateTimeString();
 
             // 2. Clear the election timeline so no phase can be derived.
             if (Schema::hasTable('election_settings')) {
@@ -220,45 +226,39 @@ class ElectionController extends Controller
                 Phase::query()->update(['is_active' => false]);
             }
 
-            // 4. Reset only non-winner candidates (pending/rejected applications).
-            //    Winners stay archived as officers — they are never touched here.
-            //    `election_status` is NOT NULL DEFAULT 'pending' in production
-            //    (2026_09_20_000004), so it must reset to 'pending' — writing
-            //    null 500s on MySQL strict mode (the dashboard "Server Error").
-            //    Every optional column is guarded so an install that skipped a
-            //    migration still lands the clean slate instead of 500ing.
-            if (Schema::hasTable('candidates')) {
-                $candidateQuery = Candidate::query();
-                if (Schema::hasColumn('candidates', 'certified_winner')) {
-                    $candidateQuery->where('certified_winner', false);
-                }
+            // 4. Record a full-cycle snapshot (all parties, winners + non-winners)
+            //    before the wipe, then clear every non-winner application so the
+            //    next cycle starts with a clean slate. Mid-registration error
+            //    resets (no voting opened yet) preserve applications so students
+            //    do not lose them.
+            $cycleConcluded = in_array($preResetPhase, ['voting_open', 'voting_closed'], true)
+                || DB::table('vote_ledger')->exists();
 
-                $candidateUpdate = ['updated_at' => now()];
-                if (Schema::hasColumn('candidates', 'approval_status')) {
-                    $candidateUpdate['approval_status'] = 'pending';
-                }
-                if (Schema::hasColumn('candidates', 'certified_at')) {
-                    $candidateUpdate['certified_at'] = null;
-                }
-                if (Schema::hasColumn('candidates', 'winner_rank')) {
-                    $candidateUpdate['winner_rank'] = null;
-                }
-                if (Schema::hasColumn('candidates', 'vote_total')) {
-                    $candidateUpdate['vote_total'] = 0;
-                }
-                if (Schema::hasColumn('candidates', 'election_status')) {
-                    $candidateUpdate['election_status'] = 'pending';
-                }
-                if (Schema::hasColumn('candidates', 'rejection_count')) {
-                    $candidateUpdate['rejection_count'] = 0;
-                }
-                if (Schema::hasColumn('candidates', 'reapply_blocked_until')) {
-                    $candidateUpdate['reapply_blocked_until'] = null;
-                }
-
-                $candidateQuery->update($candidateUpdate);
+            if ($cycleConcluded && Schema::hasTable('candidates')) {
+                ElectionRecordArchive::snapshot(TermArchive::labelFor(), $cycleId);
             }
 
+            if ($cycleConcluded && Schema::hasTable('candidates')
+                && Schema::hasColumn('candidates', 'certified_winner')) {
+                Candidate::query()->where('certified_winner', false)->delete();
+            }
+
+            $auditDetail = $cycleConcluded
+                ? 'Admin reset the election cycle (post-voting): full candidate record archived to Election Records, timeline cleared, phase deactivated, non-winner candidates deleted, votes cleared, vote ledger truncated. Certified winners archived as officers (Past Terms) and preserved.'
+                : 'Admin reset the election cycle mid-registration: timeline cleared, phase deactivated, votes cleared, vote ledger truncated. Applications were preserved because no voting had concluded.';
+
+            $resetMessage = $cycleConcluded
+                ? 'Election cycle reset to a clean slate. Every candidate was archived to Election Records, then non-winner applications were deleted. Certified winners were archived as officers (Past Terms) and are preserved.'
+                : 'Election cycle reset mid-registration. Timeline and phase were cleared; applications were preserved because no voting had concluded.';
+
+            // Record the reset in the audit trail (inside the transaction).
+            AuditLog::record(
+                $request,
+                'election_reset',
+                $auditDetail,
+                'election',
+                null,
+            );
             // 5. Reset every student's turnout flag so they can vote again.
             $userUpdate = ['updated_at' => now()];
             if (Schema::hasColumn('users', 'has_voted')) {
@@ -287,17 +287,8 @@ class ElectionController extends Controller
             }
         });
 
-        // Record the reset in the audit trail.
-        AuditLog::record(
-            $request,
-            'election_reset',
-            'Admin reset the election cycle: schedule cleared, phase deactivated, non-winner candidates reset, votes cleared, vote ledger truncated. Certified winners were archived as officers (Past Terms).',
-            'election',
-            null,
-        );
-
         return response()->json([
-            'message' => 'Election cycle reset to a clean slate. Non-winner candidates and votes were cleared. Certified winners were archived as officers (Past Terms) and are preserved.',
+            'message' => $resetMessage,
         ]);
     }
 

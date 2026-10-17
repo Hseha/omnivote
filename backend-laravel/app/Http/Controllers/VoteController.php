@@ -12,6 +12,7 @@ use App\Support\Notifier;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Anonymous vote submission.
@@ -175,6 +176,9 @@ class VoteController extends Controller
         $candidates = Candidate::query()
             ->whereIn('candidate_ref', $refs)
             ->where('approval_status', 'approved')
+            // Archived winners (Past Terms) must not be re-votable. The
+            // column is schema-guarded so installs/tests without it are safe.
+            ->when(Schema::hasColumn('candidates', 'archived_at'), fn ($q) => $q->whereNull('archived_at'))
             // The owning account is needed to test the candidate's own scope.
             ->with('user:id,year_level,department,course')
             ->get();

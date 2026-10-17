@@ -14,6 +14,7 @@ use App\Http\Controllers\CandidacyAvailabilityController;
 use App\Http\Controllers\CandidacyController;
 use App\Http\Controllers\CandidateController;
 use App\Http\Controllers\ElectionController;
+use App\Http\Controllers\ElectionRecordsController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PositionController;
 use App\Http\Controllers\RegistrarImportController;
@@ -143,6 +144,10 @@ Route::prefix('admin')->group(function () {
             ->middleware('permission:results.view');
         Route::post('/results/archive-term', [ResultsController::class, 'archiveTerm'])
             ->middleware('permission:results.finalize');
+        // Election Records (full per-cycle roster: every candidate, winners
+        // and non-winners, all parties — preserved across clean-slate resets).
+        Route::get('/election-records', [ElectionRecordsController::class, 'index'])
+            ->middleware('permission:results.view');
 
         // Configuration (React Settings screen)
         Route::get('/settings', [SettingsController::class, 'index'])

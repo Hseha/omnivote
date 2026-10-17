@@ -8,6 +8,7 @@ import Announcements from './Announcements';
 import StudentRegistry from './StudentRegistry';
 import ElectionSetup from './ElectionSetup';
 import Results from './Results';
+import ElectionRecords from './ElectionRecords';
 import Settings from './Settings';
 import UserManagement from './UserManagement';
 import Departments from './Departments';
@@ -31,6 +32,7 @@ const ROUTE_TITLES = {
   voters: 'Student Registry',
   setup: 'Election Setup',
   results: 'Results',
+  records: 'Election Records',
   announcements: 'Announcements',
   audit: 'Audit Log',
   settings: 'Settings',
@@ -173,6 +175,15 @@ function AppShell() {
     case 'results':
       return (
         <Results
+          onLogout={undefined}
+          activeView={currentView}
+          onNavigate={navigate}
+          currentUser={user}
+        />
+      );
+    case 'records':
+      return (
+        <ElectionRecords
           onLogout={undefined}
           activeView={currentView}
           onNavigate={navigate}
