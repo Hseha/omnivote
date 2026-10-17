@@ -19,6 +19,7 @@ import '../../../core/widgets/loading_skeleton.dart';
 import '../../../core/widgets/top_bar.dart';
 import '../../../data/models/candidacy_application_model.dart';
 import '../../../data/models/position_model.dart';
+import '../../../data/repositories/candidacy_repository.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../candidates/providers/candidates_provider.dart';
 import '../providers/candidacy_provider.dart';
@@ -45,6 +46,7 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
   final _formKey = GlobalKey<FormState>();
   String? _positionId;
   String? _partyName;
+  PositionTier? _tier;
   final _sloganController = TextEditingController();
   final _platformController = TextEditingController();
   bool _certify = false;
@@ -109,6 +111,7 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
         _partyName = (application.partyName ?? '').trim().isEmpty
             ? null
             : application.partyName!.trim();
+        _tier = application.position?.tier;
         _sloganController.text = application.slogan ?? '';
         _platformController.text = application.platformStatement;
         _editing = openForEdit && active;
@@ -117,7 +120,11 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
   }
 
   Future<void> _submit() async {
-    if (!_formKey.currentState!.validate() || !_certify) {
+    if (!_formKey.currentState!.validate() ||
+        !_certify ||
+        _partyName == null ||
+        _tier == null ||
+        _positionId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
@@ -193,6 +200,17 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
                 onPressed: () => Navigator.of(dialogContext).pop(),
                 child: const Text('OK'),
               ),
+              TextButton(
+                onPressed: () {
+                  Navigator.of(dialogContext).pop();
+                  _showProblemReportDialog(
+                    action: 'submit',
+                    errorCode: failure.errorCode ?? 'seat_taken',
+                    errorMessage: failure.errorMessage ?? 'Seat taken.',
+                  );
+                },
+                child: const Text('Report problem'),
+              ),
             ],
           ),
         );
@@ -201,6 +219,14 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
           SnackBar(
             content: Text(failure.errorMessage ?? 'Request failed.'),
             backgroundColor: AppColors.errorRed,
+            action: SnackBarAction(
+              label: 'Report problem',
+              onPressed: () => _showProblemReportDialog(
+                action: 'submit',
+                errorCode: failure.errorCode ?? 'unknown',
+                errorMessage: failure.errorMessage ?? 'Request failed.',
+              ),
+            ),
           ),
         );
       }
@@ -260,6 +286,90 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
       _applicationStatus = null;
       _application = null;
     });
+  }
+
+  /// Shows a dialog that lets the user report a problem to the admin so the
+  /// root cause can be investigated.
+  Future<void> _showProblemReportDialog({
+    required String action,
+    required String errorCode,
+    required String errorMessage,
+    Map<String, dynamic> extraContext = const {},
+  }) async {
+    final descriptionController = TextEditingController();
+
+    final submitted = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Report problem to admin'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'What happened: $errorMessage',
+                style: AppTextStyles.of(context).bodySmall,
+              ),
+              AppSpacing.vSm,
+              TextField(
+                controller: descriptionController,
+                decoration: const InputDecoration(
+                  labelText: 'Additional details (optional)',
+                  hintText: 'What were you doing when the problem occurred?',
+                ),
+                maxLines: 3,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          AppButton.primary(
+            label: 'Send',
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+          ),
+        ],
+      ),
+    );
+
+    if (submitted != true || !mounted) return;
+
+    try {
+      await ref.read(candidacyRepositoryProvider).submitProblemReport(
+            screen: 'CandidacyApplyScreen',
+            action: action,
+            errorCode: errorCode,
+            errorMessage: errorMessage,
+            context: {
+              ...extraContext,
+              'party': _partyName,
+              'tier': _tier?.name,
+              'position': _positionId,
+            },
+            description: descriptionController.text.trim(),
+          );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Report sent to admin. Thank you.'),
+            backgroundColor: AppColors.successGreen,
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not send report. Please try again later.'),
+            backgroundColor: AppColors.errorRed,
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _pickPhoto() async {
@@ -386,31 +496,19 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
               _readOnlyField(context, 'Email', student?.email ?? '—'),
               _readOnlyField(context, 'Student ID', student?.studentId ?? '—'),
               AppSpacing.vMd,
-              DropdownButtonFormField<String>(
-                initialValue: _positionId,
-                decoration: const InputDecoration(
-                  labelText: 'Position Running For *',
-                ),
-                items: positions
-                    .map(
-                      (p) => DropdownMenuItem<String>(
-                        value: p.id,
-                        // A seat this party already fills is disabled and
-                        // labelled, unless it is the one already chosen (an
-                        // applicant editing their own candidacy keeps it).
-                        enabled: !(_seatTaken(p, availability) &&
-                            p.id != _positionId),
-                        child: Text(
-                          '${p.label} (${_tierLabel(p)})'
-                          '${_seatTaken(p, availability) ? ' — $_partyDisplay seat taken' : ''}',
-                        ),
-                      ),
-                    )
-                    .toList(),
-                onChanged: positionLocked
-                    ? null
-                    : (v) => setState(() => _positionId = v),
-                validator: (v) => v == null ? 'Select a position' : null,
+              _partyField(positionLocked: positionLocked),
+              AppTextField.fieldGap,
+              _tierField(positionLocked: positionLocked),
+              AppTextField.fieldGap,
+              _positionField(
+                positions: positions,
+                availability: availability,
+                positionLocked: positionLocked,
+              ),
+              AppTextField.fieldGap,
+              _seatAvailabilityCounter(
+                positions: positions,
+                availability: availability,
               ),
               if (availabilityAsync.isLoading) ...[
                 AppSpacing.vSm,
@@ -425,6 +523,15 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
                   'still confirm your seat on submit.',
                   style: AppTextStyles.of(context).labelSmall,
                 ),
+                TextButton(
+                  onPressed: () => _showProblemReportDialog(
+                    action: 'load_availability',
+                    errorCode: 'availability_failed',
+                    errorMessage:
+                        'Seat availability could not be loaded.',
+                  ),
+                  child: const Text('Report problem'),
+                ),
               ],
               if (positionLocked) ...[
                 AppSpacing.vSm,
@@ -435,8 +542,6 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
                       ),
                 ),
               ],
-              AppSpacing.vMd,
-              _partyField(),
               AppTextField.fieldGap,
               AppTextField(
                 controller: _sloganController,
@@ -532,11 +637,12 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
 
   /// Official party picker, populated from GET /api/parties (ASLE, SVEA).
   ///
-  /// The field stays optional — a candidate may run without a party — so the
-  /// null "No party" choice is always offered. A previously saved value that is
-  /// no longer in the official list is kept as an option, so editing a legacy
-  /// campaign never silently drops the party it was submitted with.
-  Widget _partyField() {
+  /// The field is required — a candidate must select an official party before
+  /// they can choose a tier or position. The "No party" choice is not offered.
+  /// A previously saved value that is no longer in the official list is kept
+  /// as an option, so editing a legacy campaign never silently drops the party
+  /// it was submitted with.
+  Widget _partyField({required bool positionLocked}) {
     final partiesAsync = ref.watch(partiesProvider);
     final parties = partiesAsync.valueOrNull ?? const <String>[];
     final legacy = _partyName?.trim();
@@ -549,23 +655,129 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
       initialValue: _partyName,
       isExpanded: true,
       decoration: InputDecoration(
-        labelText: 'Party',
+        labelText: 'Party *',
         helperText: partiesAsync.hasError
             ? 'Could not load the party list.'
             : partiesAsync.isLoading
                 ? 'Loading parties…'
-                : 'Optional — pick your official party.',
+                : 'Select your official party. Required before choosing a position.',
+      ),
+      items: options
+          .map(
+            (p) => DropdownMenuItem<String>(value: p, child: Text(p)),
+          )
+          .toList(),
+      validator: (v) => v == null || v.isEmpty ? 'Select a party' : null,
+      onChanged: positionLocked
+          ? null
+          : (value) => setState(() {
+                _partyName = value;
+                _tier = null;
+                _positionId = null;
+              }),
+    );
+  }
+
+  /// Tier picker: National or Provincial. Enabled only once a party is chosen.
+  Widget _tierField({required bool positionLocked}) {
+    return DropdownButtonFormField<PositionTier>(
+      initialValue: _tier,
+      isExpanded: true,
+      decoration: const InputDecoration(
+        labelText: 'Election tier *',
+        helperText: 'Choose National or Provincial.',
       ),
       items: [
-        const DropdownMenuItem<String>(
-          value: null,
-          child: Text('No party'),
+        DropdownMenuItem<PositionTier>(
+          value: PositionTier.national,
+          child: const Text('National'),
         ),
-        ...options.map(
-          (p) => DropdownMenuItem<String>(value: p, child: Text(p)),
+        DropdownMenuItem<PositionTier>(
+          value: PositionTier.provincial,
+          child: const Text('Provincial'),
         ),
       ],
-      onChanged: (value) => setState(() => _partyName = value),
+      validator: (v) => v == null ? 'Select a tier' : null,
+      onChanged: (_partyName == null || positionLocked)
+          ? null
+          : (value) => setState(() {
+                _tier = value;
+                _positionId = null;
+              }),
+    );
+  }
+
+  /// Position Running For picker, filtered to the selected tier.
+  Widget _positionField({
+    required List<Position> positions,
+    required Map<int, Map<String, int>>? availability,
+    required bool positionLocked,
+  }) {
+    final tierPositions =
+        positions.where((p) => p.tier == _tier).toList();
+
+    return DropdownButtonFormField<String>(
+      initialValue: _positionId,
+      decoration: const InputDecoration(
+        labelText: 'Position Running For *',
+      ),
+      items: tierPositions
+          .map(
+            (p) => DropdownMenuItem<String>(
+              value: p.id,
+              enabled: !(_seatTaken(p, availability) &&
+                  p.id != _positionId),
+              child: Text(
+                '${p.label} (${_tierLabel(p)})'
+                '${_seatTaken(p, availability) ? ' — $_partyDisplay seat taken' : ''}',
+              ),
+            ),
+          )
+          .toList(),
+      onChanged: positionLocked
+          ? null
+          : (v) => setState(() => _positionId = v),
+      validator: (v) => v == null ? 'Select a position' : null,
+    );
+  }
+
+  /// Seat availability counter for the selected position + party.
+  Widget _seatAvailabilityCounter({
+    required List<Position> positions,
+    required Map<int, Map<String, int>>? availability,
+  }) {
+    if (_positionId == null || _partyName == null || availability == null) {
+      return const SizedBox.shrink();
+    }
+
+    final id = int.tryParse(_positionId!);
+    if (id == null) return const SizedBox.shrink();
+
+    final position = positions.firstWhere(
+      (p) => p.id == _positionId,
+      orElse: () => Position(
+        id: _positionId!,
+        label: _positionId!,
+        tier: _tier ?? PositionTier.national,
+        seatCount: 1,
+        description: '',
+      ),
+    );
+
+    final taken = (availability[id] ?? <String, int>{})[_partyName] ?? 0;
+    final remaining = position.seatCount - taken;
+
+    final color = remaining <= 0
+        ? Theme.of(context).colorScheme.error
+        : null;
+
+    return Text(
+      'Seats available: $remaining of ${position.seatCount} for $_partyName'
+      '${remaining <= 0 ? ' — seat taken' : ''}',
+      style: AppTextStyles.of(context).labelSmall.copyWith(
+        color: color,
+        fontWeight: remaining <= 0 ? FontWeight.w600 : FontWeight.normal,
+      ),
     );
   }
 

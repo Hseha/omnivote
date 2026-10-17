@@ -124,6 +124,30 @@ class CandidacyRepository {
     return result;
   }
 
+  /// Submits a problem / bug report from the apply screen so admins can
+  /// investigate the root cause.
+  Future<Response> submitProblemReport({
+    required String screen,
+    required String action,
+    required String errorCode,
+    required String errorMessage,
+    required Map<String, dynamic> context,
+    required String description,
+  }) async {
+    try {
+      return await _candidacyService.submitProblemReport(
+        screen: screen,
+        action: action,
+        errorCode: errorCode,
+        errorMessage: errorMessage,
+        context: context,
+        description: description,
+      );
+    } catch (error) {
+      throw _translate(error);
+    }
+  }
+
   /// Wraps a `{code, message}` error body in [CandidacyException]; any other
   /// failure is returned unchanged so existing Dio/error handling still runs.
   static Object _translate(Object error) {

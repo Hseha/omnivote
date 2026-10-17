@@ -50,6 +50,10 @@ class ApiConstants {
   // seats a party has already filled (candidacy seat-cap enforcement).
   static const String candidacyAvailability = '/candidacy/availability';
 
+  // Problem / bug reports from the apply screen, sent to admins for root-cause
+  // investigation. Backend route to be implemented by the backend owner.
+  static const String problemReports = '/reports';
+
   // Ballot endpoints
   static const String ballotMe = '/ballot/me';
   static const String ballotSubmit = '/ballot/me/submit';

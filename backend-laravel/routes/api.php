@@ -17,6 +17,7 @@ use App\Http\Controllers\ElectionController;
 use App\Http\Controllers\ElectionRecordsController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PositionController;
+use App\Http\Controllers\ProblemReportController;
 use App\Http\Controllers\RegistrarImportController;
 use App\Http\Controllers\RegistrationController;
 use App\Http\Controllers\ResultsController;
@@ -388,6 +389,12 @@ Route::middleware(['auth:sanctum', 'role:student,candidate,ssg_president', 'pass
     // Per-party seat availability for the apply screen (see
     // docs/HANDOFF_CANDIDACY_SEAT_CAP.md §1.2).
     Route::get('/candidacy/availability', [CandidacyAvailabilityController::class, 'index']);
+
+    // Student-submitted problem / bug report (e.g. from the candidacy apply
+    // screen). Written to every active staff member's in-app notification
+    // feed so the root cause can be investigated. Reuses user_notifications.
+    Route::post('/reports', [ProblemReportController::class, 'store']);
+
     Route::post('/candidate/apply', [CandidateController::class, 'store'])
         ->middleware('checkPhase:registration');
 
