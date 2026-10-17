@@ -70,7 +70,14 @@ class SelfRegistrationActivationCodeTest extends TestCase
 
     public function test_self_registration_works_once_an_admin_enables_it(): void
     {
-        $import = RegistrarImport::create(['student_id' => '2026-1001', 'full_name' => 'Ben Cruz']);
+        $import = RegistrarImport::create([
+            'student_id' => '2026-1001',
+            'full_name' => 'Ben Cruz',
+            'year_level' => '3',
+            'block_number' => '1',
+            'department' => 'College of Computer Studies',
+            'course' => 'BSCS',
+        ]);
         $code = RegistrarCode::issue($import);
 
         $this->setting('admin.settings.security.selfRegistrationEnabled', 'true');
@@ -83,6 +90,12 @@ class SelfRegistrationActivationCodeTest extends TestCase
         $user = User::where('student_id', '2026-1001')->firstOrFail();
         $this->assertTrue(Hash::check('Str0ngPassphrase', $user->password));
         $this->assertSame('student', $user->role);
+        $this->assertSame('3', $user->year_level);
+        $this->assertSame('1', $user->block_number);
+        $this->assertSame('College of Computer Studies', $user->department);
+        $this->assertSame('BSCS', $user->course);
+        $this->assertTrue($user->is_active);
+        $this->assertFalse($user->has_voted);
     }
 
     /* ------------------------------------------------------------------ */
@@ -309,6 +322,7 @@ class SelfRegistrationActivationCodeTest extends TestCase
             $table->string('year_level')->nullable();
             $table->string('block_number')->nullable();
             $table->string('department')->nullable();
+            $table->string('course')->nullable();
             $table->unsignedInteger('failed_login_attempts')->default(0);
             $table->timestamp('locked_until')->nullable();
             $table->boolean('needs_review')->default(false);
@@ -337,6 +351,8 @@ class SelfRegistrationActivationCodeTest extends TestCase
             $table->string('full_name');
             $table->string('course')->nullable();
             $table->string('year_level')->nullable();
+            $table->string('block_number')->nullable();
+            $table->string('department')->nullable();
             $table->string('activation_code_hash')->nullable();
             $table->timestamp('activation_code_issued_at')->nullable();
             $table->timestamp('activation_code_used_at')->nullable();

@@ -94,6 +94,12 @@ class RegistrationController extends Controller
                 'student_id' => $validated['student_id'],
                 'password' => Hash::make($validated['password']),
                 'role' => 'student',
+                'year_level' => $import->year_level,
+                'block_number' => $import->block_number,
+                'department' => $import->department,
+                'course' => $import->course,
+                'is_active' => true,
+                'has_voted' => false,
             ]);
 
             // Single-use: burn the code so the same slip cannot be replayed.
