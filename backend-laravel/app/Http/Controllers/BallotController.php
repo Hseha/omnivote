@@ -28,15 +28,18 @@ class BallotController extends Controller
 
     public function me(Request $request): JsonResponse
     {
-        $draft = BallotDraft::firstOrCreate(['user_id' => $request->user()->id]);
+        $user = $request->user();
+        $draft = BallotDraft::firstOrCreate(['user_id' => $user->id]);
         $draft->refresh();
 
+        $isSubmitted = $user->has_voted || $draft->status === 'submitted';
+
         return response()->json([
-            'status' => $draft->status,
+            'status' => $isSubmitted ? 'submitted' : $draft->status,
             // Empty once submitted: the submitted ballot is not retrievable
             // from the server by design (H-1). The receipt is likewise only
             // ever returned by the submit call itself.
-            'selections' => $draft->selections ?? (object) [],
+            'selections' => $isSubmitted ? (object) [] : ($draft->selections ?? (object) []),
             'receipt_token' => null,
         ]);
     }
@@ -48,6 +51,10 @@ class BallotController extends Controller
 
     public function saveDraft(Request $request): JsonResponse
     {
+        if ($request->user()->has_voted) {
+            return response()->json(['message' => 'Your ballot has already been submitted.'], 409);
+        }
+
         // Shape and size caps (security assessment L-4). The draft body was
         // accepted as an unconstrained `array`, so a student could store an
         // arbitrarily large or arbitrarily deep payload in their own draft row.

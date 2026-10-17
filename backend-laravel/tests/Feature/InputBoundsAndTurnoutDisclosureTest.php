@@ -150,6 +150,23 @@ class InputBoundsAndTurnoutDisclosureTest extends TestCase
         );
     }
 
+    public function test_saving_draft_after_submitting_ballot_is_rejected(): void
+    {
+        $student = $this->makeUser(['has_voted' => true]);
+
+        $this->actingAs($student, 'sanctum')
+            ->putJson('/api/ballot/me', [
+                'selections' => ['president' => ['ref-ana']],
+            ])
+            ->assertStatus(409)
+            ->assertJsonPath('message', 'Your ballot has already been submitted.');
+
+        $this->actingAs($student, 'sanctum')
+            ->getJson('/api/ballot/me')
+            ->assertOk()
+            ->assertJsonPath('status', 'submitted');
+    }
+
     /* ------------------------------------------------------------------ */
     /* L-4c  settings key allow-list                                       */
     /* ------------------------------------------------------------------ */
