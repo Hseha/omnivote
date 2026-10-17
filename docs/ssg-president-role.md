@@ -1,7 +1,9 @@
 # SSG President Role — Design & Implementation Record
 
-**Date:** 2026-09-13
-**Status:** Approved design — not yet implemented
+**Date:** 2026-09-13 (addendum 2026-10-18)
+**Status:** Implemented. The post-certification console was later widened into a
+standalone, ungated web console with a one-time setup-link credential handoff —
+see §9.
 **Scope:** `backend-laravel/`, `admin-react/`, `user-flutter/`
 **Decision:** Add `ssg_president` as a **fourth fixed role** (`admin`, `teacher`, `student`, `ssg_president`) with a hardcoded permission catalog per role. The proposed per-user permission-toggle system (`user_permissions` table) was reviewed and **deliberately deferred** — this is an engineering decision, not an oversight. See sections 4, 5, and 8.
 
@@ -309,3 +311,80 @@ Ordered, actionable checklist to build this end-to-end. Backend work (Steps 1–
 **Pass 1 — Implementation-plan review ("where does this fit?").** Mapped the codebase's actual authorization state: `users.role` is a string ENUM (`admin`/`teacher`/`candidate`/`student`) from migration `2026_08_24_000001`; role checks exist **only at the two login controllers** (`AdminAuthController.php:33` whitelist, `StudentAuthController.php:32` exact-match) — every `/api/admin/*` route is behind bare `auth` with no per-endpoint role gate; there are no Policies, no Gates, no permission middleware (only `checkPhase` is registered in `bootstrap/app.php`); the React panel has no router (view switch in `App.jsx`), role labels are cosmetic and binary (`Admindashboard.jsx:42-46`), and account "provisioning" exists only as a seeder — the `Settings.jsx` user table is mock data with no API. This pass produced the phased plan now condensed into §3 (enum widening → catalog → middleware → login whitelist → route retrofit → role-promotion endpoint → announcements/officers domain → React screens → Flutter feed → tests) and flagged: the vestigial `candidate` enum value, the stale `ssg_office` reference in `docs/AUDIT.md:200`, the hardcoded fake users in five sidebar components, and the entanglement of "publish results" with the phase mechanism.
 
 **Pass 2 — Feasibility review of the permission-toggle proposal.** Assessed the proposed `user_permissions` design (per-user toggles scoped to each role's catalog, enforced by dual checks: role-catalog validity + per-user grant). Findings: the dual-check pattern is sound in principle, but in *this* codebase it would create (a) the system's most sensitive attack surface via the grant-management endpoint (a bug there widens access instead of narrowing it), (b) an admin lockout failure mode unless admin bypasses grants entirely, (c) a revocation-staleness window through the stateful Sanctum session + `admin-session` token unless promotion/revocation also revokes live tokens, and (d) a heavy testing burden in a repo with zero existing feature tests. Verdict: the fixed-role catalog covers 100% of the stated requirements at a fraction of the risk; the toggle system solves a problem with no current user story (estimated 3–5 extra days vs ~2 for the fixed path). Also surfaced bypass risks to avoid during implementation: FormRequests hardcoding `authorize() => true`, and "publish results" not existing as an action (today any panel user can flip the phase, which is what actually publishes results).
+
+---
+
+## 9. Addendum (2026-10-18) — Ungated web console & credential handoff
+
+Two things changed after the original rollout; the governance scope (officer
+roster + announcements, no election administration) is **unchanged**, so the
+conflict-of-interest boundary for election data still holds.
+
+### 9.1 The President keeps the full mobile student app
+
+The §6 drawback "Role promotion breaks the Flutter app for that account" is
+**superseded**. The winner is still a student and should keep voting-floor
+features (results, announcements, profile). `User::STUDENT_ROLES` now includes
+`ssg_president`; the Flutter student route group is `role:student,candidate,ssg_president`;
+`StudentAuthController::login` accepts the role. `VOTER_ROLES` stays
+`['student','candidate']` on purpose — adding the President there would skew
+turnout tallies and let candidate-role sync demote the seat.
+
+### 9.2 A standalone, ungated console on `/ssg/`
+
+The panel gate (`auth_basic` on `/admin`, `/admin/`, `/api/admin`, `/sanctum`)
+exists to protect staff tooling; the elected President has no staff Basic
+credential, so the console moved to its own mount:
+
+- Same React bundle, served at both `/admin/` and `/ssg/` (Vite `base: './'`).
+  `admin-react/src/lib/api.js` exports `IS_SSG_CONSOLE` and rewrites `/admin*`
+  requests to `/ssg/console*`.
+- `/ssg/` and `/api/ssg/console/*` are **not** Basic-gated. Server-side controls
+  replace the gate: only `ssg_president` may hold a session
+  (`SsgConsoleAuthController`, which narrows `AdminAuthController::panelRoles()`),
+  first access is bound to a one-time setup link, and every data route keeps the
+  `permission:` + TOTP 2FA gate.
+- `/sanctum/csrf-cookie` is exempted from the Basic gate (exact-match location)
+  because the console needs it before it holds any cookie.
+
+### 9.3 One-time setup-link credential handoff
+
+`SsgPresidentGrant` still promotes the winning student and issues a single-use
+`SsgPresidentInvite`, but the link now points at the web console
+(`/ssg/setup?token=…`) and its notification names a **provisional username**.
+`SsgSetupController::setupConsole` (unauthenticated, token-bound, `ssg-setup`
+throttled) lets the President choose a username + password:
+
+- username `^[A-Za-z0-9._-]{3,50}$`, unique against both `username` and existing
+  emails; stored lowercased;
+- password validated by the shared `PasswordPolicy`;
+- on success: `ssg_setup_pending=false`, `must_change_password=false`, **all
+  tokens revoked** (forces a fresh login), invite redeemed, audit
+  `ssg_console_setup`, admins notified in-app.
+
+A new `users.username` column makes the chosen handle a login identifier for
+**both** surfaces (mobile + web) via `User::scopeForLogin()` (email verbatim,
+username lowercased). Request field remains `email` for compatibility.
+
+### 9.4 Setup gate & 2FA
+
+Desk-checking the console with the student password before completing setup is
+blocked by the `ssg.setup` middleware (`EnsureSsgSetupComplete`), which returns
+`403 {setup_required:true}` on console data routes while `ssg_setup_pending` is
+set (`/me` stays open so the SPA can detect the state and route to the setup
+screen). Because console data routes keep the `permission:` gate,
+`EnsurePermission` forces TOTP enrollment for the President exactly as it does
+for staff.
+
+### 9.5 Staff-notification leak
+
+`Notifier::toAdmins` targeted a hand-written role list that included
+`ssg_president`; it now uses `config('permissions.staff_roles')`
+(`admin`, `teacher`), so President-console events no longer leak into the
+student feed's staff channel.
+
+### 9.6 Flutter link handling
+
+Notification links that are absolute URLs or the `/ssg/…` console path are
+opened in the system browser (`url_launcher`) instead of being pushed as
+go_router locations; only in-app relative links are pushed.
