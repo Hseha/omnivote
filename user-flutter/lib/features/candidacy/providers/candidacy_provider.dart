@@ -199,13 +199,35 @@ class CandidacyNotifier extends StateNotifier<CandidacyState> {
         return 'You already have a candidacy application under review.';
       }
       if (statusCode == 403) {
-        return 'Candidacy changes are only available until voting closes.';
+        return _phaseMessage(data is Map ? data['phase']?.toString() : null);
       }
       if (serverMessage != null && serverMessage.isNotEmpty) {
         return serverMessage;
       }
     }
     return apiErrorMessage(error, fallback: 'Request failed. Please try again.');
+  }
+
+  /// Phase-aware rejection copy. The backend returns 403 with the `phase` name
+  /// when a candidacy mutation is blocked by the election window
+  /// (CheckPhase middleware / assertCandidacyEditable). A missing or
+  /// unrecognised phase falls back to a generic message so the student always
+  /// gets a clear explanation instead of "Action not allowed".
+  static String _phaseMessage(String? phase) {
+    switch (phase) {
+      case 'registration':
+        // Only the edit/withdraw half of the flow reaches here during
+        // registration (apply is allowed); the generic fallback still works.
+        return 'Candidacy changes are only available until voting closes.';
+      case 'registration_closed':
+        return 'Registration is closed. You cannot submit or edit your candidacy application right now.';
+      case 'voting_open':
+        return 'Registration is closed. You can edit an existing application during voting, but new applications are no longer accepted.';
+      case 'voting_closed':
+        return 'Voting has closed. You cannot edit your candidacy application right now.';
+      default:
+        return 'The election phase is not configured yet, or the status could not be determined. Please try again later.';
+    }
   }
 
   Future<String?> applicationStatus() async {

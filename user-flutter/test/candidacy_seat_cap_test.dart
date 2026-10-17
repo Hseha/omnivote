@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:omnivote/core/theme/app_theme.dart';
 import 'package:omnivote/data/models/candidacy_application_model.dart';
+import 'package:omnivote/data/models/election_status_model.dart';
 import 'package:omnivote/data/models/notification_model.dart';
 import 'package:omnivote/data/models/position_model.dart';
 import 'package:omnivote/data/models/student_model.dart';
@@ -16,6 +17,7 @@ import 'package:omnivote/data/services/notification_service.dart';
 import 'package:omnivote/features/auth/providers/auth_provider.dart';
 import 'package:omnivote/features/candidacy/screens/candidacy_apply_screen.dart';
 import 'package:omnivote/features/candidates/providers/candidates_provider.dart';
+import 'package:omnivote/features/dashboard/providers/election_status_provider.dart';
 import 'package:omnivote/features/notifications/providers/notifications_provider.dart';
 
 /// Covers the frontend half of the candidacy seat cap (docs/HANDOFF_CANDIDACY_SEAT_CAP.md
@@ -147,6 +149,11 @@ Future<void> _pump(
         ),
         positionsProvider.overrideWith((ref) async => _positions),
         partiesProvider.overrideWith((ref) async => ['ASLE', 'SVEA']),
+        electionStatusProvider.overrideWith(
+          (ref) async => const ElectionStatus(
+            phase: ElectionPhase.registration,
+          ),
+        ),
         notificationsProvider.overrideWith(
           (ref) => NotificationsNotifier(_FakeNotificationRepository()),
         ),

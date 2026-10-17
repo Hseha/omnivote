@@ -18,10 +18,13 @@ import '../../../core/widgets/error_state.dart';
 import '../../../core/widgets/loading_skeleton.dart';
 import '../../../core/widgets/top_bar.dart';
 import '../../../data/models/candidacy_application_model.dart';
+import '../../../data/models/election_status_model.dart';
 import '../../../data/models/position_model.dart';
 import '../../../data/repositories/candidacy_repository.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../candidates/providers/candidates_provider.dart';
+import '../../dashboard/providers/election_status_provider.dart';
+import '../../dashboard/widgets/election_countdown.dart';
 import '../providers/candidacy_provider.dart';
 
 /// Apply for, edit, or withdraw a candidacy (docs/03_APP_FLOW.md step 6).
@@ -412,6 +415,18 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
   @override
   Widget build(BuildContext context) {
     final positionsAsync = ref.watch(positionsProvider);
+    final phase = ref.watch(
+      electionStatusProvider.select(
+        (state) => state.valueOrNull?.phase ?? ElectionPhase.unknown,
+      ),
+    );
+
+    // The apply form is only reachable during registration; an existing
+    // application may be edited through voting (see _canEdit).
+    final canApply = phase == ElectionPhase.registration;
+    final canEdit =
+        phase == ElectionPhase.registration ||
+        phase == ElectionPhase.votingOpen;
 
     return Scaffold(
       backgroundColor: context.appBackground,
@@ -427,11 +442,15 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
                   status: status,
                   positionLabel: _labelOf(positions, _positionId),
                   application: _application,
+                  canEdit: canEdit,
                   onEdit: () => setState(() => _editing = true),
                   onWithdraw: _confirmWithdraw,
                 );
               case 'rejected':
               case 'withdrawn':
+                if (!canApply) {
+                  return _PhaseBlockedView(phase: phase);
+                }
                 return _StatusView(
                   status: status,
                   actionLabel: 'Re-apply',
@@ -440,8 +459,14 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
                   reapplyBlockedUntil: _application?.reapplyBlockedUntil,
                 );
               default:
+                if (!canApply) {
+                  return _PhaseBlockedView(phase: phase);
+                }
                 return _buildForm(positions);
             }
+          }
+          if (!canApply) {
+            return _PhaseBlockedView(phase: phase);
           }
           return _buildForm(positions);
         },
@@ -472,6 +497,7 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
     return ListView(
       padding: AppSpacing.screenPadding,
       children: [
+        const _PhaseCountdownBanner(),
         if (_editing) ...[
           Text(
             'Editing your campaign',
@@ -1064,6 +1090,7 @@ class _OverviewView extends StatelessWidget {
   final String status;
   final String? positionLabel;
   final CandidacyApplication? application;
+  final bool canEdit;
   final VoidCallback onEdit;
   final VoidCallback onWithdraw;
 
@@ -1071,6 +1098,7 @@ class _OverviewView extends StatelessWidget {
     required this.status,
     required this.positionLabel,
     required this.application,
+    required this.canEdit,
     required this.onEdit,
     required this.onWithdraw,
   });
@@ -1128,12 +1156,18 @@ class _OverviewView extends StatelessWidget {
         AppSpacing.vLg,
         ..._summaryRows(context, positionLabel),
         AppSpacing.vLg,
-        AppButton.primary(
-          label: 'Edit Campaign',
-          onPressed: onEdit,
-          icon: Icons.edit_outlined,
-        ),
-        AppSpacing.vMd,
+        if (canEdit) ...[
+          AppButton.primary(
+            label: 'Edit Campaign',
+            onPressed: onEdit,
+            icon: Icons.edit_outlined,
+          ),
+          AppSpacing.vMd,
+        ] else
+          Text(
+            'Editing is closed for the current election phase.',
+            style: AppTextStyles.of(context).bodySmall,
+          ),
         TextButton(
           onPressed: onWithdraw,
           style: TextButton.styleFrom(
@@ -1184,6 +1218,142 @@ class _OverviewView extends StatelessWidget {
           Text(value, style: appText.titleMedium),
         ],
       ),
+    );
+  }
+}
+
+/// Shown in place of the apply form when the current election phase does not
+/// allow new candidacy applications. Explains the phase and offers a way back.
+class _PhaseBlockedView extends StatelessWidget {
+  const _PhaseBlockedView({required this.phase});
+
+  final ElectionPhase phase;
+
+  String get _message {
+    switch (phase) {
+      case ElectionPhase.registrationClosed:
+        return 'Registration has closed. You cannot submit a new candidacy application right now. Stay tuned — voting opens soon.';
+      case ElectionPhase.votingOpen:
+        return 'Registration is closed. New applications are no longer accepted, but you can still edit an existing application.';
+      case ElectionPhase.votingClosed:
+        return 'Voting has closed. Candidacy applications are no longer accepted.';
+      case ElectionPhase.unknown:
+      default:
+        return 'The election phase is not configured yet, or the status could not be determined. Please try again later.';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final appText = AppTextStyles.of(context);
+    final scheme = Theme.of(context).colorScheme;
+
+    return ListView(
+      padding: AppSpacing.screenPadding,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          decoration: BoxDecoration(
+            color: context.appSurface,
+            borderRadius: AppRadius.mdAll,
+            border: Border.all(color: scheme.primary.withValues(alpha: 0.3)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.schedule, color: scheme.primary, size: 28),
+              AppSpacing.vMd,
+              Text(
+                'Candidacy applications unavailable',
+                style: appText.titleMedium.copyWith(
+                  color: scheme.primary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              AppSpacing.vSm,
+              Text(_message, style: appText.bodySmall),
+            ],
+          ),
+        ),
+        AppSpacing.vLg,
+        AppButton.text(
+          label: 'Back to Dashboard',
+          onPressed: () => context.go('/dashboard'),
+        ),
+      ],
+    );
+  }
+}
+
+/// A compact, phase-aware countdown banner shown at the top of the apply form.
+///
+/// Shows a live [ElectionCountdown] to the current phase's end boundary when
+/// the target is known, or a short informational line when the phase is
+/// closed / unconfigured. Uses the same shared [ElectionCountdown] widget as
+/// the dashboard hero card so the two screens stay visually consistent.
+class _PhaseCountdownBanner extends ConsumerWidget {
+  const _PhaseCountdownBanner();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final status = ref.watch(electionStatusProvider).valueOrNull;
+    if (status == null) return const SizedBox.shrink();
+
+    final appText = AppTextStyles.of(context);
+    final scheme = Theme.of(context).colorScheme;
+
+    Widget? countdown;
+    String? note;
+
+    switch (status.phase) {
+      case ElectionPhase.registration:
+        final closesAt = status.registrationClosesAt;
+        if (closesAt != null) {
+          countdown = ElectionCountdown(
+            target: closesAt,
+            label: 'Registration closes in',
+          );
+        } else {
+          note = 'Registration is currently open.';
+        }
+      case ElectionPhase.registrationClosed:
+        final opensAt = status.votingOpensAt;
+        if (opensAt != null) {
+          countdown = ElectionCountdown(
+            target: opensAt,
+            label: 'Voting opens in',
+          );
+        } else {
+          note = 'Registration has closed. Voting opens soon.';
+        }
+      case ElectionPhase.votingOpen:
+        final closesAt = status.votingClosesAt;
+        if (closesAt != null) {
+          countdown = ElectionCountdown(
+            target: closesAt,
+            label: 'Voting closes in',
+          );
+        } else {
+          note = 'Voting is currently open.';
+        }
+      case ElectionPhase.votingClosed:
+        note = 'Voting has closed. Candidacy changes are no longer allowed.';
+      case ElectionPhase.unknown:
+        note = 'Election status is unavailable. Pull to refresh.';
+    }
+
+    if (countdown == null && note == null) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: AppSpacing.md),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: context.appSurface,
+        borderRadius: AppRadius.mdAll,
+        border: Border.all(color: scheme.primary.withValues(alpha: 0.2)),
+      ),
+      child: countdown ??
+          Text(note!, style: appText.bodySmall),
     );
   }
 }
