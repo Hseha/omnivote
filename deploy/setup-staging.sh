@@ -125,6 +125,16 @@ log "Creating throwaway staging-only panel accounts"
 runuser -u www-data -- env APP_ENV=local bash -c \
     "cd '$APP_DIR/backend-laravel' && php8.4 artisan db:seed --class='Database\\Seeders\\UserSeeder' --force"
 
+log "Seeding the demo ballot (all positions except reserves)"
+# Staging runs in production mode (APP_ENV=production), so the TestBallotSeeder
+# production guard would refuse without the explicit one-shot opt-in. The flag
+# is passed on the command line only — never written to the staging .env — so
+# a later accidental `db:seed` without it stays a safe no-op. Production is
+# untouched: this targets the staging checkout ($APP_DIR) and its own
+# omnivote_staging database exclusively.
+runuser -u www-data -- env APP_ENV=production ALLOW_DEMO_SEED=true bash -c \
+    "cd '$APP_DIR/backend-laravel' && php8.4 artisan db:seed --class='Database\\Seeders\\TestBallotSeeder' --force"
+
 runuser -u www-data -- bash -c \
     "cd '$APP_DIR/backend-laravel' && php8.4 artisan config:cache && php8.4 artisan route:cache && php8.4 artisan view:cache"
 

@@ -7,6 +7,7 @@ use App\Models\RegistrarImport;
 use App\Models\User;
 use Database\Seeders\DatabaseSeeder;
 use Database\Seeders\StudentSeeder;
+use Database\Seeders\TestBallotSeeder;
 use Database\Seeders\UserSeeder;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -106,6 +107,20 @@ class SeederProductionGuardTest extends TestCase
 
         $this->assertSame(0, User::count());
         $this->assertSame(0, RegistrarImport::count());
+    }
+
+    public function test_test_ballot_seeder_creates_nothing_in_production_without_opt_in(): void
+    {
+        $this->useEnvironment('production');
+        $this->assertSame('production', $this->app->environment());
+
+        $this->artisan('db:seed', ['--class' => TestBallotSeeder::class, '--force' => true])
+            ->expectsOutputToContain('skipped')
+            ->assertSuccessful();
+
+        // No user accounts may be created; candidate rows are unchecked because
+        // this test builds a minimal SQLite schema that lacks the candidates.
+        $this->assertSame(0, User::count());
     }
 
     public function test_database_seeder_still_refreshes_the_catalog_in_production(): void

@@ -24,6 +24,14 @@ use Illuminate\Support\Str;
  * must_change_password = true), so nothing is "hardcoded" in the client —
  * the app renders everything from the API/DB. Rerun-safe: existing
  * students/candidates are matched and skipped.
+ *
+ * NEVER runs in production: every test login uses a publicly-known password
+ * (student_id), so seeding a live election database would hand working
+ * ballots to anyone with repo access and pollute real turnout/results. The
+ * intended target is the isolated staging database (`omnivote_staging`, see
+ * deploy/setup-staging.sh). Like UserSeeder/StudentSeeder this returns early
+ * with a warning instead of throwing, so a mistaken production invocation is
+ * a no-op, not an outage.
  */
 class TestBallotSeeder extends Seeder
 {
@@ -149,6 +157,20 @@ class TestBallotSeeder extends Seeder
 
     public function run(): void
     {
+        // Production guard: fake voters with publicly-known passwords must
+        // never land in a live election database. Staging (`omnivote_staging`)
+        // is the intended target; an explicit opt-in exists for the rare
+        // non-production host that reports APP_ENV=production.
+        if (app()->environment('production') && ! $this->demoSeedAllowed()) {
+            $this->command?->warn(
+                'TestBallotSeeder skipped: it provisions fake voters with publicly-known passwords '
+                .'and must not run against a production database. Seed the staging database instead '
+                .'(deploy/setup-staging.sh), or set ALLOW_DEMO_SEED=true to override explicitly.'
+            );
+
+            return;
+        }
+
         // Start the id counter above anything already in the table. Restarting
         // at 101 collides with the student_ids minted by previous runs, and
         // users.student_id is unique — the insert aborts the whole seed.
@@ -490,5 +512,26 @@ class TestBallotSeeder extends Seeder
         $slug = trim((string) preg_replace('/[^a-z0-9]+/', '.', strtolower($fullName)), '.');
 
         return $slug === '' ? 'student.'.Str::uuid()->toString() : $slug;
+    }
+
+    /**
+     * Explicit opt-in for demo seeding on a host that reports
+     * APP_ENV=production (e.g. staging configured in production mode).
+     * Reads ALLOW_DEMO_SEED from env ($_ENV/$_SERVER/getenv); anything
+     * other than the literal string "true" (case-insensitive, trimmed)
+     * keeps the guard closed. Free of database access so it stays trivially
+     * testable.
+     */
+    public function demoSeedAllowed(): bool
+    {
+        foreach (['ALLOW_DEMO_SEED', 'allow_demo_seed'] as $key) {
+            foreach ([$_ENV[$key] ?? null, $_SERVER[$key] ?? null, getenv($key)] as $raw) {
+                if (is_string($raw) && strtolower(trim($raw)) === 'true') {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 }
