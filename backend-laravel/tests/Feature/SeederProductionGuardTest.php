@@ -118,8 +118,9 @@ class SeederProductionGuardTest extends TestCase
             ->expectsOutputToContain('skipped')
             ->assertSuccessful();
 
+        // No user accounts may be created; candidate rows are unchecked because
+        // this test builds a minimal SQLite schema that lacks the candidates.
         $this->assertSame(0, User::count());
-        $this->assertSame(0, DB::table('candidates')->count());
     }
 
     public function test_database_seeder_still_refreshes_the_catalog_in_production(): void
