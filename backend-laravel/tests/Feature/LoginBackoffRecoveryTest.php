@@ -314,6 +314,31 @@ class LoginBackoffRecoveryTest extends TestCase
         $this->postJson('/api/admin/users/bulk-unlock')->assertStatus(401);
     }
 
+    public function test_an_admin_can_unlock_an_individual_stuck_account(): void
+    {
+        $admin = $this->makeUser(['role' => 'admin']);
+        $stuck = $this->makeStuck(10, 30);
+
+        $this->actingAs($admin)
+            ->postJson("/api/admin/users/{$stuck->id}/unlock")
+            ->assertStatus(200)
+            ->assertJsonPath('data.locked', false);
+
+        $this->assertSame(0, (int) $stuck->fresh()->failed_login_attempts);
+        $this->assertNull($stuck->fresh()->locked_until);
+    }
+
+    public function test_unlocking_an_account_that_is_not_locked_returns_409(): void
+    {
+        $admin = $this->makeUser(['role' => 'admin']);
+        $user = $this->makeUser();
+
+        $this->actingAs($admin)
+            ->postJson("/api/admin/users/{$user->id}/unlock")
+            ->assertStatus(409)
+            ->assertJsonPath('message', 'Account is not locked.');
+    }
+
     /* ------------------------------------------------------------------ */
     /* Helpers                                                             */
     /* ------------------------------------------------------------------ */
