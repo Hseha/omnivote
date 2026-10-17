@@ -8,7 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Read-only review of every candidate from concluded election cycles
+ * Read-only review of every candidate from every reset election cycle
  * (winners and non-winners, all parties), preserved after clean-slate resets.
  */
 class ElectionRecordsController extends Controller
