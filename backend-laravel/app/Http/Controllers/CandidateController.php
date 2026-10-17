@@ -8,6 +8,7 @@ use App\Models\Department;
 use App\Models\Party;
 use App\Models\Phase;
 use App\Models\Position;
+use App\Support\CandidateRoleSync;
 use App\Support\DepartmentCatalog;
 use App\Support\Notifier;
 use Illuminate\Http\JsonResponse;
@@ -375,6 +376,10 @@ class CandidateController extends Controller
         }
 
         $candidate->update(['approval_status' => 'withdrawn']);
+
+        // Forfeiting the candidacy drops the derived `candidate` role: the
+        // account is a plain student again (App\Support\CandidateRoleSync).
+        CandidateRoleSync::syncId($candidate->user_id);
 
         Notifier::toAdmins(
             'notifyOnRegistration',

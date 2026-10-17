@@ -41,7 +41,7 @@ class RotateStudentCredentials extends Command
         $dryRun = (bool) $this->option('dry-run');
         $includeSettled = (bool) $this->option('all');
 
-        $query = User::query()->where('role', 'student');
+        $query = User::query()->voters();
 
         if (! $includeSettled) {
             // Default: only the accounts still holding a temporary credential.

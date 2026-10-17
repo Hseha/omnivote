@@ -25,7 +25,7 @@ class AdminDashboardController extends Controller
         // so the winner "validity" window closes without a manual step.
         TermArchive::runIfDue();
 
-        $totalVoters = User::where('role', 'student')->count();
+        $totalVoters = User::query()->voters()->count();
         $votesCast = User::where('has_voted', true)->count();
         $approvedCandidates = Candidate::where('approval_status', 'approved')->count();
 
