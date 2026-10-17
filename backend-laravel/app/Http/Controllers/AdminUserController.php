@@ -973,6 +973,9 @@ class AdminUserController extends Controller
             // server. `invite` reports the delivery, not the secret.
             'credentials' => [
                 'email' => $user->email,
+                // Non-secret provisional handle the President changes at setup;
+                // the password itself never leaves the server.
+                'username' => $user->username,
                 'role' => $user->role,
             ],
             'invite' => [

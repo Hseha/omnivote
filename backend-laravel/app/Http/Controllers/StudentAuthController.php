@@ -28,7 +28,9 @@ class StudentAuthController extends Controller
         $request->validate([
             // Registrar-imported students sign in with a plain name-derived
             // handle (e.g. john.michael.valles), so this is deliberately not
-            // validated as a strict email address.
+            // validated as a strict email address. A seated SSG President may
+            // also use the `username` they chose for the web console; the lookup
+            // below matches either identifier.
             'email' => ['required', 'string', 'max:255'],
             'password' => ['required'],
         ]);
@@ -40,7 +42,7 @@ class StudentAuthController extends Controller
             return $throttled;
         }
 
-        $user = User::where('email', $request->email)->first();
+        $user = User::query()->forLogin((string) $request->email)->first();
 
         // Account backoff. The response is deliberately indistinguishable from a
         // wrong password (401 "Invalid credentials" + Retry-After) so this path

@@ -6,6 +6,7 @@ use App\Models\Candidate;
 use App\Models\SsgPresidentInvite;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 /**
  * Seating and unseating of the single-seat `ssg_president` role.
@@ -73,8 +74,15 @@ class SsgPresidentGrant
             }
 
             $user->role = 'ssg_president';
+            // Seed a provisional console username so there is a "temporary
+            // username" to change at setup. The account still cannot reach the
+            // console until setup completes (EnsureSsgSetupComplete); only the
+            // real credential the President chooses is permanent.
+            if (blank($user->username)) {
+                $user->username = self::provisionalUsername($user);
+            }
             // The account works (same sign-in) but its SSG governance features
-            // stay locked until the President sets their own password via the
+            // stay locked until the President sets their own credential via the
             // one-time invite — see SsgPresidentInvite and SsgSetupController.
             $user->ssg_setup_pending = true;
             $user->save();
@@ -100,12 +108,41 @@ class SsgPresidentGrant
             $user->id,
             'info',
             'You are now the SSG President',
-            "Set your SSG President password to activate your governance dashboard. "
-                ."For your security no password was sent to you — open the setup link below and choose your own. "
+            "Set up your SSG President console by opening the link below and choosing your own username "
+                ."and password (temporary username: {$user->username}). "
+                ."For your security no password is ever sent to you. "
                 ."This link expires in ".SsgPresidentInvite::TTL_MINUTES." minutes and can be used once.",
-            '/ssg-setup?token='.$setupToken,
+            '/ssg/setup?token='.$setupToken,
         );
 
         return $user;
+    }
+
+    /**
+     * A unique, name-derived placeholder username for a freshly seated
+     * President. It only has to be a starting point for the setup screen: the
+     * President replaces it with their permanent handle, and the uniqueness
+     * check at setup time excludes their own row.
+     */
+    private static function provisionalUsername(User $user): string
+    {
+        $base = mb_strtolower(Str::slug((string) $user->name, '.'));
+        $base = $base !== '' ? $base : 'ssg.president';
+
+        $candidate = $base;
+        $suffix = 1;
+
+        while (User::query()
+            ->where('id', '!=', $user->id)
+            ->where(function ($query) use ($candidate): void {
+                $query->where('username', $candidate)
+                    ->orWhereRaw('LOWER(email) = ?', [$candidate]);
+            })
+            ->exists()) {
+            $candidate = $base.'.'.$suffix;
+            $suffix++;
+        }
+
+        return $candidate;
     }
 }

@@ -5,6 +5,7 @@ use App\Http\Middleware\CheckPhase;
 use App\Http\Middleware\EnsurePasswordChanged;
 use App\Http\Middleware\EnsurePermission;
 use App\Http\Middleware\EnsureRole;
+use App\Http\Middleware\EnsureSsgSetupComplete;
 use App\Http\Middleware\SecurityHeaders;
 use App\Support\TrustedHosts;
 use Illuminate\Foundation\Application;
@@ -29,6 +30,7 @@ return Application::configure(basePath: dirname(__DIR__))
                 'permission' => EnsurePermission::class,
                 'role' => EnsureRole::class,
                 'passwordChanged' => EnsurePasswordChanged::class,
+                'ssg.setup' => EnsureSsgSetupComplete::class,
             ])
             // Runs before StartSession/Sanctum is set up so the configured
             // Security → Session Timeout lands in runtime session.lifetime.

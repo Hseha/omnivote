@@ -84,7 +84,7 @@ class ResultsPublicationTest extends TestCase
         $this->assertNotNull(
             UserNotification::query()
                 ->where('user_id', $winner->id)
-                ->where('link', 'like', '/ssg-setup?token=%')
+                ->where('link', 'like', '/ssg/setup?token=%')
                 ->first()
         );
     }
@@ -209,6 +209,7 @@ class ResultsPublicationTest extends TestCase
             $table->id();
             $table->string('student_id')->nullable()->unique();
             $table->string('name');
+            $table->string('username')->nullable()->unique();
             $table->string('email')->unique();
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');

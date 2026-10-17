@@ -21,6 +21,7 @@ use App\Http\Controllers\RegistrarImportController;
 use App\Http\Controllers\RegistrationController;
 use App\Http\Controllers\ResultsController;
 use App\Http\Controllers\SettingsController;
+use App\Http\Controllers\SsgConsoleAuthController;
 use App\Http\Controllers\SsgOfficerController;
 use App\Http\Controllers\SsgSetupController;
 use App\Http\Controllers\StudentAuthController;
@@ -237,6 +238,52 @@ Route::prefix('admin')->group(function () {
         Route::post('/candidates/{candidate}/resolve-tie', [AdminCandidateController::class, 'resolveTie'])
             ->middleware('permission:election.update_config');
 
+        Route::get('/ssg/officers', [SsgOfficerController::class, 'index'])
+            ->middleware('permission:officers.view');
+        Route::get('/ssg/announcements', [AnnouncementController::class, 'index'])
+            ->middleware('permission:announcements.view');
+        Route::post('/ssg/announcements', [AnnouncementController::class, 'store'])
+            ->middleware('permission:announcements.create');
+        Route::put('/ssg/announcements/{announcement}', [AnnouncementController::class, 'update'])
+            ->middleware('permission:announcements.edit');
+        Route::delete('/ssg/announcements/{announcement}', [AnnouncementController::class, 'destroy'])
+            ->middleware('permission:announcements.edit');
+    });
+});
+
+// ------------------------------------------------------------------------
+// SSG President web console (stateful, ungated by nginx)
+//
+// A dedicated /api/ssg/console surface for the /ssg/ mount of the same React
+// bundle. nginx keeps the staff /admin/ and /api/admin/ surface behind its HTTP
+// Basic pre-auth but leaves this prefix open, because the elected student
+// President has no staff Basic credential. The gate that matters is server-side:
+// only `ssg_president` may hold a session here (SsgConsoleAuthController
+// narrows the panel role set), every data route keeps the permission middleware
+// — and therefore the 2FA enrollment gate — and `ssg.setup` blocks the console
+// until the one-time setup link has been redeemed.
+// ------------------------------------------------------------------------
+Route::prefix('ssg/console')->group(function () {
+    // Public: redeem the one-time setup link. The single-use token IS the
+    // credential (no session yet), so this is throttled like a password reset.
+    Route::post('/setup', [SsgSetupController::class, 'setupConsole'])
+        ->middleware('throttle:ssg-setup');
+
+    Route::post('/login', [SsgConsoleAuthController::class, 'login']);
+    Route::post('/login/2fa', [SsgConsoleAuthController::class, 'completeTwoFactorLogin']);
+
+    Route::get('/me', [SsgConsoleAuthController::class, 'me'])->middleware('auth');
+    Route::patch('/me/avatar', [SsgConsoleAuthController::class, 'updateAvatar'])->middleware('auth');
+    Route::post('/logout', [SsgConsoleAuthController::class, 'logout'])->middleware('auth');
+
+    // Self-service 2FA enrollment, identical to the staff console.
+    Route::get('/2fa/status', [AdminTwoFactorController::class, 'status'])->middleware('auth');
+    Route::post('/2fa/prepare', [AdminTwoFactorController::class, 'prepare'])
+        ->middleware(['auth', 'throttle:sensitive']);
+    Route::post('/2fa/confirm', [AdminTwoFactorController::class, 'confirm'])->middleware('auth');
+    Route::post('/2fa/disable', [AdminTwoFactorController::class, 'disable'])->middleware('auth');
+
+    Route::middleware(['auth', 'ssg.setup'])->group(function () {
         Route::get('/ssg/officers', [SsgOfficerController::class, 'index'])
             ->middleware('permission:officers.view');
         Route::get('/ssg/announcements', [AnnouncementController::class, 'index'])

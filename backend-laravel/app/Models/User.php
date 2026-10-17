@@ -16,7 +16,7 @@ use Laravel\Sanctum\HasApiTokens;
 use App\Notifications\PasswordResetLink;
 use App\Support\AppSettings;
 
-#[Fillable(['name', 'email', 'password', 'role', 'student_id', 'has_voted', 'year_level', 'block_number', 'department', 'course', 'is_active', 'needs_review', 'review_reason', 'two_factor_secret', 'two_factor_enabled', 'two_factor_recovery_codes', 'avatar_url', 'must_change_password', 'ssg_setup_pending', 'archived_at'])]
+#[Fillable(['name', 'username', 'email', 'password', 'role', 'student_id', 'has_voted', 'year_level', 'block_number', 'department', 'course', 'is_active', 'needs_review', 'review_reason', 'two_factor_secret', 'two_factor_enabled', 'two_factor_recovery_codes', 'avatar_url', 'must_change_password', 'ssg_setup_pending', 'archived_at'])]
 #[Hidden(['password', 'remember_token', 'failed_login_attempts', 'two_factor_secret', 'two_factor_enabled', 'two_factor_recovery_codes'])]
 class User extends Authenticatable
 {
@@ -224,6 +224,26 @@ class User extends Authenticatable
     public function scopeVoters(Builder $query): Builder
     {
         return $query->whereIn('role', self::VOTER_ROLES);
+    }
+
+    /**
+     * Resolve an account by the credential it signs in with: either the email
+     * address/handle around which student accounts are built, or the optional
+     * `username` a seated SSG President chooses for the governance console.
+     *
+     * Login paths accept both so a promoted President can use the same handle on
+     * mobile and web without duplicating accounts.
+     */
+    public function scopeForLogin(Builder $query, string $identifier): Builder
+    {
+        $identifier = trim($identifier);
+
+        // Usernames are stored lowercase; emails are matched verbatim (student
+        // handles are already lowercase slugs, staff addresses are as entered).
+        return $query->where(function (Builder $inner) use ($identifier): void {
+            $inner->where('email', $identifier)
+                ->orWhere('username', mb_strtolower($identifier));
+        });
     }
 
     public function candidate(): HasOne

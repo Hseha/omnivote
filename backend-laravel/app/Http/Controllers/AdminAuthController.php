@@ -29,10 +29,34 @@ class AdminAuthController extends Controller
         return 'admin-login';
     }
 
+    /**
+     * Roles allowed to hold a session against this controller.
+     *
+     * The staff console uses every panel role (config/permissions.php). The SSG
+     * President console subclasses this controller and narrows the set to just
+     * `ssg_president`, so its dedicated (ungated) login surface can never mint a
+     * staff session.
+     *
+     * @return list<string>
+     */
+    protected function panelRoles(): array
+    {
+        return config('permissions.panel_roles', []);
+    }
+
+    /** Human label for this console, used in audit messages. */
+    protected function consoleLabel(): string
+    {
+        return 'admin console';
+    }
+
     public function login(Request $request)
     {
         $request->validate([
-            'email' => ['required', 'email'],
+            // Deliberately not `email`: a seated SSG President signs in with the
+            // self-chosen console username, and student handles are name-derived
+            // slugs rather than real addresses. `User::forLogin` accepts either.
+            'email' => ['required', 'string', 'max:255'],
             'password' => ['required'],
         ]);
 
@@ -55,7 +79,7 @@ class AdminAuthController extends Controller
             return $throttled;
         }
 
-        $user = User::where('email', $request->email)->first();
+        $user = User::query()->forLogin((string) $request->email)->first();
 
         if ($user && $user->isLocked()) {
             // Indistinguishable from a wrong password on purpose: a distinct 423
@@ -97,7 +121,7 @@ class AdminAuthController extends Controller
         // Panel-capable roles live in config/permissions.php and gate every
         // permission-gated route, so read them from there: a role added to the
         // config must be able to sign in instead of hitting a stale copy.
-        if (! in_array($user->role, config('permissions.panel_roles', []), true)) {
+        if (! in_array($user->role, $this->panelRoles(), true)) {
             AuditLog::record(
                 $request,
                 'login_denied',
@@ -188,7 +212,7 @@ class AdminAuthController extends Controller
         // session is actually minted: a role can change while the 5-minute
         // handshake is open (AdminUserController::updateRole), and this is the
         // request that grants access — not the first one.
-        if (! in_array($user->role, config('permissions.panel_roles', []), true)) {
+        if (! in_array($user->role, $this->panelRoles(), true)) {
             $this->dropPendingTwoFactor($request);
 
             return response()->json(['message' => 'Forbidden'], 403);
@@ -248,7 +272,7 @@ class AdminAuthController extends Controller
         AuditLog::record(
             $request,
             'login_success',
-            "{$user->name} signed in to the admin console.",
+            "{$user->name} signed in to the {$this->consoleLabel()}.",
             'user',
             $user->id,
             $user->id,
@@ -358,7 +382,7 @@ class AdminAuthController extends Controller
         // rather than 403 because the session is no longer a panel session —
         // that is the signal this SPA's interceptor already acts on by clearing
         // its state and returning to the login screen.
-        if (! in_array($user->role, config('permissions.panel_roles', []), true)) {
+        if (! in_array($user->role, $this->panelRoles(), true)) {
             return response()->json([
                 'message' => 'Your panel access has been revoked. Please sign in again.',
             ], 401);
@@ -399,7 +423,7 @@ class AdminAuthController extends Controller
             return response()->json(['message' => 'Your account has been disabled.'], 403);
         }
 
-        if (! in_array($user->role, config('permissions.panel_roles', []), true)) {
+        if (! in_array($user->role, $this->panelRoles(), true)) {
             return response()->json(['message' => 'You are not authorized to access the admin panel.'], 403);
         }
 
@@ -556,7 +580,7 @@ class AdminAuthController extends Controller
             AuditLog::record(
                 $request,
                 'logout',
-                "{$user->name} signed out of the admin console.",
+                "{$user->name} signed out of the {$this->consoleLabel()}.",
                 'user',
                 $user->id,
                 $user->id,
