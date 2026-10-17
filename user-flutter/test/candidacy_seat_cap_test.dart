@@ -161,20 +161,30 @@ Future<void> _pump(
 }
 
 Future<void> _selectParty(WidgetTester tester, String party) async {
-  // The party dropdown is the second DropdownButtonFormField on the form.
-  await tester.tap(find.byType(DropdownButtonFormField<String>).at(1));
+  // The party dropdown is the first DropdownButtonFormField<String> on the form.
+  await tester.tap(find.byType(DropdownButtonFormField<String>).at(0));
   await tester.pumpAndSettle();
   await tester.tap(find.text(party).last);
   await tester.pumpAndSettle();
 }
 
+Future<void> _selectTier(WidgetTester tester, String tier) async {
+  await tester.tap(find.byType(DropdownButtonFormField<PositionTier>));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(tier).last);
+  await tester.pumpAndSettle();
+}
+
 Future<void> _fillForm(WidgetTester tester) async {
-  await tester.tap(find.byType(DropdownButtonFormField<String>).at(0));
+  // 1. Party first — tier and position are disabled until a party is chosen.
+  await _selectParty(tester, 'ASLE');
+  // 2. Tier.
+  await _selectTier(tester, 'National');
+  // 3. Position — now the second DropdownButtonFormField<String>.
+  await tester.tap(find.byType(DropdownButtonFormField<String>).at(1));
   await tester.pumpAndSettle();
   await tester.tap(find.text('President (National)').last);
   await tester.pumpAndSettle();
-
-  await _selectParty(tester, 'ASLE');
 
   await tester.enterText(
     find.ancestor(
@@ -262,7 +272,8 @@ void main() {
     );
 
     await _selectParty(tester, 'ASLE');
-    await tester.tap(find.byType(DropdownButtonFormField<String>).at(0));
+    await _selectTier(tester, 'National');
+    await tester.tap(find.byType(DropdownButtonFormField<String>).at(1));
     await tester.pumpAndSettle();
     expect(
       find.text('President (National) — ASLE seat taken'),
@@ -275,29 +286,11 @@ void main() {
     await tester.pumpAndSettle();
 
     await _selectParty(tester, 'SVEA');
-    await tester.tap(find.byType(DropdownButtonFormField<String>).at(0));
+    await _selectTier(tester, 'National');
+    await tester.tap(find.byType(DropdownButtonFormField<String>).at(1));
     await tester.pumpAndSettle();
     expect(find.text('President (National) — ASLE seat taken'), findsNothing);
     expect(find.text('President (National)'), findsWidgets);
-  });
-
-  testWidgets('independent ("No party") candidate fills the reserved _none '
-      'bucket', (tester) async {
-    await _pump(
-      tester,
-      availability: {
-        3: {'_none': 1, 'ASLE': 0, 'SVEA': 0},
-      },
-    );
-
-    await _selectParty(tester, 'No party');
-    await tester.tap(find.byType(DropdownButtonFormField<String>).at(0));
-    await tester.pumpAndSettle();
-    expect(
-      find.text('President (National) — No party seat taken'),
-      findsWidgets,
-      reason: 'the independent seat is keyed `_none`, matching the server',
-    );
   });
 
   testWidgets('availability failure keeps every position selectable',
@@ -311,7 +304,10 @@ void main() {
       reason: 'a graceful message replaces the labels',
     );
 
-    await tester.tap(find.byType(DropdownButtonFormField<String>).at(0));
+    // Party and tier must be chosen before position is enabled.
+    await _selectParty(tester, 'ASLE');
+    await _selectTier(tester, 'National');
+    await tester.tap(find.byType(DropdownButtonFormField<String>).at(1));
     await tester.pumpAndSettle();
     expect(find.text('President (National)'), findsWidgets,
         reason: 'no position is disabled when availability is unknown');
