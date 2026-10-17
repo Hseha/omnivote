@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Lock, Mail, Eye, EyeOff, ShieldCheck, KeyRound, LoaderCircle } from 'lucide-react';
 import { useAuth } from './lib/AuthContext';
+import { IS_SSG_CONSOLE } from './lib/api';
 import { useBranding } from './lib/branding';
 import OmniVoteMark from './components/OmniVoteMark';
 import './AdminLogin.css';
@@ -84,7 +85,7 @@ export default function AdminLogin({ onForgot }) {
             </div>
             <div className="brand-text">
               <h1 className="brand-title">{branding.siteName || 'OmniVote'}</h1>
-              <span className="brand-subtitle">ELECTION CONSOLE</span>
+              <span className="brand-subtitle">{IS_SSG_CONSOLE ? 'SSG PRESIDENT CONSOLE' : 'ELECTION CONSOLE'}</span>
             </div>
           </div>
           {requiresTwoFactor ? (
@@ -139,15 +140,17 @@ export default function AdminLogin({ onForgot }) {
         ) : (
           <form className="login-form" onSubmit={handleSubmit}>
             <div className="form-group">
-              <label htmlFor="login-email" className="form-label">Email Address</label>
+              <label htmlFor="login-email" className="form-label">
+                {IS_SSG_CONSOLE ? 'Username or Email' : 'Email Address'}
+              </label>
               <div className="input-wrapper">
-                <Mail className="input-icon" size={18} />
+                {IS_SSG_CONSOLE ? <KeyRound className="input-icon" size={18} /> : <Mail className="input-icon" size={18} />}
                 <input
                   id="login-email"
-                  type="email"
+                  type={IS_SSG_CONSOLE ? 'text' : 'email'}
                   className="form-input"
-                  placeholder="you@school.edu"
-                  autoComplete="email"
+                  placeholder={IS_SSG_CONSOLE ? 'Your console username' : 'you@school.edu'}
+                  autoComplete={IS_SSG_CONSOLE ? 'username' : 'email'}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   disabled={loading}
@@ -159,16 +162,20 @@ export default function AdminLogin({ onForgot }) {
             <div className="form-group">
               <div className="label-row">
                 <label htmlFor="login-password" className="form-label">Password</label>
-                <a
-                  href="#forgot"
-                  className="forgot-link"
-                  onClick={(ev) => {
-                    ev.preventDefault();
-                    if (typeof onForgot === 'function') onForgot();
-                  }}
-                >
-                  Forgot?
-                </a>
+                {/* The SSG console has no self-service reset (no deliverable
+                    mailbox for a student handle); recovery is via the setup link. */}
+                {!IS_SSG_CONSOLE && (
+                  <a
+                    href="#forgot"
+                    className="forgot-link"
+                    onClick={(ev) => {
+                      ev.preventDefault();
+                      if (typeof onForgot === 'function') onForgot();
+                    }}
+                  >
+                    Forgot?
+                  </a>
+                )}
               </div>
               <div className="input-wrapper">
                 <Lock className="input-icon" size={18} />

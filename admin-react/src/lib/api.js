@@ -21,6 +21,17 @@ let csrfGeneration = 0;
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
 /**
+ * True when this bundle is served from the SSG President console mount (/ssg/)
+ * rather than the staff admin mount (/admin/). One build backs both: nginx
+ * leaves /ssg/ and /api/ssg/console/ out of the staff HTTP Basic gate so the
+ * elected student President can sign in without a staff credential. Detecting
+ * the mount here lets the rest of the app keep using its /admin/... call sites
+ * — the request interceptor below rewrites them to the console prefix.
+ */
+export const IS_SSG_CONSOLE =
+  typeof window !== 'undefined' && /^\/ssg(\/|$)/.test(window.location.pathname);
+
+/**
  * Hard ceiling on every API call. Without it a slow or silently dropped
  * connection can leave a request — notably the boot-time `/admin/me` session
  * check — hanging indefinitely, which the shell renders as a blank page.
@@ -113,6 +124,14 @@ api.interceptors.request.use(
   async (config) => {
     const method = (config.method || 'get').toLowerCase();
     const isCsrfEndpoint = config.url?.includes('/sanctum/csrf-cookie');
+
+    // On the SSG console mount, redirect the staff-shaped call sites to the
+    // dedicated console API surface (e.g. /admin/ssg/officers ->
+    // /ssg/console/ssg/officers). Absolute paths that do not start with
+    // /admin (e.g. the setup endpoint) pass through untouched.
+    if (IS_SSG_CONSOLE && config.url?.startsWith('/admin')) {
+      config.url = config.url.replace(/^\/admin/, '/ssg/console');
+    }
 
     if (isCsrfEndpoint) {
       return config;

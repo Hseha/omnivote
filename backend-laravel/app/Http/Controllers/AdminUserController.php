@@ -676,7 +676,7 @@ class AdminUserController extends Controller
         // Tell the account owner their eligibility changed. Best-effort: a
         // disabled student cannot sign in to read it, but the row is waiting
         // if the account is later re-enabled.
-        if (in_array($user->role, User::VOTER_ROLES, true)) {
+        if (in_array($user->role, User::STUDENT_ROLES, true)) {
             Notifier::notifyUser(
                 $user->id,
                 $validated['is_active'] ? 'success' : 'warning',
@@ -973,6 +973,9 @@ class AdminUserController extends Controller
             // server. `invite` reports the delivery, not the secret.
             'credentials' => [
                 'email' => $user->email,
+                // Non-secret provisional handle the President changes at setup;
+                // the password itself never leaves the server.
+                'username' => $user->username,
                 'role' => $user->role,
             ],
             'invite' => [

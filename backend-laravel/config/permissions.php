@@ -1,7 +1,17 @@
 <?php
 
 return [
+    // Roles allowed into the React governance console (and therefore subject
+    // to its two-factor enrollment gate). The seated SSG President has their own
+    // console, so they belong here.
     'panel_roles' => ['admin', 'teacher', 'ssg_president'],
+
+    // Roles that receive *staff* broadcasts — admin/commission events, account
+    // audit notices, health alerts (Notifier::toAdmins). This is deliberately
+    // narrower than panel_roles: an elected student President is not staff and
+    // must not be paged with internal election-administration notifications.
+    'staff_roles' => ['admin', 'teacher'],
+
     'roles' => [
         'admin' => [
             'dashboard.view',

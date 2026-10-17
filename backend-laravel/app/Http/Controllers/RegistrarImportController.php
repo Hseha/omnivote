@@ -423,7 +423,7 @@ class RegistrarImportController extends Controller
                     // on every re-import would lock out people mid-term. A reset
                     // stays a deliberate action (User Management reset, or
                     // `php artisan security:rotate-student-credentials`).
-                    if (in_array($user->role ?? 'student', User::VOTER_ROLES, true)) {
+                    if (in_array($user->role ?? 'student', User::STUDENT_ROLES, true)) {
                         $existingCredentials[] = [
                             'student_id' => $row['student_id'],
                             'full_name' => $user->name,

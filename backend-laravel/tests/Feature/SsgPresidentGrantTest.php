@@ -97,6 +97,8 @@ class SsgPresidentGrantTest extends TestCase
 
         $winner = $this->makeUser(['role' => 'student']);
         $this->certify($winner);
+        // The winner is already signed in on the mobile app when the seat opens.
+        $winner->createToken('mobile');
         $originalHash = $winner->password;
 
         $response = $this->actingAs($admin)
@@ -113,12 +115,13 @@ class SsgPresidentGrantTest extends TestCase
         $this->assertArrayNotHasKey('temporary_password', $response->json('credentials'));
         $this->assertNull($response->json('credentials.temporary_password'));
 
-        // Single seat: the previous holder is demoted and both parties lose
-        // their mobile tokens so the promotion forces a fresh sign-in.
+        // Single seat: the previous holder is demoted and loses their mobile
+        // tokens (they lost the seat). The incoming President keeps their own
+        // live session so the promotion does NOT force a re-login.
         $this->assertSame('student', $previousHolder->fresh()->role);
         $this->assertFalse((bool) $previousHolder->fresh()->ssg_setup_pending);
         $this->assertSame(0, $previousHolder->tokens()->count());
-        $this->assertSame(0, $winner->tokens()->count());
+        $this->assertSame(1, $winner->fresh()->tokens()->count());
         $this->assertSame([['id' => $previousHolder->id, 'name' => $previousHolder->name, 'email' => $previousHolder->email]], $response->json('replaced'));
 
         // The winner keeps their existing password — it is not rotated, and the
@@ -148,7 +151,7 @@ class SsgPresidentGrantTest extends TestCase
 
         $notification = UserNotification::query()
             ->where('user_id', $winner->id)
-            ->where('link', 'like', '/ssg-setup?token=%')
+            ->where('link', 'like', '/ssg/setup?token=%')
             ->first();
 
         $this->assertNotNull($notification, 'The setup link should be delivered to the President in-app.');
@@ -292,6 +295,24 @@ class SsgPresidentGrantTest extends TestCase
         $this->assertNotEmpty($president->fresh()->tokens()->pluck('id'));
     }
 
+    public function test_ssg_president_keeps_the_full_student_feature_set(): void
+    {
+        $president = $this->makeUser(['role' => 'ssg_president']);
+
+        // The in-app feed is in the shared student group; a 401/403 here is the
+        // "lost the app" bug this change fixes. `user_notifications` is in the
+        // minimal schema, so we can assert a clean 200 rather than merely
+        // "not blocked".
+        $this->actingAs($president, 'sanctum')
+            ->getJson('/api/notifications')
+            ->assertOk();
+
+        // ...but they must NOT be counted as a voter in turnout math, and must
+        // stay out of the voter-role set that CandidateRoleSync re-derives.
+        $this->assertNotContains('ssg_president', User::VOTER_ROLES);
+        $this->assertContains('ssg_president', User::STUDENT_ROLES);
+    }
+
     public function test_disabled_ssg_president_cannot_mint_a_mobile_token(): void
     {
         $president = $this->makeUser(['role' => 'ssg_president', 'is_active' => false]);
@@ -304,6 +325,122 @@ class SsgPresidentGrantTest extends TestCase
             ->assertJsonPath('message', 'Your account has been disabled.');
 
         $this->assertSame(0, $president->tokens()->count());
+    }
+
+    public function test_console_setup_sets_the_chosen_username_and_password_and_clears_the_gate(): void
+    {
+        $this->publishResults();
+
+        $admin = $this->makeUser(['role' => 'admin']);
+        $winner = $this->makeUser(['role' => 'student']);
+        $this->certify($winner);
+
+        $this->actingAs($admin)->postJson("/api/admin/users/{$winner->id}/grant-ssg")->assertOk();
+        $winner = $winner->fresh();
+
+        // The grant provisioned a provisional username and a live mobile token.
+        $this->assertNotNull($winner->username);
+        $winner->createToken('mobile');
+        $token = $this->latestSetupToken($winner);
+        $this->assertNotNull($token);
+
+        // The console setup endpoint is unauthenticated: the token is the
+        // credential. The President picks a permanent username + password.
+        $this->postJson('/api/ssg/console/setup', [
+            'token' => $token,
+            'username' => 'president.one',
+            'password' => 'Brandnew-Pass1',
+            'password_confirmation' => 'Brandnew-Pass1',
+        ])->assertOk()->assertJsonPath('username', 'president.one');
+
+        $winner->refresh();
+        $this->assertSame('president.one', $winner->username);
+        $this->assertTrue(Hash::check('Brandnew-Pass1', $winner->password));
+        $this->assertFalse((bool) $winner->ssg_setup_pending);
+
+        // Every pre-handoff credential is revoked, and the link is burned.
+        $this->assertSame(0, $winner->tokens()->count());
+        $this->assertNull(SsgPresidentInvite::findValid($token));
+
+        // The chosen username now works as a login identifier on mobile...
+        $this->postJson('/api/auth/login', [
+            'email' => 'president.one',
+            'password' => 'Brandnew-Pass1',
+        ])->assertOk()->assertJsonPath('student.role', 'ssg_president');
+
+        // ...and the console session is no longer setup-blocked.
+        $this->actingAs($winner->fresh())->getJson('/api/ssg/console/me')->assertOk();
+    }
+
+    public function test_console_setup_rejects_a_replayed_link(): void
+    {
+        $this->publishResults();
+
+        $admin = $this->makeUser(['role' => 'admin']);
+        $winner = $this->makeUser(['role' => 'student']);
+        $this->certify($winner);
+
+        $this->actingAs($admin)->postJson("/api/admin/users/{$winner->id}/grant-ssg")->assertOk();
+        $token = $this->latestSetupToken($winner);
+
+        $payload = [
+            'token' => $token,
+            'username' => 'president.one',
+            'password' => 'Brandnew-Pass1',
+            'password_confirmation' => 'Brandnew-Pass1',
+        ];
+
+        $this->postJson('/api/ssg/console/setup', $payload)->assertOk();
+        $this->postJson('/api/ssg/console/setup', $payload)->assertStatus(422);
+
+        $this->assertTrue(Hash::check('Brandnew-Pass1', $winner->fresh()->password));
+    }
+
+    public function test_console_setup_rejects_a_username_already_in_use(): void
+    {
+        $this->publishResults();
+
+        $admin = $this->makeUser(['role' => 'admin']);
+        $winner = $this->makeUser(['role' => 'student']);
+        $this->certify($winner);
+        // Someone else already owns the handle the President tries to choose.
+        $this->makeUser(['username' => 'president.one']);
+
+        $this->actingAs($admin)->postJson("/api/admin/users/{$winner->id}/grant-ssg")->assertOk();
+        $token = $this->latestSetupToken($winner);
+
+        $this->postJson('/api/ssg/console/setup', [
+            'token' => $token,
+            'username' => 'president.one',
+            'password' => 'Brandnew-Pass1',
+            'password_confirmation' => 'Brandnew-Pass1',
+        ])->assertStatus(422)->assertJsonValidationErrors('username');
+
+        $this->assertTrue((bool) $winner->fresh()->ssg_setup_pending);
+    }
+
+    public function test_console_login_rejects_a_staff_account(): void
+    {
+        $admin = $this->makeUser(['role' => 'admin']);
+
+        // The console's ungated login must never mint a staff session: only
+        // `ssg_president` is a panel role there (SsgConsoleAuthController).
+        $this->withHeaders(['Origin' => 'http://localhost'])
+            ->postJson('/api/ssg/console/login', [
+                'email' => $admin->email,
+                'password' => 'secret-password',
+            ])
+            ->assertStatus(403);
+    }
+
+    public function test_console_data_is_blocked_until_setup_completes(): void
+    {
+        $president = $this->makeUser(['role' => 'ssg_president', 'ssg_setup_pending' => true]);
+
+        $this->actingAs($president)
+            ->getJson('/api/ssg/console/ssg/announcements')
+            ->assertStatus(403)
+            ->assertJsonPath('setup_required', true);
     }
 
     // --- helpers ----------------------------------------------------------
@@ -324,7 +461,7 @@ class SsgPresidentGrantTest extends TestCase
     {
         $link = UserNotification::query()
             ->where('user_id', $user->id)
-            ->where('link', 'like', '/ssg-setup?token=%')
+            ->where('link', 'like', '/ssg/setup?token=%')
             ->latest('id')
             ->value('link');
 
@@ -357,6 +494,7 @@ class SsgPresidentGrantTest extends TestCase
             $table->id();
             $table->string('student_id')->nullable()->unique();
             $table->string('name');
+            $table->string('username')->nullable()->unique();
             $table->string('email')->unique();
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');

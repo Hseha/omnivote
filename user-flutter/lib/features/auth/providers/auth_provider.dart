@@ -95,12 +95,13 @@ class AuthState {
 
 /// Where an authenticated account lands on first navigation.
 ///
-/// The SSG President gets a dedicated governance shell (officer roster +
-/// announcements); everyone else lands on the shared student dashboard.
-/// Shared by the login listener in `app.dart` and the cold-start bootstrap
-/// in the splash screen so both paths always agree.
+/// Every account — including the seated SSG President — lands on the shared
+/// student dashboard. The President keeps the full student experience in the
+/// app; their governance console (officer roster + announcements) now lives in
+/// the web console, reached from the one-time setup link, not by a separate
+/// mobile shell. Shared by the login listener in `app.dart` and the cold-start
+/// bootstrap in the splash screen so both paths always agree.
 String destinationForRole(AuthState state) {
-  if (state.role == 'ssg_president') return '/ssg-president';
   return '/dashboard';
 }
 

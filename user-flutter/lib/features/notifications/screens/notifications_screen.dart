@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/constants/api_constants.dart';
 import '../../../core/constants/app_text_styles.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_tokens.dart';
+import '../../../core/utils/launch_url.dart';
 import '../../../core/utils/relative_time.dart';
+import '../../../data/services/api_config.dart';
 import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/error_state.dart';
@@ -86,7 +89,7 @@ class NotificationsScreen extends ConsumerWidget {
             ref
                 .read(notificationsProvider.notifier)
                 .markRead(notification.id);
-            _openLink(context, notification.link);
+            _openLink(context, ref, notification.link);
           },
         );
       },
@@ -117,13 +120,38 @@ class NotificationsScreen extends ConsumerWidget {
     '/results',
   };
 
-  void _openLink(BuildContext context, String? link) {
+  void _openLink(BuildContext context, WidgetRef ref, String? link) {
     if (link == null || link.isEmpty) return;
+
+    // The SSG President console (and its one-time setup link, `/ssg/setup?...`)
+    // lives on the web — there is no in-app screen for it — so any absolute URL
+    // or a console path is handed to the system browser instead of being pushed
+    // as a go_router location (which would fail and strand the user).
+    final uri = Uri.tryParse(link);
+    if ((uri != null && uri.hasScheme) || link.startsWith('/ssg/')) {
+      launchExternalUrl(_absoluteWebUrl(ref, link));
+      return;
+    }
+
     if (_shellRoutes.contains(link)) {
       context.go(link);
     } else {
       context.push(link);
     }
+  }
+
+  /// Resolve a web path against the origin the app already talks to. The API
+  /// base ends in `/api`, so the scheme+host is stripped back off it.
+  String _absoluteWebUrl(WidgetRef ref, String link) {
+    final uri = Uri.tryParse(link);
+    if (uri != null && uri.hasScheme) return link;
+
+    final base = Uri.tryParse(
+      ref.read(apiBaseUrlProvider) ?? ApiConstants.baseUrl,
+    );
+    if (base == null || !base.hasScheme) return link;
+
+    return '${base.scheme}://${base.authority}$link';
   }
 }
 

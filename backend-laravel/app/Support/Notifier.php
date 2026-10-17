@@ -19,8 +19,13 @@ use Illuminate\Support\Facades\Mail;
 class Notifier
 {
     /**
-     * Notify the admins about an event, honoring the related notification
-     * setting for the email channel. The in-app row is always written.
+     * Notify the election staff about an event, honoring the related
+     * notification setting for the email channel. The in-app row is always
+     * written.
+     *
+     * Recipients are `config('permissions.staff_roles')` (admin + teacher), NOT
+     * every panel role — the seated SSG President has a governance console but
+     * is not staff and must not be paged with election-administration events.
      *
      * @param  string  $setting  admin.settings.notifications.* key gating email
      * @param  string  $type  info / success / warning / danger
@@ -39,7 +44,7 @@ class Notifier
     ): void {
         $recipients = User::query()
             ->where(function ($q) {
-                $q->whereIn('role', config('permissions.panel_roles', []));
+                $q->whereIn('role', config('permissions.staff_roles', ['admin', 'teacher']));
             })
             ->where('is_active', true)
             ->get();

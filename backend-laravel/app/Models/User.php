@@ -16,7 +16,7 @@ use Laravel\Sanctum\HasApiTokens;
 use App\Notifications\PasswordResetLink;
 use App\Support\AppSettings;
 
-#[Fillable(['name', 'email', 'password', 'role', 'student_id', 'has_voted', 'year_level', 'block_number', 'department', 'course', 'is_active', 'needs_review', 'review_reason', 'two_factor_secret', 'two_factor_enabled', 'two_factor_recovery_codes', 'avatar_url', 'must_change_password', 'ssg_setup_pending', 'archived_at'])]
+#[Fillable(['name', 'username', 'email', 'password', 'role', 'student_id', 'has_voted', 'year_level', 'block_number', 'department', 'course', 'is_active', 'needs_review', 'review_reason', 'two_factor_secret', 'two_factor_enabled', 'two_factor_recovery_codes', 'avatar_url', 'must_change_password', 'ssg_setup_pending', 'archived_at'])]
 #[Hidden(['password', 'remember_token', 'failed_login_attempts', 'two_factor_secret', 'two_factor_enabled', 'two_factor_recovery_codes'])]
 class User extends Authenticatable
 {
@@ -36,6 +36,21 @@ class User extends Authenticatable
      * @var list<string>
      */
     public const VOTER_ROLES = ['student', 'candidate'];
+
+    /**
+     * Roles that keep the full Flutter student experience.
+     *
+     * This is NOT the same set as VOTER_ROLES. The seated `ssg_president` is
+     * still a student in the app (dashboard, results, announcements,
+     * notifications, profile) but is deliberately excluded from VOTER_ROLES so
+     * they are never counted in turnout totals (scopeVoters) or silently
+     * re-derived by CandidateRoleSync::sync, which would demote the seat back to
+     * `student`/`candidate`. Gate mobile student routes on these roles; keep
+     * voter/turnout math on VOTER_ROLES.
+     *
+     * @var list<string>
+     */
+    public const STUDENT_ROLES = ['student', 'candidate', 'ssg_president'];
 
     /**
      * Ceiling on the backoff window.
@@ -209,6 +224,26 @@ class User extends Authenticatable
     public function scopeVoters(Builder $query): Builder
     {
         return $query->whereIn('role', self::VOTER_ROLES);
+    }
+
+    /**
+     * Resolve an account by the credential it signs in with: either the email
+     * address/handle around which student accounts are built, or the optional
+     * `username` a seated SSG President chooses for the governance console.
+     *
+     * Login paths accept both so a promoted President can use the same handle on
+     * mobile and web without duplicating accounts.
+     */
+    public function scopeForLogin(Builder $query, string $identifier): Builder
+    {
+        $identifier = trim($identifier);
+
+        // Usernames are stored lowercase; emails are matched verbatim (student
+        // handles are already lowercase slugs, staff addresses are as entered).
+        return $query->where(function (Builder $inner) use ($identifier): void {
+            $inner->where('email', $identifier)
+                ->orWhere('username', mb_strtolower($identifier));
+        });
     }
 
     public function candidate(): HasOne
