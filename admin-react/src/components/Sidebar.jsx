@@ -5,6 +5,7 @@ import {
   Sliders,
   BarChart2,
   Megaphone,
+  Archive,
   Settings as SettingsIcon,
   ShieldCheck,
   Building2,
@@ -152,6 +153,16 @@ export default function Sidebar({
             onClick={go('results')}
           >
             <BarChart2 size={18} /> Results
+          </button>
+        )}
+        {/* 7. Election Records */}
+        {can('records') && (
+          <button
+            type="button"
+            className={`nav-item ${activeView === 'records' ? 'active' : ''}`}
+            onClick={go('records')}
+          >
+            <Archive size={18} /> Election Records
           </button>
         )}
         {/* 7. Announcements */}
