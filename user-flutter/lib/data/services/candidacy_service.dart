@@ -78,6 +78,30 @@ class CandidacyService {
     return await _dio.get(ApiConstants.candidacyAvailability);
   }
 
+  /// Submits a problem / bug report from the apply screen so admins can
+  /// investigate the root cause. POST /api/reports.
+  Future<Response> submitProblemReport({
+    required String screen,
+    required String action,
+    required String errorCode,
+    required String errorMessage,
+    required Map<String, dynamic> context,
+    required String description,
+  }) async {
+    return await _dio.post(
+      ApiConstants.problemReports,
+      data: {
+        'screen': screen,
+        'action': action,
+        'error_code': errorCode,
+        'error_message': errorMessage,
+        'context': context,
+        'description': description,
+        'occurred_at': DateTime.now().toIso8601String(),
+      },
+    );
+  }
+
   FormData _buildForm({
     required String positionId,
     String? slogan,

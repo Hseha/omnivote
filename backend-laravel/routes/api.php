@@ -17,6 +17,7 @@ use App\Http\Controllers\ElectionController;
 use App\Http\Controllers\ElectionRecordsController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PositionController;
+use App\Http\Controllers\ProblemReportController;
 use App\Http\Controllers\RegistrarImportController;
 use App\Http\Controllers\RegistrationController;
 use App\Http\Controllers\ResultsController;
@@ -211,8 +212,6 @@ Route::prefix('admin')->group(function () {
             ->middleware('permission:manage_accounts');
         Route::delete('/users/courses', [AdminUserController::class, 'deleteCourse'])
             ->middleware('permission:manage_accounts');
-        Route::patch('/users/{user}/role', [AdminUserController::class, 'updateRole'])
-            ->middleware('permission:manage_accounts');
         Route::patch('/users/{user}/status', [AdminUserController::class, 'updateStatus'])
             ->middleware('permission:manage_accounts');
         Route::patch('/users/{user}/email', [AdminUserController::class, 'updateEmail'])
@@ -228,6 +227,10 @@ Route::prefix('admin')->group(function () {
         Route::post('/users/{user}/archive', [AdminUserController::class, 'archive'])
             ->middleware('permission:manage_accounts');
         Route::post('/users/{user}/unarchive', [AdminUserController::class, 'unarchive'])
+            ->middleware('permission:manage_accounts');
+        // Permanent delete is declared after /users/courses so the literal
+        // segment keeps winning over the {user} placeholder.
+        Route::delete('/users/{user}', [AdminUserController::class, 'destroy'])
             ->middleware('permission:manage_accounts');
 
         // Certified-winner ratification (drives the SSG President grant flow).
@@ -388,6 +391,12 @@ Route::middleware(['auth:sanctum', 'role:student,candidate,ssg_president', 'pass
     // Per-party seat availability for the apply screen (see
     // docs/HANDOFF_CANDIDACY_SEAT_CAP.md §1.2).
     Route::get('/candidacy/availability', [CandidacyAvailabilityController::class, 'index']);
+
+    // Student-submitted problem / bug report (e.g. from the candidacy apply
+    // screen). Written to every active staff member's in-app notification
+    // feed so the root cause can be investigated. Reuses user_notifications.
+    Route::post('/reports', [ProblemReportController::class, 'store']);
+
     Route::post('/candidate/apply', [CandidateController::class, 'store'])
         ->middleware('checkPhase:registration');
 

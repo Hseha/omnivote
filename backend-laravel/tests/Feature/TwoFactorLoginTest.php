@@ -308,9 +308,9 @@ class TwoFactorLoginTest extends TestCase
 
     /**
      * Step 1 accepts the password, but the session is only minted on step 2.
-     * A role change in between (AdminUserController::updateRole) must therefore
-     * be re-checked there, or the handshake would hand a panel session to an
-     * account that is no longer panel staff.
+     * A role change in between must therefore be re-checked there, or the
+     * handshake would hand a panel session to an account that is no longer
+     * panel staff.
      */
     public function test_two_factor_step_refuses_an_account_whose_role_left_the_panel(): void
     {
@@ -512,7 +512,7 @@ class TwoFactorLoginTest extends TestCase
 
         $this->stateful()->getJson('/api/admin/me')->assertOk();
 
-        // AdminUserController::updateRole moves them off the panel mid-session.
+        // The account is moved off the panel mid-session.
         $user->role = 'student';
         $user->save();
 

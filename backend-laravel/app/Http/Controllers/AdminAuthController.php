@@ -210,8 +210,8 @@ class AdminAuthController extends Controller
 
         // Step 1's eligibility checks have to still hold at the moment the
         // session is actually minted: a role can change while the 5-minute
-        // handshake is open (AdminUserController::updateRole), and this is the
-        // request that grants access — not the first one.
+        // handshake is open, and this is the request that grants access — not
+        // the first one.
         if (! in_array($user->role, $this->panelRoles(), true)) {
             $this->dropPendingTwoFactor($request);
 
@@ -373,12 +373,12 @@ class AdminAuthController extends Controller
             return response()->json(['message' => 'Your account has been disabled.'], 403);
         }
 
-        // The same rule has to cover the panel role: an administrator can move an
-        // account off a panel role (AdminUserController::updateRole) while its
-        // session cookie is still valid, and sign-in plus every panel route
-        // already refuse that state. Without this check /me kept answering 200
-        // "signed in" and the SPA rendered its shell for a role it has no views
-        // for, so every panel call 403'd with no way out. The answer is 401
+        // The same rule has to cover the panel role: an account can be moved off
+        // a panel role while its session cookie is still valid, and sign-in plus
+        // every panel route already refuse that state. Without this check /me
+        // kept answering 200 "signed in" and the SPA rendered its shell for a
+        // role it has no views for, so every panel call 403'd with no way out.
+        // The answer is 401
         // rather than 403 because the session is no longer a panel session —
         // that is the signal this SPA's interceptor already acts on by clearing
         // its state and returning to the login screen.

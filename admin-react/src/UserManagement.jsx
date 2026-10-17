@@ -4,7 +4,7 @@ import Header from './components/Header';
 import {
   Search, Eye, EyeOff, KeyRound, X, CheckCircle, AlertTriangle,
   Lock, Unlock, UserPlus, Download, ShieldCheck, Award, Mail,
-  Archive, ArchiveRestore, GraduationCap, Copy,
+  Archive, ArchiveRestore, GraduationCap, Copy, Trash2,
 } from 'lucide-react';
 import api from './lib/api';
 import { useAuth } from './lib/AuthContext';
@@ -17,11 +17,10 @@ const ROLES = {
   student: 'Student',
   ssg_president: 'SSG President',
 };
-// ssg_president and candidate are intentionally NOT generic dropdown options:
-// ssg_president is a single-seat role granted only to a certified election
-// winner via the dedicated "Grant SSG President Access" action, and candidate
-// is derived automatically from an approved candidacy.
-const ROLE_OPTIONS = ['admin', 'teacher', 'student'];
+// Roles are no longer editable from the listing: ssg_president is a single-seat
+// role granted only to a certified election winner, and candidate is derived
+// automatically from an approved candidacy. The role filter below stays for
+// read-only lookup.
 const ROLE_CLS = {
   admin: 'role-admin', teacher: 'role-teacher', candidate: 'role-candidate',
   student: 'role-student', ssg_president: 'role-ssg',
@@ -79,6 +78,17 @@ export default function UserManagement({ onLogout, activeView = 'user_management
   const [archiveBusy, setArchiveBusy] = useState(false);
   const [archiveError, setArchiveError] = useState('');
 
+  // "Delete user" (permanent, strict type-name-to-confirm) modal state. Only
+  // reachable for accounts that have already been archived.
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteNameInput, setDeleteNameInput] = useState('');
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+
+  // Result of a password reset, shown once in a dismissal modal rather than a
+  // toast that vanishes before it can be noted down.
+  const [pwResetResult, setPwResetResult] = useState(null);
+
   const handleLogout = () => { if (typeof onLogout === 'function') return onLogout(); logout(); };
 
   const buildParams = useCallback((page) => {
@@ -127,13 +137,6 @@ export default function UserManagement({ onLogout, activeView = 'user_management
 
   const flash = (msg) => { setOkMsg(msg); setTimeout(() => setOkMsg(''), 4000); };
 
-  const doRoleChange = async (uid, role) => {
-    setActionLoading(uid);
-    try { await api.patch(`/admin/users/${uid}/role`, { role }); setUsers(p => p.map(u => u.id === uid ? { ...u, role } : u)); flash('Role updated.'); }
-    catch (e) { setSrvErr(e.response?.data?.message || 'Failed to update role.'); }
-    finally { setActionLoading(null); }
-  };
-
   const doStatusToggle = async (uid, active) => {
     setActionLoading(uid);
     try { await api.patch(`/admin/users/${uid}/status`, { is_active: active }); setUsers(p => p.map(u => u.id === uid ? { ...u, is_active: active } : u)); flash(active ? 'User enabled.' : 'User disabled.'); }
@@ -166,7 +169,9 @@ export default function UserManagement({ onLogout, activeView = 'user_management
     setActionLoading(uid);
     try {
       const res = await api.post(`/admin/users/${uid}/password-reset`);
-      flash(`Temporary password: ${res.data.temporary_password}`);
+      // Hold the one-time password in a modal the admin dismisses explicitly,
+      // so it cannot scroll away in a toast before it is written down.
+      setPwResetResult({ user: res.data.user, temporary_password: res.data.temporary_password });
     } catch (e) { setSrvErr(e.response?.data?.message || 'Failed to reset password.'); }
     finally { setActionLoading(null); }
   };
@@ -285,6 +290,30 @@ export default function UserManagement({ onLogout, activeView = 'user_management
       loadUsers(meta.current_page);
     } catch (e) { setSrvErr(e.response?.data?.message || 'Could not restore the account.'); }
     finally { setActionLoading(null); }
+  };
+
+  const openDelete = (u) => {
+    setDeleteError('');
+    setDeleteNameInput('');
+    setDeleteTarget(u);
+  };
+
+  const doDelete = async () => {
+    if (!deleteTarget) return;
+    // Strict confirmation: the permanent-delete button stays disabled until the
+    // typed name matches the account's full name (case-insensitive).
+    const typed = deleteNameInput.trim().toLowerCase();
+    const expected = (deleteTarget.name || '').trim().toLowerCase();
+    if (typed !== expected) return;
+    setDeleteBusy(true); setDeleteError('');
+    try {
+      await api.delete(`/admin/users/${deleteTarget.id}`);
+      setDeleteTarget(null);
+      flash(`${deleteTarget.name} permanently deleted.`);
+      loadUsers(meta.current_page);
+    } catch (e) {
+      setDeleteError(e.response?.data?.message || 'Could not delete the account.');
+    } finally { setDeleteBusy(false); }
   };
 
   // Item 4: load certified winners for the SSG grant dialog.
@@ -455,20 +484,18 @@ export default function UserManagement({ onLogout, activeView = 'user_management
                       <td className="um-muted-cell" data-label="Added">{u.date_added || '—'}</td>
                       <td className="text-right um-actions-td" data-label="Actions"><div className="um-action-btns">
                         {archived ? (
-                          <button className="um-toggle-btn btn-enable" onClick={() => doUnarchive(u)} disabled={actionLoading === u.id} title="Restore this archived account — returns it to the counts and sign-in"><ArchiveRestore size={14} /> Restore</button>
+                          <>
+                            <button className="um-toggle-btn btn-enable" onClick={() => doUnarchive(u)} disabled={actionLoading === u.id} title="Restore this archived account — returns it to the counts and sign-in"><ArchiveRestore size={14} /> Restore</button>
+                            <button className="um-toggle-btn btn-delete" onClick={() => openDelete(u)} disabled={actionLoading === u.id} title="Permanently delete this account — removes it and its records for good. This cannot be undone."><Trash2 size={14} /> Delete</button>
+                          </>
                         ) : (
                           <>
-                            <select className="um-role-select" value={u.role} onChange={e => doRoleChange(u.id, e.target.value)} disabled={actionLoading === u.id || u.id === 1} title="Change this user's role (candidate is derived from an approved candidacy and SSG President is granted separately to certified winners only)">
-                              {!ROLE_OPTIONS.includes(u.role) && (
-                                <option value={u.role} disabled>{ROLES[u.role] || u.role}</option>
-                              )}
-                              {ROLE_OPTIONS.map(v => <option key={v} value={v}>{ROLES[v]}</option>)}
-                            </select>
                             {u.id !== 1 && locked && <button className="um-toggle-btn btn-unlock" onClick={() => doUnlock(u.id)} disabled={actionLoading === u.id} title="Unlock account — clears the failed-login lockout"><Unlock size={14} /> Unlock</button>}
-                            {u.id !== 1 && !locked && <button className={`um-toggle-btn ${active ? 'btn-disable' : 'btn-enable'}`} onClick={() => doStatusToggle(u.id, !active)} disabled={actionLoading === u.id} title={active ? 'Disable user — blocks sign-in without deleting the account' : 'Enable user — restores sign-in'}>{active ? <EyeOff size={14} /> : <Eye size={14} />}</button>}
+                            {u.id !== 1 && !locked && <button className={`um-toggle-btn ${active ? 'btn-enable' : 'btn-disable'}`} onClick={() => doStatusToggle(u.id, !active)} disabled={actionLoading === u.id} title={active ? 'Disable user — blocks sign-in without deleting the account' : 'Enable user — restores sign-in'}>{active ? <EyeOff size={14} /> : <Eye size={14} />}</button>}
                             {u.id !== 1 && <button className="um-action-link-btn" onClick={() => startEmailEdit(u)} disabled={actionLoading === u.id} title="Edit email address — fixes typos so students can still sign in"><Mail size={14} /></button>}
                             {u.id !== 1 && <button className="um-action-link-btn" onClick={() => doPwReset(u.id)} disabled={actionLoading === u.id} title="Reset password — generates a one-time temporary password and signs this user out everywhere"><KeyRound size={14} /></button>}
                             {u.id !== 1 && <button className="um-toggle-btn btn-archive" onClick={() => openArchive(u)} disabled={actionLoading === u.id} title="Archive user — removes them from Total Users and all stats, hides them from the list, and blocks sign-in. Kept for records; can be restored."><Archive size={14} /> Archive</button>}
+                            {u.id !== 1 && <button className="um-toggle-btn btn-delete" disabled title="Archive this account first to delete it permanently"><Trash2 size={14} /> Delete</button>}
                           </>
                         )}
                       </div></td>
@@ -776,6 +803,70 @@ export default function UserManagement({ onLogout, activeView = 'user_management
               >
                 {archiveBusy ? 'Archiving…' : 'Archive account'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Strict permanent-delete confirmation: only archived accounts reach this */}
+      {deleteTarget && (
+        <div className="um-modal-overlay" onClick={() => { if (!deleteBusy) setDeleteTarget(null); }}>
+          <div className="um-modal" onClick={e => e.stopPropagation()} role="dialog" aria-label="Delete user">
+            <h3 className="um-modal-title um-modal-title-danger"><Trash2 size={18} /> Permanently delete this account?</h3>
+            {deleteError && <div className="um-banner um-banner-error"><AlertTriangle size={14} /> {deleteError}</div>}
+            <p className="um-modal-text">
+              Deleting <strong>{deleteTarget.name || deleteTarget.email}</strong> removes the account
+              and its personal data for good. This action <strong>cannot be undone</strong> and the account
+              cannot be restored. Anonymous vote tallies are not affected.
+            </p>
+            <p className="um-modal-text um-modal-danger-note">
+              This user is already archived. To confirm permanent deletion, type the account&rsquo;s full name exactly:
+            </p>
+            <div className="um-archive-confirm-name">{deleteTarget.name || '—'}</div>
+            <label className="um-field">
+              <span>Type the user&rsquo;s full name to confirm</span>
+              <input
+                type="text"
+                value={deleteNameInput}
+                onChange={e => setDeleteNameInput(e.target.value)}
+                placeholder={deleteTarget.name || ''}
+                autoFocus
+                disabled={deleteBusy}
+              />
+            </label>
+            <div className="um-modal-actions">
+              <button type="button" className="um-btn-ghost" onClick={() => setDeleteTarget(null)} disabled={deleteBusy}>Cancel</button>
+              <button
+                type="button"
+                className="um-btn-danger"
+                onClick={doDelete}
+                disabled={
+                  deleteBusy ||
+                  !(deleteTarget.name || '').trim() ||
+                  deleteNameInput.trim().toLowerCase() !== (deleteTarget.name || '').trim().toLowerCase()
+                }
+              >
+                {deleteBusy ? 'Deleting…' : 'Delete permanently'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* One-time password result: stays until the admin explicitly dismisses it */}
+      {pwResetResult && (
+        <div className="um-modal-overlay" onClick={() => setPwResetResult(null)}>
+          <div className="um-modal" onClick={e => e.stopPropagation()} role="dialog" aria-label="Temporary password">
+            <h3 className="um-modal-title"><CheckCircle size={18} /> Temporary password generated</h3>
+            <p className="um-modal-text">
+              A one-time password was created for <strong>{pwResetResult.user?.name || pwResetResult.user?.email || 'this user'}</strong>.
+              They have been signed out everywhere and must change it on next sign-in.
+            </p>
+            <div className="um-secret-row"><span>Temporary password</span><code>{pwResetResult.temporary_password}</code></div>
+            <p className="um-modal-text">
+              Write this down now — it will not be shown again after you close this dialog.
+            </p>
+            <div className="um-modal-actions">
+              <button type="button" className="um-btn-primary" onClick={() => setPwResetResult(null)}>Done</button>
             </div>
           </div>
         </div>
