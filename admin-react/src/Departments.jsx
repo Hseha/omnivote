@@ -66,7 +66,7 @@ export default function Departments({ onLogout, activeView = 'departments', onNa
     if (!selected) { setMembers([]); setMembersTotal(0); return; }
     setMembersLoading(true); setSrvErr('');
     try {
-      const res = await api.get('/admin/users', { params: { department: selected, role: 'student', per_page: 100, page: 1 } });
+      const res = await api.get('/admin/users', { params: { department: selected, role: 'student,candidate', per_page: 100, page: 1 } });
       setMembers(res.data?.data ?? []);
       setMembersTotal(res.data?.meta?.total ?? 0);
       setMembersLastPage(res.data?.meta?.last_page ?? 1);
@@ -84,7 +84,7 @@ export default function Departments({ onLogout, activeView = 'departments', onNa
     if (membersPage >= membersLastPage || loadingMore) return;
     setLoadingMore(true); setSrvErr('');
     try {
-      const res = await api.get('/admin/users', { params: { department: selected, role: 'student', per_page: 100, page: membersPage + 1 } });
+      const res = await api.get('/admin/users', { params: { department: selected, role: 'student,candidate', per_page: 100, page: membersPage + 1 } });
       setMembers(prev => [...prev, ...(res.data?.data ?? [])]);
       setMembersTotal(res.data?.meta?.total ?? membersTotal);
       setMembersLastPage(res.data?.meta?.last_page ?? membersLastPage);

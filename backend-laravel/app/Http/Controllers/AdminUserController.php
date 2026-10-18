@@ -50,7 +50,15 @@ class AdminUserController extends Controller
     {
         $request->validate([
             'search' => ['nullable', 'string'],
-            'role' => ['nullable', 'string', Rule::in(self::ROLE_FILTERS)],
+            'role' => ['nullable', 'string', function ($attribute, $value, $fail) {
+                foreach (explode(',', (string) $value) as $part) {
+                    if (! in_array(trim($part), self::ROLE_FILTERS, true)) {
+                        $fail('The selected role is invalid.');
+
+                        return;
+                    }
+                }
+            }],
             'is_active' => ['nullable', 'string', 'in:true,false,1,0'],
             'status' => ['nullable', 'string', 'in:active,inactive,locked'],
             'department' => ['nullable', 'string', 'max:100'],
@@ -477,7 +485,7 @@ class AdminUserController extends Controller
                     ->orWhere('email', 'like', "%{$search}%")
                     ->orWhere('student_id', 'like', "%{$search}%"));
             })
-            ->when($request->query('role'), fn ($q, $role) => $q->where('role', $role))
+            ->when($request->query('role'), fn ($q, $role) => $q->whereIn('role', array_map('trim', explode(',', $role))))
             // Legacy boolean filter kept for compatibility with older clients.
             ->when($isActive !== null, fn ($q) => $q->where('is_active', $isActive))
             // Richer tri-state status: active / inactive / locked (lockout).
