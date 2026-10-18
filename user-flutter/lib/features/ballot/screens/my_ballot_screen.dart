@@ -311,6 +311,7 @@ class _DraftBallot extends ConsumerWidget {
           itemBuilder: (context, index) {
             final entry = entries[index];
             final value = entry.value;
+            final position = byPositionKey[entry.key];
             return _BallotRow(
               // Keyed by position so a recycled row can never paint the previous
               // position's candidates while the draft changes.
@@ -321,6 +322,15 @@ class _DraftBallot extends ConsumerWidget {
                   : [value.toString()],
               byPositionKey: byPositionKey,
               byRef: byRef,
+              // B1: per-row Edit — jumps back to Vote Now at this race with
+              // the server draft preloaded. Hidden when the position cannot
+              // be resolved (defensive: never offer a dead edit target).
+              onEdit: position == null
+                  ? null
+                  : () => context.go(
+                        '/vote-now',
+                        extra: position.id,
+                      ),
             );
           },
         ),
@@ -459,12 +469,17 @@ class _BallotRow extends StatelessWidget {
   final Map<String, Position> byPositionKey;
   final Map<String, Candidate> byRef;
 
+  /// B1 edit hook. Null hides the button (unresolvable position, submitted
+  /// ballot, read-only contexts).
+  final VoidCallback? onEdit;
+
   const _BallotRow({
     super.key,
     required this.positionSlug,
     required this.refs,
     required this.byPositionKey,
     required this.byRef,
+    this.onEdit,
   });
 
   @override
@@ -480,9 +495,25 @@ class _BallotRow extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              label,
-              style: appText.titleSmall,
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    label,
+                    style: appText.titleSmall,
+                  ),
+                ),
+                if (onEdit != null)
+                  TextButton.icon(
+                    onPressed: onEdit,
+                    icon: const Icon(Icons.edit_outlined, size: 16),
+                    label: const Text('Edit'),
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                  ),
+              ],
             ),
             AppSpacing.vSm,
             ...refs.map(

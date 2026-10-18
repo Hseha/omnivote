@@ -17,7 +17,7 @@ class HelpFaqScreen extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       backgroundColor: context.appBackground,
-      appBar: const TopBar(title: 'Help & FAQ'),
+      appBar: const TopBar(title: 'Help & FAQ', showAccountMenu: false),
       body: ListView(
         padding: AppSpacing.screenPadding,
         children: [

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -53,6 +55,13 @@ class VoteNowScreen extends ConsumerStatefulWidget {
 class _VoteNowScreenState extends ConsumerState<VoteNowScreen> {
   final Map<String, List<String>> _selections = {};
   bool _saving = false;
+
+  /// Debounced server autosave (A1): every toggle schedules a silent
+  /// `PUT /ballot/me` ~800ms out so an accidental close / OS kill loses at
+  /// most the last keystroke. Silent on purpose — no SnackBar per tick.
+  Timer? _autosaveTimer;
+  bool _autosaving = false;
+  bool _draftLoaded = false;
 
   /// Party view filter, per tier. Null shows every party. Each tab keeps its
   /// own so a party chosen for the national council never silently hides a
@@ -192,6 +201,9 @@ class _VoteNowScreenState extends ConsumerState<VoteNowScreen> {
         icon: Icons.ballot_outlined,
       );
     }
+
+    // A1: restore the server draft once positions are known (first build only).
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadDraft());
 
     // A deep link from a candidate card asks for one specific seat. Open the
     // tab that owns it, otherwise a student tapping "Vote" on a provincial
@@ -597,6 +609,29 @@ class _VoteNowScreenState extends ConsumerState<VoteNowScreen> {
                   ),
                 ),
               ),
+              // A1: subtle "Saving…" hint while the debounced autosave is in
+              // flight — no SnackBar noise per tick.
+              if (_autosaving)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: 12,
+                      height: 12,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: scheme.primary,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Saving…',
+                      style: appText.labelSmall.copyWith(
+                        color: scheme.primary,
+                      ),
+                    ),
+                  ],
+                ),
             ],
           ),
           AppSpacing.vXs,
@@ -888,6 +923,63 @@ class _VoteNowScreenState extends ConsumerState<VoteNowScreen> {
       }
       _selections[position.slug] = existing;
     });
+    // A1: silent debounced server autosave so an accidental close loses
+    // nothing already ticked — no SnackBar per tick on purpose.
+    _scheduleAutosave();
+  }
+
+  /// A1 restore path: loads the server draft once per screen instance so a
+  /// relaunch resumes where the student left off. Draft keys may be slugs
+  /// (what this sheet writes) — unknown keys are skipped, never crash.
+  Future<void> _loadDraft() async {
+    if (_draftLoaded) return;
+    _draftLoaded = true;
+    Map<String, dynamic>? ballot;
+    try {
+      ballot = await ref.read(voteRepositoryProvider).getMyBallot();
+    } catch (_) {
+      return; // Offline / expired session: keep the empty sheet.
+    }
+    if (!mounted) return;
+    final raw = ballot?['selections'];
+    if (raw is! Map || raw.isEmpty) return;
+    setState(() {
+      raw.forEach((key, value) {
+        final refs = value is List
+            ? value.map((e) => e.toString()).where((e) => e.isNotEmpty).toList()
+            : [value.toString()];
+        if (refs.isNotEmpty) _selections[key.toString()] = refs;
+      });
+    });
+  }
+
+  void _scheduleAutosave() {
+    _autosaveTimer?.cancel();
+    _autosaveTimer = Timer(const Duration(milliseconds: 800), _autosaveDraft);
+  }
+
+  Future<void> _autosaveDraft() async {
+    if (!mounted || _selections.isEmpty) return;
+    setState(() => _autosaving = true);
+    try {
+      final selections = <String, dynamic>{};
+      _selections.forEach(
+        (posId, refs) =>
+            selections[posId] = refs.length == 1 ? refs.first : refs,
+      );
+      await ref.read(voteRepositoryProvider).saveDraft(selections);
+    } catch (_) {
+      // Silent: the Review action surfaces real errors; the next toggle
+      // retries the autosave.
+    } finally {
+      if (mounted) setState(() => _autosaving = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    _autosaveTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _saveDraftAndContinue() async {

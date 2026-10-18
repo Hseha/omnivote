@@ -203,7 +203,9 @@ class _PhaseContent extends StatelessWidget {
             AppButton.primary(
               label: 'Confirm eligibility',
               icon: Icons.verified_user_outlined,
-              onPressed: () => context.go('/profile'),
+              // C1: push (not go) so the TopBar back arrow appears and the
+              // student returns to the Dashboard with one tap.
+              onPressed: () => context.push('/profile'),
             ),
           ],
         );
