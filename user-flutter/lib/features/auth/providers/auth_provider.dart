@@ -288,6 +288,17 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
+  /// Flips the session's `hasVoted` flag the moment the server accepts a
+  /// ballot (or reports one already recorded). Local-only, no network:
+  /// Vote Now watches this flag to switch to the already-voted notice, and
+  /// it used to stay false until the next login, which made the vote tab
+  /// look like a clean slate right after submitting.
+  void markVoted() {
+    final student = state.student;
+    if (student == null || student.hasVoted) return;
+    state = state.copyWith(student: student.copyWith(hasVoted: true));
+  }
+
   /// Signs out: revokes the server token, drops the local token, and forgets
   /// any remembered credentials, then resets to the signed-out state.
   Future<void> logout() async {

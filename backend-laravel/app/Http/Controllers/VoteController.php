@@ -133,7 +133,7 @@ class VoteController extends Controller
             $user->id,
             'emailOnVote',
             'Your vote was recorded',
-            "Thank you, {$user->name}. Your vote for this election has been securely recorded. Your ballot receipt is stored with your account.",
+            "Thank you, {$user->name}. Your vote for this election has been securely recorded. Your receipt token was shown in the app at submission — keep it to verify your vote was counted.",
             '/ballot',
             false,
         );

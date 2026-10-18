@@ -56,11 +56,27 @@ final allApprovedCandidatesProvider = FutureProvider<List<Candidate>>((
 /// My Ballot: read-only summary of the in-progress (or submitted) ballot with
 /// a Submit action once voting is open. After submission the digital receipt
 /// token is shown so it can be verified on the Results tab.
-class MyBallotScreen extends ConsumerWidget {
+class MyBallotScreen extends ConsumerStatefulWidget {
   const MyBallotScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MyBallotScreen> createState() => _MyBallotScreenState();
+}
+
+class _MyBallotScreenState extends ConsumerState<MyBallotScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // The provider caches the first response for the whole session; every
+    // entry into this tab re-fetches so a draft edited elsewhere (or on
+    // Vote Now with a save that raced this screen) is never shown stale.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) ref.invalidate(myBallotProvider);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final ballotAsync = ref.watch(myBallotProvider);
     // Only the receipt and the saved fallback are read here; the submit button
     // lives deeper, so watching the whole VotingState here rebuilt the whole
@@ -435,6 +451,11 @@ class _DraftBallot extends ConsumerWidget {
     if (!context.mounted) return;
 
     final voting = ref.read(votingProvider);
+    // The server has now recorded a ballot for this account either way —
+    // flip the local flag so the Vote Now tab shows the already-voted
+    // notice immediately instead of looking like a clean slate until the
+    // next login (which is the only other place hasVoted was refreshed).
+    if (success) ref.read(authProvider.notifier).markVoted();
     if (success && voting.receipt != null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
