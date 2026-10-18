@@ -22,24 +22,35 @@ class TopBar extends ConsumerWidget implements PreferredSizeWidget {
   /// is unaffected.
   final List<Widget> actions;
 
-  const TopBar({super.key, required this.title, this.actions = const []});
+  /// D3 loop guard: pushed screens (Profile/FAQ/Settings/…) hide the avatar
+  /// menu so the user cannot push Profile > FAQ > Settings > Profile forever.
+  /// The shell tabs keep the default `true`.
+  final bool showAccountMenu;
+
+  const TopBar({
+    super.key,
+    required this.title,
+    this.actions = const [],
+    this.showAccountMenu = true,
+  });
 
   @override
   Size get preferredSize => const Size.fromHeight(kToolbarHeight);
 
-  /// Routes each account-menu action. Profile/FAQ/Settings are pushed above
-  /// the shell; Candidacy switches to its (pushed) screen; Log Out signs out
-  /// and the global auth listener in app.dart redirects to /login.
+  /// Routes each account-menu action. Profile/FAQ/Settings/Candidacy replace
+  /// (D3: sibling-swap via `go` so Profile > FAQ > Settings can never pile
+  /// five deep); Log Out signs out and the global auth listener in app.dart
+  /// redirects to /login.
   void _handleAccountAction(BuildContext context, WidgetRef ref, String value) {
     switch (value) {
       case 'profile':
-        context.push('/profile');
+        context.go('/profile');
       case 'candidacy':
-        context.push('/candidacy');
+        context.go('/candidacy');
       case 'faq':
-        context.push('/faq');
+        context.go('/faq');
       case 'settings':
-        context.push('/settings');
+        context.go('/settings');
       // Dev-only: switching the API base URL needs a debug build.
       case 'api-settings':
         if (kDebugMode) context.push('/api-settings');
@@ -76,6 +87,9 @@ class TopBar extends ConsumerWidget implements PreferredSizeWidget {
           ...actions,
           // The bell carries the live unread badge and opens the center.
           const NotificationBell(),
+          // D3: hidden on pushed account screens (showAccountMenu false) so
+          // the menu cannot loop-push siblings on top of each other.
+          if (showAccountMenu)
           // The avatar opens the account menu: My Profile, Apply for
           // Candidacy, Help & FAQ, Settings and (debug builds only) the dev
           // API Settings screen, then Log Out.

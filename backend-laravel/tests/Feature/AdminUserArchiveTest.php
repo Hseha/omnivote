@@ -197,6 +197,30 @@ class AdminUserArchiveTest extends TestCase
 
     // --- helpers ----------------------------------------------------------
 
+    public function test_role_filter_accepts_comma_separated_roles(): void
+    {
+        $admin = $this->makeUser(['role' => 'admin']);
+        $student = $this->makeUser(['role' => 'student']);
+        $candidate = $this->makeUser(['role' => 'candidate']);
+        $teacher = $this->makeUser(['role' => 'teacher']);
+
+        $response = $this->actingAs($admin)->getJson('/api/admin/users?role=student,candidate');
+
+        $response->assertOk();
+        $emails = collect($response->json('data'))->pluck('email');
+        $this->assertTrue($emails->contains($student->email));
+        $this->assertTrue($emails->contains($candidate->email));
+        $this->assertFalse($emails->contains($teacher->email));
+
+        $single = $this->actingAs($admin)->getJson('/api/admin/users?role=teacher');
+        $single->assertOk();
+        $this->assertSame([$teacher->email], collect($single->json('data'))->pluck('email')->all());
+
+        $this->actingAs($admin)
+            ->getJson('/api/admin/users?role=student,unicorn')
+            ->assertStatus(422);
+    }
+
     private function makeUser(array $attributes = []): User
     {
         return User::create(array_merge([

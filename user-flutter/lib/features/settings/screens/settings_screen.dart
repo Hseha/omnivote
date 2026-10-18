@@ -41,7 +41,7 @@ class SettingsScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: context.appBackground,
-      appBar: const TopBar(title: 'Settings'),
+      appBar: const TopBar(title: 'Settings', showAccountMenu: false),
       body: ListView(
         padding: AppSpacing.screenPadding,
         children: [
@@ -146,7 +146,7 @@ class SettingsScreen extends ConsumerWidget {
               title: const Text('Notifications'),
               subtitle: const Text('Election updates, results and account messages'),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () => context.push('/notifications'),
+              onTap: () => context.go('/notifications'), // D3 sibling-swap,
             ),
           ),
           AppSpacing.vSm,
@@ -160,7 +160,7 @@ class SettingsScreen extends ConsumerWidget {
               title: const Text('Help & FAQ'),
               subtitle: const Text('Eligibility, voting and account help'),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () => context.push('/faq'),
+              onTap: () => context.go('/faq'), // D3 sibling-swap,
             ),
           ),
           AppSpacing.vSm,
@@ -174,7 +174,7 @@ class SettingsScreen extends ConsumerWidget {
               title: const Text('My Profile'),
               subtitle: const Text('Your details, status and log out'),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () => context.push('/profile'),
+              onTap: () => context.go('/profile'), // D3 sibling-swap,
             ),
           ),
           AppSpacing.vSm,
@@ -192,7 +192,7 @@ class SettingsScreen extends ConsumerWidget {
                     : 'Installed v$installedVersion — what\'s new',
               ),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () => context.push('/app-update'),
+              onTap: () => context.go('/app-update'), // D3 sibling-swap,
             ),
           ),
           AppSpacing.vSm,

@@ -28,7 +28,7 @@ class MyProfileScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: context.appBackground,
-      appBar: const TopBar(title: 'My Profile'),
+      appBar: const TopBar(title: 'My Profile', showAccountMenu: false),
       body: ListView(
         padding: AppSpacing.screenPadding,
         children: [

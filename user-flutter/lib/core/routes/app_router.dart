@@ -73,7 +73,16 @@ class AppRouter {
             routes: [
               GoRoute(
                 path: '/vote-now',
-                builder: (context, state) => const VoteNowScreen(),
+                builder: (context, state) {
+                  // B1 edit deep-link: My Ballot passes a position id/slug via
+                  // `extra` so Vote Now opens on that race's tier with the
+                  // server draft preloaded. Any other shape is ignored.
+                  final extra = state.extra;
+                  final initialId = extra is String && extra.isNotEmpty
+                      ? extra
+                      : null;
+                  return VoteNowScreen(initialPositionId: initialId);
+                },
               ),
             ],
           ),
