@@ -153,7 +153,7 @@ server {
     charset utf-8;
     client_max_body_size 25M;
 
-    # Keep redirects relative. nginx's default `absolute_redirect on` bakes
+    # Keep redirects relative. nginx's default absolute_redirect setting bakes
     # the listen port into the Location header, and this vhost listens on the
     # loopback-only 127.0.0.1:${LOCAL_HTTP_PORT} — an absolute
     # http://host:8081/admin/ redirect is unreachable from any browser once
@@ -171,6 +171,10 @@ server {
     location = /admin { return 301 /admin/; }
 
     location /admin/ {
+        # The directory exists, so try_files stops at $uri and never reaches
+        # the /admin/index.html fallback — the index directive is what serves
+        # the SPA (mirrors the production funnel vhost).
+        index index.html;
         try_files \$uri \$uri/ /admin/index.html;
         add_header X-Frame-Options "SAMEORIGIN" always;
         add_header X-Content-Type-Options "nosniff" always;
