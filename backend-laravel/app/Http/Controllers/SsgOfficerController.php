@@ -31,11 +31,25 @@ class SsgOfficerController extends Controller
             ->get()
             ->groupBy('position_key');
 
+        // Every tier seats here (national + provincial): the console roster
+        // and the shared mobile projection both show the full winner list.
         $positions = Position::query()
-            ->where('tier', 'national')
             ->orderBy('sort_order')
             ->get()
             ->keyBy('slug');
+
+        // National seats are listed first, then provincial, each group in its
+        // configured order. The tiers reuse overlapping sort_order values, so
+        // the partition happens here in PHP — a SQL FIELD()/CASE ordering
+        // would not be portable across the mysql production and sqlite test
+        // databases.
+        $positionOrder = $positions
+            ->sortBy(fn (Position $p) => sprintf('%d-%04d', $p->tier === 'provincial' ? 1 : 0, (int) $p->sort_order))
+            ->values()
+            ->mapWithKeys(fn (Position $p, int $i) => [$p->slug => $i]);
+        $seatOrder = fn ($rows) => $rows
+            ->sortBy(fn (array $row) => $positionOrder[$row['position_key']] ?? PHP_INT_MAX)
+            ->values();
 
         $candidateRefs = $tallies->flatten(1)->pluck('candidate_ref');
         $candidates = Candidate::query()
@@ -86,10 +100,11 @@ class SsgOfficerController extends Controller
                         'name' => $candidate->user?->name ?? $candidate->candidate_ref,
                         'votes' => (int) $candidate->vote_total,
                         'seat_count' => $position->seat_count,
+                        'tier' => $position->tier,
                     ]);
                 });
 
-            return response()->json(['data' => $officers->values()]);
+            return response()->json(['data' => $seatOrder($officers)]);
         }
 
         foreach ($tallies as $positionKey => $rows) {
@@ -120,11 +135,12 @@ class SsgOfficerController extends Controller
                         'name' => $candidates->get($row->candidate_ref)?->user?->name ?? $row->candidate_ref,
                         'votes' => (int) $row->votes,
                         'seat_count' => $seatCount,
+                        'tier' => $position->tier,
                     ]);
                 }
             }
         }
 
-        return response()->json(['data' => $officers->values()]);
+        return response()->json(['data' => $seatOrder($officers)]);
     }
 }

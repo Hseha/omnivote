@@ -154,6 +154,43 @@ class PublicResultsTest extends TestCase
             ->assertJsonPath('data.0.seat_count', 1);
     }
 
+    public function test_ssg_officer_roster_seats_national_winners_before_provincial(): void
+    {
+        $this->closeVoting();
+        $this->twoFactorOff();
+
+        // A provincial seat whose sort_order is LOWER than a national one: the
+        // tier partition — not the raw sort_order — decides seating order, so
+        // President (sort 10) must still precede Governor (sort 5).
+        DB::table('positions')->insert([
+            'slug' => 'governor',
+            'label' => 'Governor',
+            'tier' => 'provincial',
+            'scope_type' => 'global',
+            'scope_value' => null,
+            'scope_type_2' => null,
+            'scope_value_2' => null,
+            'seat_count' => 1,
+            'sort_order' => 5,
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->makeCandidate('ref-roi', 'ROI', 'governor', votes: 5, elected: true);
+        $this->makeCandidate('ref-ana', 'Ana', 'president', votes: 3, elected: true);
+
+        $this->asAdmin()
+            ->getJson('/api/admin/ssg/officers')
+            ->assertOk()
+            ->assertJsonCount(2, 'data')
+            ->assertJsonPath('data.0.position_key', 'president')
+            ->assertJsonPath('data.0.tier', 'national')
+            ->assertJsonPath('data.1.position_key', 'governor')
+            ->assertJsonPath('data.1.tier', 'provincial')
+            ->assertJsonPath('data.1.position_label', 'Governor');
+    }
+
     public function test_ssg_officer_roster_falls_back_to_top_votes_when_never_finalized(): void
     {
         $this->closeVoting();
@@ -388,7 +425,7 @@ class PublicResultsTest extends TestCase
     }
 
     /**
-     * An approved candidate on the national-tier position of the given slug,
+     * An approved candidate on the position of the given slug (any tier),
      * optionally finalised as its elected winner, plus its ledger votes.
      */
     private function makeCandidate(

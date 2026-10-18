@@ -18,6 +18,14 @@ function canDeleteAnnouncement(announcement, user) {
   return announcement.user_id === user.id;
 }
 
+// Tier-grouped roster sections: national seats first, provincial second.
+// A row without `tier` (older backend) counts as national, and the backend
+// already returns each group in seating order.
+const ROSTER_GROUPS = [
+  { tier: 'national', label: 'National Winners' },
+  { tier: 'provincial', label: 'Provincial Winners' },
+];
+
 export default function SsgPresident({ onLogout }) {
   const { user, logout } = useAuth();
   const [officers, setOfficers] = useState([]);
@@ -153,9 +161,20 @@ export default function SsgPresident({ onLogout }) {
             ) : officers.length === 0 ? (
               <p className="muted-text">No certified officers are available yet.</p>
             ) : (
-              <div className="ssg-table-wrap"><table className="ssg-table"><thead><tr><th>Position</th><th>Officer</th><th>Votes</th></tr></thead><tbody>
-                {officers.map((officer) => <tr key={`${officer.position_key}-${officer.candidate_ref}`}><td>{officer.position_label}</td><td>{officer.name}</td><td>{officer.votes}</td></tr>)}
-              </tbody></table></div>
+              ROSTER_GROUPS
+                .map((group) => ({
+                  ...group,
+                  rows: officers.filter((officer) => (officer.tier ?? 'national') === group.tier),
+                }))
+                .filter((group) => group.rows.length > 0)
+                .map((group) => (
+                  <div className="ssg-roster-group" key={group.tier}>
+                    <h4 className="ssg-roster-group-title">{group.label}</h4>
+                    <div className="ssg-table-wrap"><table className="ssg-table"><thead><tr><th>Position</th><th>Officer</th><th>Votes</th></tr></thead><tbody>
+                      {group.rows.map((officer) => <tr key={`${officer.position_key}-${officer.candidate_ref}`}><td>{officer.position_label}</td><td>{officer.name}</td><td>{officer.votes}</td></tr>)}
+                    </tbody></table></div>
+                  </div>
+                ))
             )}
           </section>
 

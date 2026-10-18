@@ -254,6 +254,60 @@ class ElectionResetTest extends TestCase
             ->exists());
     }
 
+    public function test_reset_notifies_cleared_applicants_and_skips_everyone_else(): void
+    {
+        $admin = $this->makeUser(['role' => 'admin']);
+
+        DB::table('phases')->where('name', 'registration')->update(['is_active' => true]);
+
+        // One applicant whose application this reset CLEARS, one certified
+        // winner who is preserved as an officer, and one plain student who
+        // never applied — only the applicant may hear about the reset.
+        $applicant = $this->makeStudent();
+        Candidate::create([
+            'user_id' => $applicant->id,
+            'position_id' => 1,
+            'candidate_ref' => 'ref-applicant',
+            'slogan' => 'Also ran',
+            'party_name' => 'Opposition',
+            'approval_status' => 'pending',
+            'certified_winner' => false,
+            'election_status' => 'pending',
+        ]);
+
+        $winnerUser = $this->makeStudent();
+        Candidate::create([
+            'user_id' => $winnerUser->id,
+            'position_id' => 1,
+            'candidate_ref' => 'ref-winner',
+            'slogan' => 'Vote for me',
+            'party_name' => 'Unity',
+            'approval_status' => 'approved',
+            'certified_winner' => true,
+            'certified_at' => now(),
+            'winner_rank' => 1,
+            'vote_total' => 42,
+            'election_status' => 'elected',
+        ]);
+
+        $bystander = $this->makeStudent();
+
+        $this->actingAs($admin);
+
+        $this->stateful()
+            ->postJson('/api/admin/election/reset', ['confirm' => 'reset_election'])
+            ->assertOk();
+
+        $this->assertDatabaseHas('user_notifications', [
+            'user_id' => $applicant->id,
+            'type' => 'warning',
+            'title' => 'The election has been reset',
+            'link' => '/candidacy/status',
+        ]);
+        $this->assertDatabaseMissing('user_notifications', ['user_id' => $winnerUser->id]);
+        $this->assertDatabaseMissing('user_notifications', ['user_id' => $bystander->id]);
+    }
+
     public function test_reset_after_voting_records_all_parties_and_deletes_losers(): void
     {
         $admin = $this->makeUser(['role' => 'admin']);
@@ -473,6 +527,10 @@ class ElectionResetTest extends TestCase
             ->assertOk();
 
         $this->assertNull(Phase::current());
+
+        // No non-winner candidates remain on a cleared slate, so a repeat
+        // reset has nobody to notify — no duplicate applicant notices.
+        $this->assertDatabaseCount('user_notifications', 0);
     }
 
     private function stateful(): static
@@ -646,6 +704,19 @@ class ElectionResetTest extends TestCase
             $table->text('details')->nullable();
             $table->string('ip_address', 45)->nullable();
             $table->string('user_agent', 512)->nullable();
+            $table->timestamps();
+        });
+
+        // Mirrors 2026_09_21_000004_create_notifications_table: the reset
+        // notice for cleared applicants lands here.
+        Schema::create('user_notifications', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('user_id')->nullable()->constrained()->cascadeOnDelete();
+            $table->string('type', 50)->default('info');
+            $table->string('title', 200);
+            $table->text('body')->nullable();
+            $table->string('link', 500)->nullable();
+            $table->timestamp('read_at')->nullable();
             $table->timestamps();
         });
 

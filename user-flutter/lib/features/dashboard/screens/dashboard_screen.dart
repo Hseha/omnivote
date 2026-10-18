@@ -9,6 +9,7 @@ import '../../../core/widgets/app_update_banner.dart';
 import '../../../core/widgets/top_bar.dart';
 import '../../app_update/providers/app_update_provider.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../../candidacy/providers/candidacy_provider.dart';
 import '../providers/announcements_provider.dart';
 import '../providers/election_status_provider.dart';
 import '../widgets/announcements_carousel.dart';
@@ -50,8 +51,10 @@ class DashboardScreen extends ConsumerWidget {
       body: RefreshIndicator(
         onRefresh: () async {
           // Fresh announcements + a phase re-check (also refreshes results)
-          // + a release re-check whenever the student pulls down.
+          // + a release re-check + the candidacy status tile whenever the
+          // student pulls down.
           ref.invalidate(announcementsProvider);
+          ref.invalidate(myApplicationProvider);
           ref.read(electionStatusEpochProvider.notifier).state++;
           ref.read(appUpdateProvider.notifier).check();
         },
