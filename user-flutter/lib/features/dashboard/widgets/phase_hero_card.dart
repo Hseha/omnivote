@@ -46,6 +46,11 @@ class PhaseHeroCard extends ConsumerWidget {
         (state) => state.valueOrNull?.votingClosesAt,
       ),
     );
+    final registrationClosesAt = ref.watch(
+      electionStatusProvider.select(
+        (state) => state.valueOrNull?.registrationClosesAt,
+      ),
+    );
     final accent = ref.brandAccent();
 
     if (student == null) return const SizedBox.shrink();
@@ -95,6 +100,7 @@ class PhaseHeroCard extends ConsumerWidget {
             hasVoted: hasVoted,
             votingOpensAt: votingOpensAt,
             votingClosesAt: votingClosesAt,
+            registrationClosesAt: registrationClosesAt,
           ),
         ],
       ),
@@ -166,24 +172,40 @@ class _PhaseContent extends StatelessWidget {
     required this.hasVoted,
     required this.votingOpensAt,
     required this.votingClosesAt,
+    required this.registrationClosesAt,
   });
 
   final ElectionPhase phase;
   final bool hasVoted;
   final DateTime? votingOpensAt;
   final DateTime? votingClosesAt;
+  final DateTime? registrationClosesAt;
 
   @override
   Widget build(BuildContext context) {
     final appText = AppTextStyles.of(context);
     switch (phase) {
       case ElectionPhase.registration:
-        return _CopyWithCta(
-          message:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (registrationClosesAt != null)
+              ElectionCountdown(
+                target: registrationClosesAt!,
+                label: 'Registration closes in',
+              ),
+            AppSpacing.vSm,
+            Text(
               'Registration is open — check your eligibility before voting starts.',
-          ctaLabel: 'Confirm eligibility',
-          ctaIcon: Icons.verified_user_outlined,
-          onPressed: () => context.go('/profile'),
+              style: appText.bodySmall,
+            ),
+            AppSpacing.vSm,
+            AppButton.primary(
+              label: 'Confirm eligibility',
+              icon: Icons.verified_user_outlined,
+              onPressed: () => context.go('/profile'),
+            ),
+          ],
         );
       case ElectionPhase.registrationClosed:
         return Column(

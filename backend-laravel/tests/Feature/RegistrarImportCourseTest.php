@@ -188,6 +188,111 @@ class RegistrarImportCourseTest extends TestCase
         );
     }
 
+    public function test_all_department_abbreviations_expand_to_canonical_names(): void
+    {
+        $res = $this->importWithCourses([
+            ['2024-0010', 'Ana Santos', '1', 'CTE', '1', 'BEED'],
+            ['2024-0011', 'Ben Cruz', '2', 'POLSCI', '2', 'BAPOLSCI'],
+            ['2024-0012', 'Carla Reyes', '1', 'CRIM', '1', 'BSCRIM'],
+            ['2024-0013', 'Dan Lopez', '2', 'BSOA', '2', 'BSOA'],
+        ]);
+
+        $res->assertStatus(201)
+            ->assertJsonPath('summary.accounts_provisioned', 4)
+            ->assertJsonPath('summary.flagged_for_review', 0)
+            ->assertJsonPath('summary.courses_not_offered', 0);
+
+        $this->assertSame(
+            'College of Teacher Education',
+            User::where('student_id', '2024-0010')->value('department'),
+        );
+        $this->assertSame(
+            'Bachelor of Elementary Education major in General Content',
+            User::where('student_id', '2024-0010')->value('course'),
+        );
+
+        $this->assertSame(
+            'College of Arts and Sciences',
+            User::where('student_id', '2024-0011')->value('department'),
+        );
+        $this->assertSame(
+            'Bachelor of Arts major in Political Science',
+            User::where('student_id', '2024-0011')->value('course'),
+        );
+
+        $this->assertSame(
+            'College of Criminal Justice Education',
+            User::where('student_id', '2024-0012')->value('department'),
+        );
+        $this->assertSame(
+            'Bachelor of Science in Criminology',
+            User::where('student_id', '2024-0012')->value('course'),
+        );
+
+        $this->assertSame(
+            'College of Office Administration',
+            User::where('student_id', '2024-0013')->value('department'),
+        );
+        $this->assertSame(
+            'Bachelor of Science in Office Administration',
+            User::where('student_id', '2024-0013')->value('course'),
+        );
+    }
+
+    public function test_course_aliases_resolve_for_every_college(): void
+    {
+        $res = $this->importWithCourses([
+            ['2024-0020', 'Eva Torres', '1', 'EDUC', '1', 'BSEED'],
+            ['2024-0021', 'Frank Diaz', '2', 'CAS', '1', 'Communication'],
+            ['2024-0022', 'Grace Cruz', '1', 'CCJE', '1', 'Criminology'],
+            ['2024-0023', 'Henry Lim', '2', 'BSOA', '1', 'Office Administration'],
+        ]);
+
+        $res->assertStatus(201)
+            ->assertJsonPath('summary.accounts_provisioned', 4)
+            ->assertJsonPath('summary.flagged_for_review', 0)
+            ->assertJsonPath('summary.courses_not_offered', 0);
+
+        $this->assertSame(
+            'Bachelor of Secondary Education major in English',
+            User::where('student_id', '2024-0020')->value('course'),
+        );
+        $this->assertSame(
+            'Bachelor of Arts major in Communication',
+            User::where('student_id', '2024-0021')->value('course'),
+        );
+        $this->assertSame(
+            'Bachelor of Science in Criminology',
+            User::where('student_id', '2024-0022')->value('course'),
+        );
+        $this->assertSame(
+            'Bachelor of Science in Office Administration',
+            User::where('student_id', '2024-0023')->value('course'),
+        );
+    }
+
+    public function test_course_from_wrong_college_is_rejected_for_all_colleges(): void
+    {
+        $res = $this->importWithCourses([
+            ['2024-0030', 'Ivan Cruz', '1', 'CAS', '1', 'BECED'],
+            ['2024-0031', 'Julia Santos', '2', 'EDUC', '1', 'BSCRIM'],
+        ]);
+
+        $res->assertStatus(201)
+            ->assertJsonPath('summary.accounts_provisioned', 2)
+            ->assertJsonPath('summary.courses_not_offered', 2)
+            ->assertJsonPath('summary.flagged_for_review', 0);
+
+        $this->assertSame(
+            'BECED',
+            User::where('student_id', '2024-0030')->value('course'),
+        );
+        $this->assertSame(
+            'BSCRIM',
+            User::where('student_id', '2024-0031')->value('course'),
+        );
+    }
+
     /* ------------------------------------------------------------------ */
 
     private function import(string $csv)
