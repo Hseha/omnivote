@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Support\AuditLog;
 use App\Support\CandidateRoleSync;
 use App\Support\ElectionRecordArchive;
+use App\Support\Notifier;
 use App\Support\TermArchive;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -214,6 +215,15 @@ class ElectionController extends Controller
             ? Candidate::query()->pluck('user_id')
             : collect();
 
+        // The subset this reset actually CLEARS. Certified winners survive as
+        // archived officers, so they must not receive the "application was
+        // cleared" notice — same schema guard as the delete inside the
+        // transaction below.
+        $clearedUserIds = Schema::hasTable('candidates')
+            && Schema::hasColumn('candidates', 'certified_winner')
+            ? Candidate::query()->where('certified_winner', false)->pluck('user_id')
+            : collect();
+
         DB::transaction(function () use ($request, &$resetMessage, &$auditDetail) {
             // 1. Archive certified winners so they become preserved officers
             //    (Past Terms roster) before anything else is wiped.
@@ -310,6 +320,20 @@ class ElectionController extends Controller
         // The slate is clear: any account that held a candidacy is no longer a
         // candidate, so re-derive their role back to student.
         CandidateRoleSync::syncMany($affectedUserIds);
+
+        // Tell each student whose candidacy this reset cleared — best-effort
+        // and OUTSIDE the transaction: a notification hiccup must never undo
+        // an already-committed reset. The /candidacy/status link deep-links
+        // them to the hub and drives the app's poll-driven candidacy refresh.
+        foreach ($clearedUserIds->unique()->values() as $userId) {
+            Notifier::notifyUser(
+                (int) $userId,
+                'warning',
+                'The election has been reset',
+                'An administrator has reset the election schedule and cleared all candidacy applications. Voting dates will be announced soon — please wait for further notice.',
+                '/candidacy/status',
+            );
+        }
 
         return response()->json([
             'message' => $resetMessage,

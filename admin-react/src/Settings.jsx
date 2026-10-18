@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import {
   Shield,
   Clock,
@@ -27,10 +27,11 @@ import { useTheme } from './lib/ThemeContext';
 import { THEME_PACKS } from './lib/themePacks';
 import { refreshBranding } from './lib/branding';
 import { useElectionStatus } from './lib/ElectionStatusContext';
-import { roleLabel } from './lib/phase';
+import { displayPhase, roleLabel } from './lib/phase';
 import TwoFactorSetup from './TwoFactorSetup';
 import NotificationBroadcast from './components/NotificationBroadcast';
 import OmniVoteMark from './components/OmniVoteMark';
+import PhaseStatusDialog from './components/PhaseStatusDialog';
 import './Settings.css';
 
 const STORAGE_KEY = 'omnivote:admin:settings';
@@ -604,7 +605,7 @@ export default function Settings({ onLogout, onNavigate, initialTab = 'profile' 
   // header badge, dashboard phase card, and Results gating would keep showing
   // the previous phase until the 30 s tick landed — or until a hard refresh
   // remounted the provider. Voting is the only section that moves the phase.
-  const { refresh: refreshElectionStatus } = useElectionStatus();
+  const { phase, refresh: refreshElectionStatus } = useElectionStatus();
   // Platform configuration tabs (security, voting, branding, backup,
   // notifications) are admin-only; teacher and SSG President accounts get the
   // read-only My Profile view plus the personal Appearance tab. A deep link to
@@ -617,6 +618,7 @@ export default function Settings({ onLogout, onNavigate, initialTab = 'profile' 
   );
   const [windowDialog, setWindowDialog] = useState(null);
   const [resetDialog, setResetDialog] = useState(false);
+  const [showPhaseInfo, setShowPhaseInfo] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [form, setForm] = useState(() => loadCachedSettings() ?? DEFAULT_SETTINGS);
   const [saving, setSaving] = useState(false);
@@ -700,27 +702,31 @@ export default function Settings({ onLogout, onNavigate, initialTab = 'profile' 
     }
   };
 
-  // Warm from the server on mount; falls back to the cached copy if the
-  // request fails (offline / backend not yet reached). Admin only: teacher and
-  // SSG President accounts have no settings.view permission.
+  // Warm from the server, keeping the localStorage copy on failure (offline /
+  // backend not yet reached). Admin only: teacher and SSG President accounts
+  // have no settings.view permission. Also re-run after a reset so the
+  // window fields — and the cached copy — show the cleared schedule instead
+  // of the pre-reset configuration until a full page reload.
+  const loadSettings = useCallback(async () => {
+    try {
+      const res = await api.get('/admin/settings');
+      const merged = mergeSettings(DEFAULT_SETTINGS, res.data?.settings ?? {});
+      setForm(merged);
+      persistSettings(merged);
+    } catch {
+      /* keep the localStorage copy */
+    }
+  }, []);
+
   useEffect(() => {
     if (!canManageSettings) return undefined;
-    let alive = true;
-    api
-      .get('/admin/settings')
-      .then((res) => {
-        if (!alive) return;
-        const merged = mergeSettings(DEFAULT_SETTINGS, res.data?.settings ?? {});
-        setForm(merged);
-        persistSettings(merged);
-      })
-      .catch(() => {
-        /* keep the localStorage copy */
-      });
-    return () => {
-      alive = false;
-    };
-  }, [canManageSettings]);
+    // Same pattern as AdminDashboard's loadData(): the request resolves async
+    // and only then writes the form state — mirroring the previous inline
+    // .then() effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadSettings();
+    return undefined;
+  }, [canManageSettings, loadSettings]);
 
   const loadBackups = async (showSpinner = false) => {
     if (showSpinner) setBackupsLoading(true);
@@ -809,7 +815,10 @@ export default function Settings({ onLogout, onNavigate, initialTab = 'profile' 
       setSaved('Election reset to a clean slate — schedule, candidates, votes, and ledger all cleared.');
       setTimeout(() => setSaved(''), 5000);
       setResetDialog(false);
+      // Re-derive the phase AND reload the form + its localStorage cache so
+      // the voting-window fields stop showing the pre-reset schedule.
       refreshElectionStatus();
+      await loadSettings();
     } catch (err) {
       setError(err.response?.data?.message || 'Could not reset the election.');
     } finally {
@@ -934,7 +943,17 @@ export default function Settings({ onLogout, onNavigate, initialTab = 'profile' 
             <p className="settings-subtitle">Manage platform security, voting windows, branding, backups, and notifications.</p>
           </div>
           <div className="settings-profile">
-            <span className="voting-status-badge"><span className="status-dot-green" /> Configured</span>
+            {/* Live phase from the shared poller — this badge used to be a
+                hardcoded "Configured", which contradicted the dashboard and
+                header ("Not Configured") whenever no schedule was set. */}
+            <button
+              type="button"
+              className="voting-status-badge"
+              onClick={() => { if (!phase) setShowPhaseInfo(true); }}
+              title={phase ? undefined : 'Tap to learn why no phase is set'}
+            >
+              <span className="status-dot-green" /> {displayPhase(phase)}
+            </button>
           </div>
         </header>
 
@@ -1642,6 +1661,13 @@ export default function Settings({ onLogout, onNavigate, initialTab = 'profile' 
         </div>
       </main>
 
+      {showPhaseInfo && (
+        <PhaseStatusDialog
+          title="Election Not Configured Yet"
+          message="No registration or voting window is set, so every screen shows “Not Configured” and candidacy applications stay closed. Set the windows in Settings → Voting Windows to start a new election cycle."
+          onClose={() => setShowPhaseInfo(false)}
+        />
+      )}
       {windowDialog && (
         <VotingWindowDialog
           field={windowDialog.field}
