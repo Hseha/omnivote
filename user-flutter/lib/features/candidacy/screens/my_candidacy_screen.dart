@@ -35,11 +35,26 @@ import '../providers/candidacy_provider.dart';
 ///     close and results are finalized,
 ///   - actions: edit / withdraw (via the existing apply flow), review
 ///     updates in Notifications, and a preview of the public profile.
-class MyCandidacyScreen extends ConsumerWidget {
+class MyCandidacyScreen extends ConsumerStatefulWidget {
   const MyCandidacyScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MyCandidacyScreen> createState() => _MyCandidacyScreenState();
+}
+
+class _MyCandidacyScreenState extends ConsumerState<MyCandidacyScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Every open refetches: an admin approve / reject / reset since the last
+    // visit must show up without waiting for the notification poll or an app
+    // restart. Deferred to a microtask so the provider is not modified while
+    // the widget tree is still building.
+    Future.microtask(() => ref.invalidate(myApplicationProvider));
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final applicationAsync = ref.watch(myApplicationProvider);
 
     return Scaffold(

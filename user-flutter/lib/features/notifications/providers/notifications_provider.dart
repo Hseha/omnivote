@@ -7,6 +7,7 @@ import '../../../core/utils/error_message.dart';
 import '../../../data/models/notification_model.dart';
 import '../../../data/repositories/notification_repository.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../../candidacy/providers/candidacy_provider.dart';
 
 /// How often the feed is refreshed while the app is in the foreground.
 const Duration kNotificationsPollInterval = Duration(seconds: 60);
@@ -159,6 +160,17 @@ class NotificationsNotifier extends StateNotifier<NotificationsState> {
     }
   }
 
+  /// Snapshot of the current feed ids — the provider's poll diff compares
+  /// this before/after a silent refresh instead of reaching into [state].
+  Set<int> knownIds() => state.items.map((n) => n.id).toSet();
+
+  /// True when a row NOT in [previousIds] links to the candidacy status hub:
+  /// an admin approve / reject / election-reset decision about this student's
+  /// application that arrived since the last feed.
+  bool hasNewCandidacyLink(Set<int> previousIds) => state.items.any(
+        (n) => !previousIds.contains(n.id) && n.link == '/candidacy/status',
+      );
+
   /// Drops all state on logout so one account's feed/unread badge never bleeds
   /// into the next session.
   void clear() {
@@ -171,9 +183,21 @@ final notificationsProvider =
   final notifier =
       NotificationsNotifier(ref.read(notificationRepositoryProvider));
 
-  // Re-fetch on each foreground poll tick.
-  ref.listen(notificationTickerProvider, (_, _) {
-    notifier.refresh(silent: true);
+  // Re-fetch on each foreground poll tick. A feed row that was NOT in the
+  // previous page and links to /candidacy/status is an admin decision (or an
+  // election reset) about THIS student's application — refetch it so the
+  // dashboard tile and the My Candidacy hub cannot sit stale until the next
+  // screen open. The baseline flag skips the diff until the first load
+  // attempt settles, so a cold-start tick cannot fake "new" for the whole
+  // feed and trigger a pointless invalidation storm.
+  var baselineLoaded = false;
+  ref.listen(notificationTickerProvider, (_, _) async {
+    final previousIds = notifier.knownIds();
+    await notifier.refresh(silent: true);
+    if (!baselineLoaded) return;
+    if (notifier.hasNewCandidacyLink(previousIds)) {
+      ref.invalidate(myApplicationProvider);
+    }
   });
 
   // Clear when the session ends (logout / disabled account).
@@ -181,7 +205,12 @@ final notificationsProvider =
     if (next == null) notifier.clear();
   });
 
-  notifier.refresh();
+  // The first load runs un-silently so a real error still surfaces; once it
+  // settles, the feed has the trustworthy baseline the diff above compares
+  // against.
+  notifier.refresh().then((_) {
+    baselineLoaded = true;
+  });
 
   return notifier;
 });
