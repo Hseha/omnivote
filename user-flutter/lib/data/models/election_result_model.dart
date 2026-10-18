@@ -49,18 +49,39 @@ class ElectionCandidateResult {
 class ElectionResult {
   final String positionKey;
   final String? positionLabel;
+
+  /// Electorate label for a scoped seat ("CCS · Year 1"); null for a
+  /// global seat.
+  final String? scopeLabel;
   final List<ElectionCandidateResult> candidates;
 
   const ElectionResult({
     required this.positionKey,
     this.positionLabel,
+    this.scopeLabel,
     required this.candidates,
   });
+
+  bool get isScoped => scopeLabel != null && scopeLabel!.isNotEmpty;
+
+  /// The position's plain title with any " — {scope}" suffix stripped, so
+  /// the 20 college-year groups of one scoped seat can nest under a single
+  /// master card.
+  String get baseLabel {
+    final label = positionLabel ?? positionKey;
+    final suffix = scopeLabel;
+    if (suffix == null || suffix.isEmpty) return label;
+    final marker = ' — $suffix';
+    return label.endsWith(marker)
+        ? label.substring(0, label.length - marker.length)
+        : label;
+  }
 
   factory ElectionResult.fromJson(Map<String, dynamic> json) {
     return ElectionResult(
       positionKey: (json['position_key'] ?? json['position'] ?? '').toString(),
       positionLabel: (json['position_label'] ?? json['label'] ?? json['position']) as String?,
+      scopeLabel: json['scope_label'] as String?,
       candidates: (json['candidates'] as List? ?? const [])
           .map((c) => ElectionCandidateResult.fromJson(Map<String, dynamic>.from(c as Map)))
           .toList(),

@@ -15,6 +15,7 @@ use App\Support\ResultsPublisher;
 use App\Support\TermArchive;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -44,8 +45,11 @@ class ResultsController extends Controller
         $ledger = DB::table('vote_ledger')
             ->select('position_key', 'candidate_ref', DB::raw('COUNT(*) as votes'))
             ->groupBy('position_key', 'candidate_ref')
+            // candidate_ref breaks ties so equal-vote rows land in a stable,
+            // reproducible order rather than whatever the engine returns.
             ->orderBy('position_key')
             ->orderByDesc('votes')
+            ->orderBy('candidate_ref')
             ->get();
 
         $candidates = Candidate::query()
@@ -88,6 +92,10 @@ class ResultsController extends Controller
                             'position_key' => $positionKey,
                             'position_label' => $scopeLabel ? "{$baseLabel} — {$scopeLabel}" : $baseLabel,
                             'scope_label' => $scopeLabel,
+                            // Sort keys are stripped before the response is
+                            // returned — they only drive the ballot ordering.
+                            '_tier' => $position?->tier ?? 'zz',
+                            '_sort_order' => (int) ($position?->sort_order ?? 9999),
                             'candidates' => $groupRows
                                 ->reject(fn ($row) => $archivedRefs->contains($row->candidate_ref))
                                 ->sortByDesc(fn ($row) => (int) $row->votes)
@@ -112,9 +120,22 @@ class ResultsController extends Controller
                                 }),
                         ]);
                     });
-            });
+                });
 
-        return response()->json(['results' => $results->values()]);
+        // Ballot order, not the alphabetical slug order the ledger groups
+        // arrive in: national officers first (President … Custodian) by the
+        // position's own sort_order, then the provincial tier, and within one
+        // scoped position the electorate groups by their scope label. Both the
+        // student app and the admin panel render this list as-is, so fixing it
+        // here keeps the three surfaces in lockstep.
+        $results = $results
+            ->sortBy([
+                ['_tier', 'asc'],
+                ['_sort_order', 'asc'],
+                ['scope_label', 'asc'],
+            ])
+            ->map(fn ($group) => Arr::except($group, ['_tier', '_sort_order']))
+            ->values();
 
         return response()->json(['results' => $results]);
     }

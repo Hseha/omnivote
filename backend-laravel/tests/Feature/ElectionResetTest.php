@@ -664,6 +664,7 @@ class ElectionResetTest extends TestCase
             $table->string('position_slug')->nullable();
             $table->string('position_label')->nullable();
             $table->string('position_tier')->nullable();
+            $table->unsignedTinyInteger('position_sort_order')->nullable();
             $table->string('party_name')->nullable();
             $table->string('approval_status')->nullable();
             $table->string('election_status')->nullable();

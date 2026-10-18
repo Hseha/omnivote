@@ -153,7 +153,12 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
               return Column(
                 children: [
                   const _AnnouncementBanner(),
-                  for (final result in results) _buildResultCard(result),
+                  // The API returns one group per electorate for a scoped seat
+                  // (e.g. one Year Level Representative card per college·year),
+                  // already in ballot order. Collapse each consecutive run of
+                  // same-position scoped groups into a single master card so a
+                  // 20-electorate seat doesn't bury the rest of the ballot.
+                  ..._masterCardSections(results),
                 ],
               );
             },
@@ -189,10 +194,13 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
 
   Widget _buildResultCard(ElectionResult result) {
     final appText = AppTextStyles.of(context);
-    final scheme = Theme.of(context).colorScheme;
     final maxVotes = result.candidates.isNotEmpty
         ? result.candidates.map((c) => c.votes).reduce((a, b) => a > b ? a : b)
         : 0;
+    final totalVotes = result.candidates.fold<int>(
+      0,
+      (sum, c) => sum + c.votes,
+    );
 
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.md),
@@ -206,65 +214,10 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
             ),
             AppSpacing.vSm,
             ...result.candidates.map(
-              (candidate) => Padding(
-                padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            candidate.name,
-                            style: appText.titleSmall,
-                          ),
-                        ),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (candidate.isTied) ...[
-                              const _ResultChip(
-                                label: 'TIE',
-                                bg: AppColors.resultTieBg,
-                                fg: AppColors.resultTieFg,
-                              ),
-                              AppSpacing.hXs,
-                            ] else if (candidate.isElected) ...[
-                              const _ResultChip(
-                                label: 'WINNER',
-                                bg: AppColors.resultWinnerBg,
-                                fg: AppColors.resultWinnerFg,
-                              ),
-                              AppSpacing.hXs,
-                            ],
-                            Text(
-                              '${candidate.votes} votes',
-                              style: appText.labelSmall,
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    AppSpacing.vXs,
-                    // LinearProgressIndicator takes a borderRadius directly:
-                    // wrapping it in a ClipRRect forced an extra clip layer on
-                    // every row of a screen that is nothing but these bars.
-                    LinearProgressIndicator(
-                      value: maxVotes == 0 ? 0 : candidate.votes / maxVotes,
-                      minHeight: AppMetrics.barThickness,
-                      borderRadius: BorderRadius.circular(
-                        AppMetrics.barRadius,
-                      ),
-                      backgroundColor: context.appBorder,
-                      color: candidate.isElected
-                          ? AppColors.successGreen
-                          : candidate.isTied
-                              ? AppColors.resultTieFg
-                              : scheme.primary,
-                    ),
-                  ],
-                ),
+              (candidate) => _CandidateTallyRow(
+                candidate: candidate,
+                maxVotes: maxVotes,
+                totalVotes: totalVotes,
               ),
             ),
             if (result.candidates.isEmpty)
@@ -274,6 +227,217 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
               ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// Splits the ballot-ordered groups into renderable sections. A run of
+  /// consecutive scoped groups sharing one [ElectionResult.positionKey] becomes
+  /// a single [_ScopedMasterCard]; everything else is a plain card.
+  List<Widget> _masterCardSections(List<ElectionResult> results) {
+    final widgets = <Widget>[];
+    var i = 0;
+    while (i < results.length) {
+      final current = results[i];
+      if (!current.isScoped) {
+        widgets.add(_buildResultCard(current));
+        i++;
+        continue;
+      }
+
+      final run = <ElectionResult>[];
+      while (i < results.length &&
+          results[i].isScoped &&
+          results[i].positionKey == current.positionKey) {
+        run.add(results[i]);
+        i++;
+      }
+      widgets.add(_ScopedMasterCard(groups: run));
+    }
+    return widgets;
+  }
+}
+
+/// A scoped seat (e.g. Year Level Representative) contested once per
+/// electorate. Renders one titled card with a labelled sub-section per
+/// college·year so a 20-electorate race stays readable and ordered.
+class _ScopedMasterCard extends StatelessWidget {
+  final List<ElectionResult> groups;
+
+  const _ScopedMasterCard({required this.groups});
+
+  @override
+  Widget build(BuildContext context) {
+    final appText = AppTextStyles.of(context);
+    final base = groups.isEmpty ? '' : groups.first.baseLabel;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.md),
+      child: AppCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(base, style: appText.titleMedium),
+                ),
+                _ResultChip(
+                  label: '${groups.length} areas',
+                  bg: AppColors.tagBlueBg,
+                  fg: AppColors.tagBlueText,
+                ),
+              ],
+            ),
+            AppSpacing.vSm,
+            for (var g = 0; g < groups.length; g++) ...[
+              if (g > 0) AppSpacing.vSm,
+              _ScopedGroupBlock(group: groups[g]),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One electorate's tally inside a scoped master card: a scope label header
+/// followed by the same candidate rows a plain card shows.
+class _ScopedGroupBlock extends StatelessWidget {
+  final ElectionResult group;
+
+  const _ScopedGroupBlock({required this.group});
+
+  @override
+  Widget build(BuildContext context) {
+    final appText = AppTextStyles.of(context);
+    final maxVotes = group.candidates.isNotEmpty
+        ? group.candidates.map((c) => c.votes).reduce((a, b) => a > b ? a : b)
+        : 0;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          group.scopeLabel ?? '',
+          style: appText.labelLarge.copyWith(
+            color: Theme.of(context).colorScheme.primary,
+          ),
+        ),
+        AppSpacing.vXs,
+        ...group.candidates.map(
+          (candidate) => _CandidateTallyRow(
+            candidate: candidate,
+            maxVotes: maxVotes,
+            totalVotes: group.candidates.fold<int>(
+              0,
+              (sum, c) => sum + c.votes,
+            ),
+          ),
+        ),
+        if (group.candidates.isEmpty)
+          Text(
+            'No votes recorded yet.',
+            style: appText.bodySmall,
+          ),
+      ],
+    );
+  }
+}
+
+/// One candidate's line inside a results card: name, verdict chip, vote count,
+/// share-of-total, and a progress bar scaled against the group's top scorer.
+/// Shared by plain position cards and each electorate block of a scoped seat.
+class _CandidateTallyRow extends StatelessWidget {
+  final ElectionCandidateResult candidate;
+  final int maxVotes;
+  final int totalVotes;
+
+  const _CandidateTallyRow({
+    required this.candidate,
+    required this.maxVotes,
+    required this.totalVotes,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final appText = AppTextStyles.of(context);
+    final scheme = Theme.of(context).colorScheme;
+
+    final share = totalVotes > 0
+        ? (candidate.votes / totalVotes) * 100
+        : 0.0;
+
+    // Before finalize nothing is elected/tied, so the current top scorer is
+    // marked LEADING — a provisional "currently ahead", never an official
+    // WINNER. Once the backend certifies, WINNER/TIE take over.
+    final isLeading = !candidate.isElected &&
+        !candidate.isTied &&
+        candidate.votes > 0 &&
+        candidate.votes == maxVotes;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(candidate.name, style: appText.titleSmall),
+              ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (candidate.isTied) ...[
+                    const _ResultChip(
+                      label: 'TIE',
+                      bg: AppColors.resultTieBg,
+                      fg: AppColors.resultTieFg,
+                    ),
+                    AppSpacing.hXs,
+                  ] else if (candidate.isElected) ...[
+                    const _ResultChip(
+                      label: 'WINNER',
+                      bg: AppColors.resultWinnerBg,
+                      fg: AppColors.resultWinnerFg,
+                    ),
+                    AppSpacing.hXs,
+                  ] else if (isLeading) ...[
+                    const _ResultChip(
+                      label: 'LEADING',
+                      bg: AppColors.resultLeadingBg,
+                      fg: AppColors.resultLeadingFg,
+                    ),
+                    AppSpacing.hXs,
+                  ],
+                  Text(
+                    '${candidate.votes} votes · ${share.toStringAsFixed(1)}%',
+                    style: appText.labelSmall,
+                  ),
+                ],
+              ),
+            ],
+          ),
+          AppSpacing.vXs,
+          // LinearProgressIndicator takes a borderRadius directly: wrapping it
+          // in a ClipRRect forced an extra clip layer on every row of a screen
+          // that is nothing but these bars.
+          LinearProgressIndicator(
+            value: maxVotes == 0 ? 0 : candidate.votes / maxVotes,
+            minHeight: AppMetrics.barThickness,
+            borderRadius: BorderRadius.circular(AppMetrics.barRadius),
+            backgroundColor: context.appBorder,
+            color: candidate.isElected
+                ? AppColors.successGreen
+                : candidate.isTied
+                    ? AppColors.resultTieFg
+                    : isLeading
+                        ? AppColors.resultLeadingFg
+                        : scheme.primary,
+          ),
+        ],
       ),
     );
   }

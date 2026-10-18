@@ -18,6 +18,8 @@ class ElectionRecordsController extends Controller
         $query = ElectionCandidateRecord::query()
             ->orderByDesc('snapshot_at')
             ->orderBy('term_label')
+            ->orderBy('position_tier')
+            ->orderBy('position_sort_order')
             ->orderBy('position_label')
             ->orderBy('party_name')
             ->orderBy('user_name');
