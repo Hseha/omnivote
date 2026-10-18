@@ -35,7 +35,9 @@ export default function Results({ activeView = 'results', onNavigate, onLogout, 
   // Search and Filter states for detailed table views
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPosition, setSelectedPosition] = useState('All');
-  const [selectedParty, setSelectedParty] = useState('All');
+  // selectedParty kept to match the dropped party dropdown; the setter was
+  // removed because the party filter UI no longer exists.
+  const selectedParty = 'All';
 
   function formatArchiveDate(iso) {
     if (!iso) return '—';
@@ -144,7 +146,8 @@ export default function Results({ activeView = 'results', onNavigate, onLogout, 
       if (s === 'elected') return 'WINNER';
       if (s === 'tied') return 'TIE';
       if (s && s !== 'pending') return 'Eliminated';
-      return candidate.votes === winningVotes ? 'WINNER' : 'Eliminated';
+      if (candidate.votes === winningVotes && winningVotes > 0 && sortedCandidates.length > 0) return 'LEADING';
+      return candidate.votes === winningVotes ? 'LEADING' : 'Eliminated';
     };
 
     return sortedCandidates.map((candidate, index) => {
@@ -199,14 +202,14 @@ export default function Results({ activeView = 'results', onNavigate, onLogout, 
               <div className="candidate-info">
                 <span className="candidate-name">{candidate.name}</span>
                 <span className={`badge-tag ${candidate.status === 'WINNER' ? 'badge-winner' : candidate.status === 'TIE' ? 'badge-tie' : 'badge-runner'}`}>
-                  {candidate.status === 'TIE' ? (isAdmin ? 'TIE — RESOLVE' : 'TIE') : candidate.status}
+                  {candidate.status === 'TIE' ? (isAdmin ? 'TIE — RESOLVE' : 'TIE') : (candidate.status === 'LEADING' ? 'LEADING' : candidate.status)}
                 </span>
               </div>
               <span className="vote-count">{candidate.votes} votes ({candidate.percentage})</span>
             </div>
             <div className="progress-bar-bg">
               <div 
-                className={`progress-bar-fill ${candidate.status === 'WINNER' ? 'fill-green' : candidate.status === 'TIE' ? 'fill-red' : 'fill-blue'}`} 
+                className={`progress-bar-fill ${candidate.status === 'WINNER' ? 'fill-green' : candidate.status === 'TIE' ? 'fill-red' : candidate.status === 'LEADING' ? 'fill-blue' : 'fill-blue'}`} 
                 style={{ width: candidate.percentage }}
               />
             </div>
@@ -310,12 +313,12 @@ export default function Results({ activeView = 'results', onNavigate, onLogout, 
 
                 <div className="metric-card">
                   <div className="metric-header">
-                    <span className="metric-title">WINNERS CERTIFIED</span>
+                    <span className="metric-title">Winners Certified</span>
                     <div className="metric-icon-box blue-icon-box">
                       <TrendingUp size={18} color="#d97706" />
                     </div>
                   </div>
-                  <div className="metric-value">{loadingResults ? '…' : candidateRows.filter((c) => c.status === 'WINNER').length}</div>
+                  <div className="metric-value">{loadingResults ? '…' : candidateRows.filter((c) => c.electionStatus === 'elected' || c.status === 'WINNER').length}</div>
                   <div className="metric-subtitle">Officially elected seats</div>
                 </div>
               </div>
@@ -362,6 +365,7 @@ export default function Results({ activeView = 'results', onNavigate, onLogout, 
                       percentage: `${candidate.percentage.toFixed(1)}%`,
                       status: candidate.status === 'WINNER' ? 'WINNER'
                         : candidate.status === 'TIE' ? 'TIE'
+                        : candidate.status === 'LEADING' ? 'LEADING'
                         : 'RUNNER UP',
                     })),
                   );
@@ -470,7 +474,7 @@ export default function Results({ activeView = 'results', onNavigate, onLogout, 
               <div className="metrics-grid-3col">
                 <div className="metric-card">
                   <div className="metric-header">
-                    <span className="metric-title">TOTAL CANDIDATES</span>
+                    <span className="metric-title">Total Candidates</span>
                     <div className="metric-icon-box blue-icon-box">
                       <Users2 size={18} color="#2563eb" />
                     </div>
@@ -481,7 +485,7 @@ export default function Results({ activeView = 'results', onNavigate, onLogout, 
 
                 <div className="metric-card">
                   <div className="metric-header">
-                    <span className="metric-title">TOTAL VOTES CAST</span>
+                    <span className="metric-title">Total Votes Cast</span>
                     <div className="metric-icon-box green-icon-box">
                       <CheckCircle2 size={18} color="#16a34a" />
                     </div>
@@ -492,7 +496,7 @@ export default function Results({ activeView = 'results', onNavigate, onLogout, 
 
                 <div className="metric-card">
                   <div className="metric-header">
-                    <span className="metric-title">ESTIMATED TURNOUT</span>
+                    <span className="metric-title">Estimated Turnout</span>
                     <div className="metric-icon-box orange-icon-box">
                       <TrendingUp size={18} color="#d97706" />
                     </div>
@@ -522,24 +526,18 @@ export default function Results({ activeView = 'results', onNavigate, onLogout, 
                       onChange={(e) => setSelectedPosition(e.target.value)}
                     >
                       <option value="All">Position: All</option>
-                      <option value="President">President</option>
-                      <option value="Vice President">Vice President</option>
-                      <option value="Secretary">Secretary</option>
-                      <option value="Treasurer">Treasurer</option>
+                      {Array.from(new Set(candidateRows.map(r => r.position)))
+                        .sort((a,b) => a.localeCompare(b))
+                        .map(pos => (
+                          <option key={pos} value={pos}>{pos}</option>
+                        ))}
                     </select>
                     <ChevronDown size={14} className="dropdown-arrow" />
                   </div>
 
-                  <div className="select-dropdown-container">
-                    <select 
-                      className="filter-select"
-                      value={selectedParty}
-                      onChange={(e) => setSelectedParty(e.target.value)}
-                    >
-                      <option value="All">Party: All</option>
-                    </select>
-                    <ChevronDown size={14} className="dropdown-arrow" />
-                  </div>
+                  {/* Party filter removed; the dataset exposes "—" and no real
+                      party values are surfaced by the live results response yet.
+                      Re-enable once live results include party_name. */}
                 </div>
 
                 <button className="btn-export-csv">
@@ -554,7 +552,7 @@ export default function Results({ activeView = 'results', onNavigate, onLogout, 
                       <th>RANK</th>
                       <th>CANDIDATE</th>
                       <th>POSITION</th>
-                      <th>PARTY</th>
+                      <th className="hidden-party">PARTY</th>
                       <th>VOTES</th>
                       <th>PERCENTAGE</th>
                       <th>STATUS</th>
@@ -563,7 +561,7 @@ export default function Results({ activeView = 'results', onNavigate, onLogout, 
                   <tbody>
                     {filteredCandidates.length === 0 ? (
                       <tr>
-                        <td colSpan="7" className="no-data-cell">No candidates match your search or filter selections.</td>
+                        <td colSpan="6" className="no-data-cell">No candidates match your search or filter selections.</td>
                       </tr>
                     ) : (
                       filteredCandidates.map((row, index) => (
@@ -576,7 +574,7 @@ export default function Results({ activeView = 'results', onNavigate, onLogout, 
                           </div>
                         </td>
                         <td className="text-muted-cell">{row.position}</td>
-                        <td className="text-muted-cell">{row.party}</td>
+                        <td className="text-muted-cell hidden-party">{row.party}</td>
                         <td className="votes-cell">{row.votes}</td>
                         <td className="percentage-cell">
                           <div className="table-progress-wrap">

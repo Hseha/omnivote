@@ -135,6 +135,69 @@ class PublicResultsTest extends TestCase
         $response->assertStatus(403)->assertJsonPath('phase', null);
     }
 
+    public function test_result_groups_are_returned_in_ballot_order_not_alphabetical(): void
+    {
+        $this->closeVoting();
+
+        // Ballot order is president (national, 10) → year_level_representative
+        // (national, 20) → governor (provincial, 5). The old alphabetical
+        // position_key order rendered governor FIRST and buried the
+        // presidency — both the student app and the admin panel render the
+        // list as-is, so this pins the shared projection.
+        DB::table('positions')->insert([
+            'slug' => 'governor',
+            'label' => 'Governor',
+            'tier' => 'provincial',
+            'scope_type' => 'global',
+            'scope_value' => null,
+            'scope_type_2' => null,
+            'scope_value_2' => null,
+            'seat_count' => 1,
+            'sort_order' => 5,
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->makeCandidate('ref-gov', 'Gov', 'governor', 1);
+        $this->makeCandidate('ref-pre', 'Pre', 'president', 2);
+        $this->makeCandidate('ref-ccs', 'Ccs', 'year_level_representative', 3, department: 'CCS', yearLevel: '1');
+        $this->makeCandidate('ref-abe', 'Abe', 'year_level_representative', 4, department: 'ABE', yearLevel: '1');
+
+        $groups = collect($this->results()->json('results'));
+
+        $this->assertSame(
+            ['president', 'year_level_representative', 'year_level_representative', 'governor'],
+            $groups->pluck('position_key')->all(),
+        );
+
+        // Within the scoped position, electorate groups are stable and sorted
+        // by scope label (ABE before CCS) — not ledger-scan order.
+        $this->assertSame(
+            [null, 'ABE · Year 1', 'CCS · Year 1', null],
+            $groups->pluck('scope_label')->all(),
+        );
+
+        // The sort keys must never leak into the payload.
+        $this->assertArrayNotHasKey('_tier', $groups->first());
+        $this->assertArrayNotHasKey('_sort_order', $groups->first());
+    }
+
+    public function test_equal_vote_candidates_are_ordered_deterministically(): void
+    {
+        $this->closeVoting();
+
+        // Equal tallies must not flip between refreshes: the ledger tiebreak
+        // orders by candidate_ref, which lands Amy before Zoe here.
+        $this->makeCandidate('ref-zoe', 'Zoe', 'president', 2);
+        $this->makeCandidate('ref-amy', 'Amy', 'president', 2);
+
+        $this->assertSame(
+            ['Amy', 'Zoe'],
+            collect($this->results()->json('results.0.candidates'))->pluck('name')->all(),
+        );
+    }
+
     public function test_ssg_officer_roster_returns_elected_officers_with_position_and_name(): void
     {
         $this->closeVoting();

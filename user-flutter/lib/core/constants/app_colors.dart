@@ -23,4 +23,8 @@ class AppColors {
   static const Color resultWinnerFg = Color(0xFF166534);
   static const Color resultTieBg = Color(0xFFFEF3C7);
   static const Color resultTieFg = Color(0xFFB45309);
+  /// Provisional top-vote-getter before results are finalized — amber like a
+  /// tie but a touch warmer, so it reads as "currently ahead, not yet official".
+  static const Color resultLeadingBg = Color(0xFFFFF7ED);
+  static const Color resultLeadingFg = Color(0xFFC2410C);
 }

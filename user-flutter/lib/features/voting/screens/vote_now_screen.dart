@@ -25,6 +25,7 @@ import '../../../data/repositories/vote_repository.dart';
 import '../../candidates/providers/candidates_provider.dart';
 import '../../dashboard/providers/election_status_provider.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../../ballot/screens/my_ballot_screen.dart';
 import '../electorate_scope.dart';
 
 /// Fetches every approved candidate in a tier, for the grouped national
@@ -156,7 +157,12 @@ class _VoteNowScreenState extends ConsumerState<VoteNowScreen> {
     bool hasVoted,
   ) {
     if (hasVoted) {
-      return _AlreadyVoted(onViewBallot: () => context.go('/ballot'));
+      return _AlreadyVoted(
+        onViewBallot: () => context.go('/ballot'),
+        // Results auto-fills the account's saved receipt token in initState
+        // and verifies it, so the student lands straight on counted/not-counted.
+        onVerifyReceipt: () => context.go('/results'),
+      );
     }
     if (phase != ElectionPhase.votingOpen) {
       return _PhaseBanner(
@@ -968,6 +974,9 @@ class _VoteNowScreenState extends ConsumerState<VoteNowScreen> {
             selections[posId] = refs.length == 1 ? refs.first : refs,
       );
       await ref.read(voteRepositoryProvider).saveDraft(selections);
+      // My Ballot caches its GET response; drop it so returning to that tab
+      // shows what was just saved instead of the pre-edit draft.
+      ref.invalidate(myBallotProvider);
     } catch (_) {
       // Silent: the Review action surfaces real errors; the next toggle
       // retries the autosave.
@@ -991,6 +1000,9 @@ class _VoteNowScreenState extends ConsumerState<VoteNowScreen> {
             selections[posId] = refs.length == 1 ? refs.first : refs,
       );
       await ref.read(voteRepositoryProvider).saveDraft(selections);
+      // Drop My Ballot's cached draft so the review screen shows these
+      // selections, not the pre-edit copy fetched earlier.
+      ref.invalidate(myBallotProvider);
       if (!mounted) return;
       context.go('/ballot');
     } catch (_) {
@@ -1079,8 +1091,12 @@ class _OutOfElectorate extends StatelessWidget {
 
 class _AlreadyVoted extends StatelessWidget {
   final VoidCallback onViewBallot;
+  final VoidCallback onVerifyReceipt;
 
-  const _AlreadyVoted({required this.onViewBallot});
+  const _AlreadyVoted({
+    required this.onViewBallot,
+    required this.onVerifyReceipt,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1113,6 +1129,12 @@ class _AlreadyVoted extends StatelessWidget {
               label: 'View My Ballot',
               icon: Icons.ballot,
               onPressed: onViewBallot,
+            ),
+            AppSpacing.vSm,
+            AppButton.secondary(
+              label: 'Verify receipt',
+              icon: Icons.verified_user_outlined,
+              onPressed: onVerifyReceipt,
             ),
           ],
         ),

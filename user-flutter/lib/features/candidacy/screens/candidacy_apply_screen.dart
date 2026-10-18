@@ -430,7 +430,7 @@ class _CandidacyApplyScreenState extends ConsumerState<CandidacyApplyScreen> {
 
     return Scaffold(
       backgroundColor: context.appBackground,
-      appBar: const TopBar(title: 'Apply for Candidacy'),
+      appBar: const TopBar(title: 'Apply for Candidacy', showAccountMenu: false),
       body: positionsAsync.when(
         data: (positions) {
           final status = _applicationStatus;

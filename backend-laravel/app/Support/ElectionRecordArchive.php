@@ -40,7 +40,7 @@ class ElectionRecordArchive
 
             $rows = \App\Models\Candidate::query()
                 ->with(['user:id,name,email,student_id,department,year_level',
-                        'position:id,slug,label,tier'])
+                        'position:id,slug,label,tier,sort_order'])
                 ->get();
 
             $stamp = now()->toDateTimeString();
@@ -60,6 +60,7 @@ class ElectionRecordArchive
                     'position_slug' => $position?->slug ?? null,
                     'position_label' => $position?->label ?? null,
                     'position_tier' => $position?->tier ?? null,
+                    'position_sort_order' => $position?->sort_order ?? null,
                     'party_name' => $candidate->party_name ?? null,
                     'approval_status' => $candidate->approval_status ?? null,
                     'election_status' => $candidate->election_status ?? null,
