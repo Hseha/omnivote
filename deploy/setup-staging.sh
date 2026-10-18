@@ -171,6 +171,10 @@ server {
     location = /admin { return 301 /admin/; }
 
     location /admin/ {
+        # The directory exists, so try_files stops at $uri and never reaches
+        # the /admin/index.html fallback — the index directive is what serves
+        # the SPA (mirrors the production funnel vhost).
+        index index.html;
         try_files \$uri \$uri/ /admin/index.html;
         add_header X-Frame-Options "SAMEORIGIN" always;
         add_header X-Content-Type-Options "nosniff" always;
