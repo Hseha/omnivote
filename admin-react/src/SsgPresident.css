@@ -56,6 +56,19 @@
   text-align: left;
 }
 
+.ssg-roster-group + .ssg-roster-group {
+  margin-top: 20px;
+}
+
+.ssg-roster-group-title {
+  margin: 0 0 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
 .ssg-announcements article {
   border-bottom: 1px solid #e5e7eb;
   padding: 12px 0;
