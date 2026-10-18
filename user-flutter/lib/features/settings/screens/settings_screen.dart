@@ -146,7 +146,7 @@ class SettingsScreen extends ConsumerWidget {
               title: const Text('Notifications'),
               subtitle: const Text('Election updates, results and account messages'),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () => context.go('/notifications'), // D3 sibling-swap,
+              onTap: () => context.push('/notifications'), // pushed: back arrow + OS back work
             ),
           ),
           AppSpacing.vSm,
@@ -160,7 +160,7 @@ class SettingsScreen extends ConsumerWidget {
               title: const Text('Help & FAQ'),
               subtitle: const Text('Eligibility, voting and account help'),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () => context.go('/faq'), // D3 sibling-swap,
+              onTap: () => context.push('/faq'), // pushed: back arrow + OS back work
             ),
           ),
           AppSpacing.vSm,
@@ -174,7 +174,7 @@ class SettingsScreen extends ConsumerWidget {
               title: const Text('My Profile'),
               subtitle: const Text('Your details, status and log out'),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () => context.go('/profile'), // D3 sibling-swap,
+              onTap: () => context.push('/profile'), // pushed: back arrow + OS back work
             ),
           ),
           AppSpacing.vSm,
@@ -192,7 +192,7 @@ class SettingsScreen extends ConsumerWidget {
                     : 'Installed v$installedVersion — what\'s new',
               ),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () => context.go('/app-update'), // D3 sibling-swap,
+              onTap: () => context.push('/app-update'), // pushed: back arrow + OS back work
             ),
           ),
           AppSpacing.vSm,

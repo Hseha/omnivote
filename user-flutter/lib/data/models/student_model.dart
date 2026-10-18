@@ -36,6 +36,25 @@ class Student {
     this.ssgSetupPending = false,
   });
 
+  /// Copy with local-only updates (e.g. the session flips `hasVoted` the
+  /// moment the server accepts a ballot, before any profile re-fetch).
+  Student copyWith({bool? hasVoted}) => Student(
+        id: id,
+        name: name,
+        studentId: studentId,
+        email: email,
+        role: role,
+        gradeLevel: gradeLevel,
+        yearLevel: yearLevel,
+        blockNumber: blockNumber,
+        course: course,
+        homeroom: homeroom,
+        department: department,
+        avatarUrl: avatarUrl,
+        hasVoted: hasVoted ?? this.hasVoted,
+        ssgSetupPending: ssgSetupPending,
+      );
+
   /// Tolerant parser for the Laravel user payload.
   ///
   /// The API omits UI-only keys (`grade_level`, `course`, `homeroom`) entirely

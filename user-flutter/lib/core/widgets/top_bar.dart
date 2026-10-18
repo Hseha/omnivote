@@ -37,20 +37,21 @@ class TopBar extends ConsumerWidget implements PreferredSizeWidget {
   @override
   Size get preferredSize => const Size.fromHeight(kToolbarHeight);
 
-  /// Routes each account-menu action. Profile/FAQ/Settings/Candidacy replace
-  /// (D3: sibling-swap via `go` so Profile > FAQ > Settings can never pile
-  /// five deep); Log Out signs out and the global auth listener in app.dart
-  /// redirects to /login.
+  /// Routes each account-menu action. Profile/FAQ/Settings/Candidacy are
+  /// PUSHED so the OS back button and the TopBar back arrow return to where
+  /// the menu was opened; the menu loop is prevented by the screens setting
+  /// `showAccountMenu: false` instead. Log Out signs out and the global auth
+  /// listener in app.dart redirects to /login.
   void _handleAccountAction(BuildContext context, WidgetRef ref, String value) {
     switch (value) {
       case 'profile':
-        context.go('/profile');
+        context.push('/profile');
       case 'candidacy':
-        context.go('/candidacy');
+        context.push('/candidacy');
       case 'faq':
-        context.go('/faq');
+        context.push('/faq');
       case 'settings':
-        context.go('/settings');
+        context.push('/settings');
       // Dev-only: switching the API base URL needs a debug build.
       case 'api-settings':
         if (kDebugMode) context.push('/api-settings');
