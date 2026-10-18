@@ -35,7 +35,9 @@ export default function Results({ activeView = 'results', onNavigate, onLogout, 
   // Search and Filter states for detailed table views
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPosition, setSelectedPosition] = useState('All');
-  const [selectedParty, setSelectedParty] = useState('All');
+  // selectedParty kept to match the dropped party dropdown; the setter was
+  // removed because the party filter UI no longer exists.
+  const selectedParty = 'All';
 
   function formatArchiveDate(iso) {
     if (!iso) return '—';
