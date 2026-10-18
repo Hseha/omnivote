@@ -47,8 +47,11 @@ systemctl is-active --quiet tailscaled || fail "Tailscale must be active."
     || fail "The staging nginx site already exists; refusing to replace it."
 ! ss -ltn | grep -qE "127\\.0\\.0\\.1:${LOCAL_HTTP_PORT}[[:space:]]" \
     || fail "127.0.0.1:${LOCAL_HTTP_PORT} is already in use."
-tailscale serve status 2>&1 | grep -q "No serve config" \
-    || fail "Tailscale Serve already has a configuration; refusing to replace it."
+# Production's Funnel on 443 is a separate endpoint and coexists fine — the
+# only conflict that matters is something already claiming the STAGING port.
+if tailscale serve status 2>&1 | grep -q ":${TAILSCALE_HTTPS_PORT}"; then
+    fail "Tailscale Serve/Funnel already claims port ${TAILSCALE_HTTPS_PORT}; refusing to replace it."
+fi
 
 database_exists="$(mysql --batch --skip-column-names -e \
     "SELECT COUNT(*) FROM information_schema.schemata WHERE schema_name='${DB_NAME}'")"
@@ -150,6 +153,13 @@ server {
     charset utf-8;
     client_max_body_size 25M;
 
+    # Keep redirects relative. nginx's default `absolute_redirect on` bakes
+    # the listen port into the Location header, and this vhost listens on the
+    # loopback-only 127.0.0.1:${LOCAL_HTTP_PORT} — an absolute
+    # http://host:8081/admin/ redirect is unreachable from any browser once
+    # Tailscale Serve/Funnel strips the port on the way in.
+    absolute_redirect off;
+
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
     add_header Referrer-Policy "no-referrer" always;
@@ -194,13 +204,19 @@ log "Verifying the local staging app before exposing it to the tailnet"
 curl --fail --silent --show-error "http://127.0.0.1:${LOCAL_HTTP_PORT}/up" >/dev/null \
     || fail "Staging health check failed; Tailscale Serve was not enabled."
 
-log "Publishing staging only through Tailscale HTTPS"
-tailscale serve --bg --https="${TAILSCALE_HTTPS_PORT}" \
-    "http://127.0.0.1:${LOCAL_HTTP_PORT}"
+if [[ "${STAGING_FUNNEL:-false}" == "true" ]]; then
+    log "Publishing staging through Tailscale Funnel (public internet) on :${TAILSCALE_HTTPS_PORT}"
+    tailscale funnel --bg --https="${TAILSCALE_HTTPS_PORT}" \
+        "http://127.0.0.1:${LOCAL_HTTP_PORT}"
+else
+    log "Publishing staging only through Tailscale Serve (tailnet HTTPS) on :${TAILSCALE_HTTPS_PORT}"
+    tailscale serve --bg --https="${TAILSCALE_HTTPS_PORT}" \
+        "http://127.0.0.1:${LOCAL_HTTP_PORT}"
+fi
 
 printf '\nStaging setup complete.\n'
 printf 'Staging URL: https://%s:%s/admin/\n' "$STAGING_HOST" "$TAILSCALE_HTTPS_PORT"
 printf 'Staging database: %s (separate from production)\n' "$DB_NAME"
 printf 'Generated staging panel passwords were printed once above; save them privately.\n'
 printf 'Production checkout, database, and environment were not modified.\n'
-printf 'Staging uses a separate loopback-only nginx site and Tailscale Serve HTTPS.\n'
+printf 'Staging uses a separate loopback-only nginx site published via Tailscale (Serve by default, Funnel with STAGING_FUNNEL=true).\n'
