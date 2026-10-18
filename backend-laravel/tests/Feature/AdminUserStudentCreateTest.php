@@ -238,6 +238,58 @@ class AdminUserStudentCreateTest extends TestCase
             ->assertJsonPath('user.email', 'juan.dela.cruz2');
     }
 
+    /**
+     * End-to-end guarantee: a student created through User Management →
+     * "Add Student" can apply for candidacy exactly like a seeded/self-
+     * registered account. The apply gate checks account state, electorate
+     * scope (voterIsInScope) and the party seat cap — this pins the whole
+     * chain so a future change to the provisioning form (e.g. making
+     * year_level/department optional again) cannot silently lock
+     * admin-created students out of elections.
+     */
+    public function test_admin_created_student_can_apply_for_candidacy_during_registration(): void
+    {
+        $this->openRegistration();
+
+        $admin = $this->makeUser(['role' => 'admin']);
+
+        $this->actingAs($admin)->postJson('/api/admin/users/students', [
+            'student_id' => '2024-0099',
+            'name' => 'Liza Reyes',
+            'year_level' => '4',
+            'block_number' => '1',
+            'department' => 'College of Computer Studies',
+        ])->assertCreated();
+
+        // The temporary credential blocks every student route behind the
+        // passwordChanged middleware until the forced first-sign-in change;
+        // complete it the way the app does so the candidacy routes are
+        // reachable (the sign-in + change flows are covered elsewhere).
+        $student = User::where('student_id', '2024-0099')->firstOrFail();
+        $student->forceFill(['must_change_password' => false])->save();
+
+        $presidentId = (int) DB::table('positions')->where('slug', 'president')->value('id');
+
+        $this->actingAs($student, 'sanctum')
+            ->postJson('/api/candidate/apply', [
+                'position_id' => $presidentId,
+                'party_name' => 'ASLE',
+                'platform_statement' => "P1\nP2\nP3",
+                'certify' => true,
+            ])
+            ->assertCreated()
+            ->assertJsonPath('candidate.approval_status', 'pending')
+            ->assertJsonPath('candidate.position_id', $presidentId)
+            ->assertJsonPath('candidate.position.slug', 'president');
+
+        $this->assertDatabaseHas('candidates', [
+            'user_id' => $student->id,
+            'position_id' => $presidentId,
+            'party_name' => 'ASLE',
+            'approval_status' => 'pending',
+        ]);
+    }
+
     public function test_a_teacher_cannot_create_student_accounts(): void
     {
         $teacher = $this->makeUser(['role' => 'teacher']);
@@ -265,6 +317,24 @@ class AdminUserStudentCreateTest extends TestCase
             'role' => 'student',
             'is_active' => true,
         ], $attributes));
+    }
+
+    /** Registration window so POST /candidate/apply passes its phase gate. */
+    private function openRegistration(): void
+    {
+        $window = [
+            'registration_opens_at' => now()->subDays(3),
+            'registration_closes_at' => now()->addDay(),
+            'voting_opens_at' => now()->addDays(2),
+            'voting_closes_at' => now()->addDays(3),
+        ];
+
+        foreach ($window as $key => $value) {
+            DB::table('election_settings')->updateOrInsert(
+                ['key' => $key],
+                ['value' => $value, 'updated_at' => now()],
+            );
+        }
     }
 
     /** Minimal schema for the models exercised by these flows. */
@@ -322,6 +392,88 @@ class AdminUserStudentCreateTest extends TestCase
             $table->string('activation_code_hash')->nullable();
             $table->timestamp('activation_code_issued_at')->nullable();
             $table->timestamp('activation_code_used_at')->nullable();
+            $table->timestamps();
+        });
+
+        // Candidacy-apply fixtures: the apply gate reads positions (scope +
+        // seat cap), parties (canonical-name normalization), candidates
+        // (duplicate/seat reservation) and the election timeline.
+        Schema::create('positions', function (Blueprint $table) {
+            $table->id();
+            $table->string('slug')->unique();
+            $table->string('label');
+            $table->string('tier')->default('national');
+            $table->string('scope_type')->nullable();
+            $table->string('scope_value')->nullable();
+            $table->string('scope_type_2')->nullable();
+            $table->string('scope_value_2')->nullable();
+            $table->unsignedTinyInteger('seat_count')->default(1);
+            $table->unsignedTinyInteger('sort_order')->default(0);
+            $table->boolean('is_active')->default(true);
+            $table->timestamps();
+        });
+
+        DB::table('positions')->insert([
+            'slug' => 'president',
+            'label' => 'President',
+            'tier' => 'national',
+            'seat_count' => 1,
+            'sort_order' => 10,
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        Schema::create('parties', function (Blueprint $table) {
+            $table->id();
+            $table->string('name')->unique();
+            $table->unsignedTinyInteger('sort_order')->default(0);
+            $table->timestamps();
+        });
+
+        DB::table('parties')->insert([
+            ['name' => 'ASLE', 'sort_order' => 1, 'created_at' => now(), 'updated_at' => now()],
+            ['name' => 'SVEA', 'sort_order' => 2, 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        Schema::create('candidates', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('user_id');
+            $table->unsignedBigInteger('position_id')->nullable();
+            $table->string('candidate_ref', 36)->nullable()->unique();
+            $table->string('slogan')->nullable();
+            $table->string('party_name')->nullable();
+            $table->text('platform_statement')->nullable();
+            $table->text('platform_points')->nullable();
+            $table->string('photo_path')->nullable();
+            $table->string('approval_status')->default('pending');
+            $table->string('rejection_reason', 1000)->nullable();
+            $table->unsignedInteger('rejection_count')->default(0);
+            $table->timestamp('reapply_blocked_until')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('phases', function (Blueprint $table) {
+            $table->id();
+            $table->string('name')->unique();
+            $table->text('description')->nullable();
+            $table->boolean('is_active')->default(false);
+            $table->timestamps();
+        });
+
+        foreach (['registration', 'voting_open', 'voting_closed', 'registration_closed'] as $phase) {
+            DB::table('phases')->insert([
+                'name' => $phase,
+                'description' => $phase,
+                'is_active' => false,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        Schema::create('election_settings', function (Blueprint $table) {
+            $table->string('key')->primary();
+            $table->text('value')->nullable();
             $table->timestamps();
         });
     }
