@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/announcement_model.dart';
 import '../models/election_result_model.dart';
@@ -7,13 +8,35 @@ final resultRepositoryProvider = Provider<ResultRepository>((ref) {
   return ResultRepository(ref.read(resultServiceProvider));
 });
 
+/// The polls have closed but no admin has run Finalize Winners yet, so the
+/// API refuses to hand out tallies (403 `results_not_published`). The Results
+/// screen renders a "waiting for finalization" placeholder for this instead of
+/// a scary error.
+class ResultsNotPublishedException implements Exception {
+  const ResultsNotPublishedException();
+
+  @override
+  String toString() => 'ResultsNotPublishedException';
+}
+
 class ResultRepository {
   final ResultService _resultService;
 
   ResultRepository(this._resultService);
 
   Future<List<ElectionResult>> getResults() async {
-    final response = await _resultService.getResults();
+    final Response response;
+    try {
+      response = await _resultService.getResults();
+    } on DioException catch (e) {
+      final data = e.response?.data;
+      if (e.response?.statusCode == 403 &&
+          data is Map &&
+          data['code'] == 'results_not_published') {
+        throw const ResultsNotPublishedException();
+      }
+      rethrow;
+    }
     final data = response.data;
     final List<dynamic> raw;
     if (data is List) {

@@ -6,6 +6,12 @@ class ElectionCandidateResult {
   final int votes;
   final int? candidateId;
 
+  /// Party label (e.g. ASLE, SVEA) when the candidate runs under one.
+  final String? partyName;
+
+  /// `national` or `provincial` — drives the winners-first grouping.
+  final String? tier;
+
   /// Backend verdict after results are finalized: `elected`, `tied`, or
   /// `pending` (not officially decided yet).
   final String? electionStatus;
@@ -20,6 +26,8 @@ class ElectionCandidateResult {
     this.positionKey,
     required this.votes,
     this.candidateId,
+    this.partyName,
+    this.tier,
     this.electionStatus,
     this.winnerRank,
     this.certifiedWinner = false,
@@ -37,6 +45,8 @@ class ElectionCandidateResult {
       candidateId: json['id'] is int
           ? json['id'] as int
           : int.tryParse('${json['id'] ?? ''}'),
+      partyName: (json['party_name'] ?? json['party'])?.toString(),
+      tier: json['tier']?.toString(),
       electionStatus: json['election_status'] as String?,
       winnerRank: json['winner_rank'] is int
           ? json['winner_rank'] as int
@@ -53,12 +63,17 @@ class ElectionResult {
   /// Electorate label for a scoped seat ("CCS · Year 1"); null for a
   /// global seat.
   final String? scopeLabel;
+
+  /// `national` or `provincial`; falls back to the first candidate's tier.
+  final String? tier;
+
   final List<ElectionCandidateResult> candidates;
 
   const ElectionResult({
     required this.positionKey,
     this.positionLabel,
     this.scopeLabel,
+    this.tier,
     required this.candidates,
   });
 
@@ -78,13 +93,15 @@ class ElectionResult {
   }
 
   factory ElectionResult.fromJson(Map<String, dynamic> json) {
+    final candidates = (json['candidates'] as List? ?? const [])
+        .map((c) => ElectionCandidateResult.fromJson(Map<String, dynamic>.from(c as Map)))
+        .toList();
     return ElectionResult(
       positionKey: (json['position_key'] ?? json['position'] ?? '').toString(),
       positionLabel: (json['position_label'] ?? json['label'] ?? json['position']) as String?,
       scopeLabel: json['scope_label'] as String?,
-      candidates: (json['candidates'] as List? ?? const [])
-          .map((c) => ElectionCandidateResult.fromJson(Map<String, dynamic>.from(c as Map)))
-          .toList(),
+      tier: json['tier']?.toString() ?? (candidates.isNotEmpty ? candidates.first.tier : null),
+      candidates: candidates,
     );
   }
 }

@@ -125,6 +125,19 @@
   gap: 20px;
 }
 
+/* Full-width tier divider between position cards (National / Provincial) */
+.live-tier-header {
+  grid-column: 1 / -1;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin: 10px 0 -6px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
 .result-card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -281,6 +294,13 @@
   background-color: rgba(239, 68, 68, 0.1);
   border: 1px solid rgba(239, 68, 68, 0.3);
   color: #ef4444;
+}
+
+.finalize-info {
+  background-color: rgba(37, 99, 235, 0.08);
+  border: 1px solid rgba(37, 99, 235, 0.25);
+  color: #1d4ed8;
+  font-weight: 500;
 }
 
 .tie-resolve-btn {
@@ -546,6 +566,37 @@
 .pill-eliminated {
   background-color: rgba(239, 68, 68, 0.1);
   color: #ef4444;
+}
+
+.pill-leading {
+  background-color: rgba(37, 99, 235, 0.12);
+  color: #2563eb;
+}
+
+/* Grouped detail table: tier section headers + per-position subheaders */
+.results-table tbody tr.tier-section-row td,
+.results-table tbody tr.position-subheader-row td {
+  background-color: var(--surface-3);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.results-table tbody tr.tier-section-row td {
+  color: var(--heading);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  padding-top: 16px;
+}
+
+.results-table tbody tr.position-subheader-row td {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  padding: 8px 16px;
+}
+
+.results-table tbody tr.tier-section-row:hover td,
+.results-table tbody tr.position-subheader-row:hover td {
+  background-color: var(--surface-3);
 }
 
 /* Pagination Footer */

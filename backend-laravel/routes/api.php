@@ -416,9 +416,11 @@ Route::middleware(['auth:sanctum', 'role:student,candidate,ssg_president', 'pass
     Route::post('/vote', [VoteController::class, 'submit'])
         ->middleware('checkPhase:voting_open');
 
-    // Results (published after polls close) + anonymous receipt verification
+    // Results (published after polls close AND after Finalize Winners raises
+    // the results_published flag — students never see provisional tallies)
+    // + anonymous receipt verification
     Route::get('/results', [ResultsController::class, 'index'])
-        ->middleware('checkPhase:voting_closed');
+        ->middleware(['checkPhase:voting_closed', 'resultsPublished']);
     // Receipt verification is an hash-comparison oracle, so it gets its own
     // ceiling (security assessment M-2). Keyed by the *account* rather than the
     // IP because a whole voting hall shares one source address, and a

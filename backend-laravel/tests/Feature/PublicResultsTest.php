@@ -14,7 +14,8 @@ use Tests\TestCase;
 /**
  * Public results + SSG officer roster projections.
  *
- *   GET /api/results                 — per-position tallies (voting_closed only)
+ *   GET /api/results                 — per-position tallies (voting_closed
+ *                                      AND results_published only)
  *   GET /api/admin/ssg/officers      — finalized roster for the SSG President view
  *   GET /api/admin/candidates/export — 501 stub (real export = /admin/results)
  *
@@ -54,8 +55,9 @@ class PublicResultsTest extends TestCase
     public function test_public_results_tally_votes_and_resolve_candidate_names(): void
     {
         $this->closeVoting();
+        $this->publishResults();
 
-        $this->makeCandidate('ref-ana', 'Ana', 'president', votes: 3);
+        $this->makeCandidate('ref-ana', 'Ana', 'president', votes: 3, party: 'ASLE');
         $this->makeCandidate('ref-ben', 'Ben', 'president', votes: 2);
 
         $tally = $this->results()->json('results.0');
@@ -69,6 +71,13 @@ class PublicResultsTest extends TestCase
         $this->assertSame('Ana', $tally['candidates'][0]['name']);
         $this->assertSame(3, $tally['candidates'][0]['votes']);
         $this->assertSame('ref-ana', $tally['candidates'][0]['candidate_ref']);
+
+        // Party + tier ride along for the admin filter dropdowns and the
+        // student app's National/Provincial grouping.
+        $this->assertSame('ASLE', $tally['candidates'][0]['party_name']);
+        $this->assertSame('—', $tally['candidates'][1]['party_name']);
+        $this->assertSame('national', $tally['candidates'][0]['tier']);
+
         $this->assertSame('Ben', $tally['candidates'][1]['name']);
         $this->assertSame(2, $tally['candidates'][1]['votes']);
     }
@@ -76,6 +85,7 @@ class PublicResultsTest extends TestCase
     public function test_results_survive_ledger_rows_whose_candidate_or_position_is_gone(): void
     {
         $this->closeVoting();
+        $this->publishResults();
 
         // Ledger rows outlive the rows they point at: a withdrawn candidate and
         // a retired position slug must degrade gracefully, not 500 the endpoint.
@@ -97,6 +107,7 @@ class PublicResultsTest extends TestCase
     public function test_results_are_split_into_one_group_per_college_and_year(): void
     {
         $this->closeVoting();
+        $this->publishResults();
 
         // Two nominees in the same contested seat (CCS, year 1) and one in
         // another (COE, year 1): the tallies must not bleed across groups.
@@ -135,9 +146,29 @@ class PublicResultsTest extends TestCase
         $response->assertStatus(403)->assertJsonPath('phase', null);
     }
 
+    public function test_public_results_are_refused_until_results_are_published(): void
+    {
+        // Polls closed, tallies exist, but nobody has finalized yet: the
+        // student endpoint must not leak provisional numbers.
+        $this->closeVoting();
+        $this->makeCandidate('ref-ana', 'Ana', 'president', votes: 3);
+
+        $this->asStudent()
+            ->getJson('/api/results')
+            ->assertStatus(403)
+            ->assertJsonPath('code', 'results_not_published');
+
+        // Finalize Winners raises the flag (ResultsPublisher::publish) and the
+        // same endpoint opens up.
+        $this->publishResults();
+
+        $this->results()->assertOk();
+    }
+
     public function test_result_groups_are_returned_in_ballot_order_not_alphabetical(): void
     {
         $this->closeVoting();
+        $this->publishResults();
 
         // Ballot order is president (national, 10) → year_level_representative
         // (national, 20) → governor (provincial, 5). The old alphabetical
@@ -186,6 +217,7 @@ class PublicResultsTest extends TestCase
     public function test_equal_vote_candidates_are_ordered_deterministically(): void
     {
         $this->closeVoting();
+        $this->publishResults();
 
         // Equal tallies must not flip between refreshes: the ledger tiebreak
         // orders by candidate_ref, which lands Amy before Zoe here.
@@ -369,6 +401,7 @@ class PublicResultsTest extends TestCase
     public function test_archive_term_hides_last_terms_winner_from_live_results(): void
     {
         $this->closeVoting();
+        $this->publishResults();
         $this->twoFactorOff();
 
         $winner = $this->makeCandidate('ref-ana', 'Ana', 'president', votes: 3, elected: true);
@@ -477,6 +510,15 @@ class PublicResultsTest extends TestCase
         ]);
     }
 
+    /** Raises the results_published flag the way Finalize Winners does. */
+    private function publishResults(): void
+    {
+        DB::table('election_settings')->updateOrInsert(
+            ['key' => 'results_published'],
+            ['value' => '1', 'updated_at' => now(), 'created_at' => now()],
+        );
+    }
+
     private function window(array $dates): void
     {
         foreach ($dates as $key => $value) {
@@ -499,6 +541,7 @@ class PublicResultsTest extends TestCase
         bool $elected = false,
         ?string $department = null,
         ?string $yearLevel = null,
+        ?string $party = null,
     ): Candidate {
         $candidate = Candidate::create([
             'user_id' => $this->makeUser([
@@ -509,6 +552,7 @@ class PublicResultsTest extends TestCase
             ])->id,
             'position_id' => DB::table('positions')->where('slug', $positionSlug)->value('id'),
             'candidate_ref' => $ref,
+            'party_name' => $party,
             'approval_status' => 'approved',
             'election_status' => $elected ? 'elected' : 'pending',
             'winner_rank' => $elected ? 1 : null,
@@ -642,6 +686,7 @@ class PublicResultsTest extends TestCase
             $table->string('candidate_ref', 36)->nullable()->unique();
             $table->string('name')->nullable();
             $table->string('party_list')->nullable();
+            $table->string('party_name')->nullable();
             $table->string('position_key')->nullable();
             $table->string('approval_status')->default('pending');
             $table->boolean('certified_winner')->default(false);

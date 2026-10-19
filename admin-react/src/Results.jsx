@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import { 
   CheckCircle2, 
   TrendingUp,
@@ -35,9 +35,8 @@ export default function Results({ activeView = 'results', onNavigate, onLogout, 
   // Search and Filter states for detailed table views
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPosition, setSelectedPosition] = useState('All');
-  // selectedParty kept to match the dropped party dropdown; the setter was
-  // removed because the party filter UI no longer exists.
-  const selectedParty = 'All';
+  const [selectedTier, setSelectedTier] = useState('All');
+  const [selectedParty, setSelectedParty] = useState('All');
 
   function formatArchiveDate(iso) {
     if (!iso) return '—';
@@ -145,9 +144,9 @@ export default function Results({ activeView = 'results', onNavigate, onLogout, 
       const s = candidate.election_status;
       if (s === 'elected') return 'WINNER';
       if (s === 'tied') return 'TIE';
-      if (s && s !== 'pending') return 'Eliminated';
+      if (s && s !== 'pending') return 'Did not win';
       if (candidate.votes === winningVotes && winningVotes > 0 && sortedCandidates.length > 0) return 'LEADING';
-      return candidate.votes === winningVotes ? 'LEADING' : 'Eliminated';
+      return candidate.votes === winningVotes ? 'LEADING' : 'Did not win';
     };
 
     return sortedCandidates.map((candidate, index) => {
@@ -166,7 +165,8 @@ export default function Results({ activeView = 'results', onNavigate, onLogout, 
           .toUpperCase(),
         name,
         position: result.position_label || result.position_key,
-        party: '—',
+        party: candidate.party_name || '—',
+        tier: candidate.tier || null,
         votes,
         percentage,
         status: statusFor(candidate),
@@ -175,11 +175,18 @@ export default function Results({ activeView = 'results', onNavigate, onLogout, 
   });
   const totalVotes = candidateRows.reduce((sum, candidate) => sum + candidate.votes, 0);
 
+  // A finalize has run once any candidate carries a non-pending status.
+  const isFinalized = candidateRows.some((c) => c.electionStatus !== 'pending');
+
   const getFilteredCandidates = () => {
     return candidateRows.filter(item => {
-      if (subView === 'elected' && item.status !== 'WINNER') return false;
-      if (subView === 'unsuccessful' && item.status !== 'Eliminated') return false;
+      // Pre-finalize the group leader is 'LEADING', not 'WINNER' — keep it in
+      // the elected list (marked provisional) so the view is never blank.
+      if (subView === 'elected' && item.status !== 'WINNER'
+        && !(item.status === 'LEADING' && !isFinalized)) return false;
+      if (subView === 'unsuccessful' && item.status !== 'Did not win') return false;
       if (selectedPosition !== 'All' && item.position !== selectedPosition) return false;
+      if (selectedTier !== 'All' && item.tier !== selectedTier) return false;
       if (selectedParty !== 'All' && item.party !== selectedParty) return false;
       if (searchTerm && !item.name.toLowerCase().includes(searchTerm.toLowerCase())) return false;
       return true;
@@ -187,8 +194,46 @@ export default function Results({ activeView = 'results', onNavigate, onLogout, 
   };
   const filteredCandidates = getFilteredCandidates();
 
-  // A finalize has run once any candidate carries a non-pending status.
-  const isFinalized = candidateRows.some((c) => c.electionStatus !== 'pending');
+  // Distinct filter options, derived from the loaded data (e.g. ASLE, SVEA).
+  const tierOptions = Array.from(new Set(candidateRows.map((r) => r.tier).filter(Boolean)))
+    .sort((a, b) => a.localeCompare(b));
+  const partyOptions = Array.from(
+    new Set(candidateRows.map((r) => r.party).filter((p) => p && p !== '—')),
+  ).sort((a, b) => a.localeCompare(b));
+
+  // Ballot order grouping for the detail table: National first, then
+  // Provincial, with one subheader per position inside each tier.
+  const TIER_LABELS = { national: 'National Positions', provincial: 'Provincial Positions' };
+  const groupedTableRows = (() => {
+    const tiers = Array.from(new Set(filteredCandidates.map((r) => r.tier || 'other')));
+    tiers.sort((a, b) => {
+      const rank = (t) => (t === 'national' ? 0 : t === 'provincial' ? 1 : 2);
+      return rank(a) - rank(b) || a.localeCompare(b);
+    });
+    return tiers.map((tier) => {
+      const positions = [];
+      filteredCandidates.forEach((row) => {
+        const rowTier = row.tier || 'other';
+        if (rowTier !== tier) return;
+        let section = positions.find((s) => s.position === row.position);
+        if (!section) {
+          section = { position: row.position, rows: [] };
+          positions.push(section);
+        }
+        section.rows.push(row);
+      });
+      return {
+        tier,
+        label: TIER_LABELS[tier] || 'Other Positions',
+        positions,
+      };
+    });
+  })();
+
+  const hasActiveFilters = searchTerm !== ''
+    || selectedPosition !== 'All'
+    || selectedTier !== 'All'
+    || selectedParty !== 'All';
   const tiedCandidates = candidateRows.filter((c) => c.status === 'TIE');
   const hasTies = tiedCandidates.length > 0;
 
@@ -236,7 +281,13 @@ export default function Results({ activeView = 'results', onNavigate, onLogout, 
       {/* Main Content Area */}
       <main className="main-content">
         <Header
-          breadcrumb={subView === 'live' ? 'Election Results — Live' : 'All Candidates Results'}
+          breadcrumb={
+            subView === 'live' ? 'Election Results — Live'
+              : subView === 'elected' ? 'Results — Elected'
+                : subView === 'unsuccessful' ? 'Results — Unsuccessful'
+                  : subView === 'past-terms' ? 'Results — Past Terms'
+                    : 'All Candidates Results'
+          }
           currentUser={currentUser}
           onNavigate={onNavigate}
         />
@@ -267,8 +318,8 @@ export default function Results({ activeView = 'results', onNavigate, onLogout, 
                   </h3>
                   <p className="finalize-panel-body">
                     {isFinalized
-                      ? 'Winners have been determined from the sealed ledger. Recount anytime to recompute from the raw votes.'
-                      : 'Auto-determine every seat from the raw vote ledger. Winners are certified automatically; tied seats are held for your decision.'}
+                      ? 'Winners have been determined from the sealed ledger, and students can now see the official results in the mobile app. Recount anytime to recompute from the raw votes.'
+                      : 'Auto-determine every seat from the raw vote ledger. Students see nothing on the mobile app until you finalize — then winners are certified automatically and published. Tied seats are held for your decision.'}
                   </p>
                   {isFinalized && hasTies && (
                     <p className="finalize-panel-body finalize-tie-warning">
@@ -302,7 +353,7 @@ export default function Results({ activeView = 'results', onNavigate, onLogout, 
               <div className="metrics-grid">
                 <div className="metric-card">
                   <div className="metric-header">
-                    <span className="metric-title">TOTAL VOTES RECORDED</span>
+                    <span className="metric-title">Total Votes Recorded</span>
                     <div className="metric-icon-box green-icon-box">
                       <CheckCircle2 size={18} color="#16a34a" />
                     </div>
@@ -319,7 +370,11 @@ export default function Results({ activeView = 'results', onNavigate, onLogout, 
                     </div>
                   </div>
                   <div className="metric-value">{loadingResults ? '…' : candidateRows.filter((c) => c.electionStatus === 'elected' || c.status === 'WINNER').length}</div>
-                  <div className="metric-subtitle">Officially elected seats</div>
+                  <div className="metric-subtitle">
+                    {isFinalized
+                      ? 'Officially elected seats — live on the mobile app'
+                      : 'Officially elected seats (run Finalize Winners)'}
+                  </div>
                 </div>
               </div>
 
@@ -351,23 +406,37 @@ export default function Results({ activeView = 'results', onNavigate, onLogout, 
                 </button>
               </div>
 
-              {/* Position Category Cards Grid */}
+              {/* Position Category Cards Grid — National tier first, then Provincial */}
               <div className="results-grid">
                 {loadingResults && <p className="no-results-banner">Loading published results...</p>}
-                {!loadingResults && positionResults.map((result) => {
+                {!loadingResults && positionResults.map((result, idx) => {
                   const candidates = candidateRows.filter(
                     (candidate) => candidate.position === (result.position_label || result.position_key),
                   );
-                  return renderResultSection(
-                    result.position_label || result.position_key,
-                    candidates.map((candidate) => ({
-                      ...candidate,
-                      percentage: `${candidate.percentage.toFixed(1)}%`,
-                      status: candidate.status === 'WINNER' ? 'WINNER'
-                        : candidate.status === 'TIE' ? 'TIE'
-                        : candidate.status === 'LEADING' ? 'LEADING'
-                        : 'RUNNER UP',
-                    })),
+                  const tierOf = (r) => candidateRows.find(
+                    (c) => c.position === (r.position_label || r.position_key),
+                  )?.tier || r.candidates?.[0]?.tier || null;
+                  const tier = tierOf(result);
+                  const prevTier = idx > 0 ? tierOf(positionResults[idx - 1]) : null;
+                  const tierLabel = tier === 'national' ? 'National Positions'
+                    : tier === 'provincial' ? 'Provincial Positions' : null;
+                  return (
+                    <Fragment key={`${result.position_key}-${idx}`}>
+                      {tierLabel && tier !== prevTier && (
+                        <h3 className="live-tier-header">{tierLabel}</h3>
+                      )}
+                      {renderResultSection(
+                        result.position_label || result.position_key,
+                        candidates.map((candidate) => ({
+                          ...candidate,
+                          percentage: `${candidate.percentage.toFixed(1)}%`,
+                          status: candidate.status === 'WINNER' ? 'WINNER'
+                            : candidate.status === 'TIE' ? 'TIE'
+                            : candidate.status === 'LEADING' ? 'LEADING'
+                            : 'Did not win',
+                        })),
+                      )}
+                    </Fragment>
                   );
                 })}
               </div>
@@ -464,12 +533,27 @@ export default function Results({ activeView = 'results', onNavigate, onLogout, 
                   <ArrowLeft size={16} />
                 </button>
                 <h2 className="detail-view-title">
-                  {subView === 'elected' ? 'All Elected Results' : subView === 'unsuccessful' ? 'All Unsuccessful' : 'All Candidates Results'}
+                  {subView === 'elected' ? 'All Elected Results' : subView === 'unsuccessful' ? 'All Unsuccessful Candidates' : 'All Candidates Results'}
                 </h2>
                 <div className="phase-text-badge">
                   Current Phase: <span className={phaseClass(phase)}>{displayPhase(phase)}</span>
                 </div>
               </div>
+
+              {subView === 'elected' && !isFinalized && (
+                <div className="finalize-banner finalize-info">
+                  Results are not finalized yet — the names below are the current
+                  vote leaders (provisional). Run <strong>Finalize Winners</strong> on
+                  the main Results page to certify them and publish the results to
+                  students.
+                </div>
+              )}
+              {subView === 'unsuccessful' && !isFinalized && (
+                <div className="finalize-banner finalize-info">
+                  Results are not finalized yet — "did not win" below is based on
+                  the current vote counts and may change after Finalize Winners.
+                </div>
+              )}
 
               <div className="metrics-grid-3col">
                 <div className="metric-card">
@@ -480,7 +564,7 @@ export default function Results({ activeView = 'results', onNavigate, onLogout, 
                     </div>
                   </div>
                   <div className="metric-value">{loadingResults ? '…' : candidateRows.length}</div>
-                  <div className="metric-subtitle">Candidates included in published results</div>
+                  <div className="metric-subtitle">Candidates with recorded votes</div>
                 </div>
 
                 <div className="metric-card">
@@ -522,6 +606,22 @@ export default function Results({ activeView = 'results', onNavigate, onLogout, 
                   <div className="select-dropdown-container">
                     <select 
                       className="filter-select"
+                      value={selectedTier}
+                      onChange={(e) => setSelectedTier(e.target.value)}
+                    >
+                      <option value="All">Level: All</option>
+                      {tierOptions.map((tier) => (
+                        <option key={tier} value={tier}>
+                          {tier === 'national' ? 'National' : tier === 'provincial' ? 'Provincial' : tier}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={14} className="dropdown-arrow" />
+                  </div>
+
+                  <div className="select-dropdown-container">
+                    <select 
+                      className="filter-select"
                       value={selectedPosition}
                       onChange={(e) => setSelectedPosition(e.target.value)}
                     >
@@ -535,9 +635,19 @@ export default function Results({ activeView = 'results', onNavigate, onLogout, 
                     <ChevronDown size={14} className="dropdown-arrow" />
                   </div>
 
-                  {/* Party filter removed; the dataset exposes "—" and no real
-                      party values are surfaced by the live results response yet.
-                      Re-enable once live results include party_name. */}
+                  <div className="select-dropdown-container">
+                    <select 
+                      className="filter-select"
+                      value={selectedParty}
+                      onChange={(e) => setSelectedParty(e.target.value)}
+                    >
+                      <option value="All">Party: All</option>
+                      {partyOptions.map((party) => (
+                        <option key={party} value={party}>{party}</option>
+                      ))}
+                    </select>
+                    <ChevronDown size={14} className="dropdown-arrow" />
+                  </div>
                 </div>
 
                 <button className="btn-export-csv">
@@ -561,38 +671,20 @@ export default function Results({ activeView = 'results', onNavigate, onLogout, 
                   <tbody>
                     {filteredCandidates.length === 0 ? (
                       <tr>
-                        <td colSpan="6" className="no-data-cell">No candidates match your search or filter selections.</td>
+                        <td colSpan="7" className="no-data-cell">No candidates match your search or filter selections.</td>
                       </tr>
                     ) : (
-                      filteredCandidates.map((row, index) => (
-                      <tr key={index}>
-                        <td className="rank-cell">{row.rank}</td>
-                        <td>
-                          <div className="candidate-name-cell">
-                            <span className="avatar-initials">{row.initials}</span>
-                            <span className="candidate-table-name">{row.name}</span>
-                          </div>
-                        </td>
-                        <td className="text-muted-cell">{row.position}</td>
-                        <td className="text-muted-cell hidden-party">{row.party}</td>
-                        <td className="votes-cell">{row.votes}</td>
-                        <td className="percentage-cell">
-                          <div className="table-progress-wrap">
-                            <span className="pct-text">{row.percentage}%</span>
-                            <div className="table-progress-bg">
-                              <div 
-                                className={`table-progress-fill ${row.status === 'WINNER' ? 'fill-green' : 'fill-red'}`}
-                                style={{ width: `${row.percentage}%` }}
-                              />
-                            </div>
-                          </div>
-                        </td>
-                        <td>
-                          <span className={`status-pill ${row.status === 'WINNER' ? 'pill-winner' : row.status === 'TIE' ? 'pill-tie' : 'pill-eliminated'}`}>
-                            {row.status === 'TIE' ? 'TIE' : row.status}
-                          </span>
-                        </td>
-                      </tr>
+                      groupedTableRows.map((group) => (
+                        group.positions.map((section, sIdx) => (
+                          <TableSectionRows
+                            key={`${group.tier}-${section.position}-${sIdx}`}
+                            firstInTier={sIdx === 0}
+                            tierLabel={group.label}
+                            positionLabel={section.position}
+                            rows={section.rows}
+                            provisional={subView === 'elected' && !isFinalized}
+                          />
+                        ))
                       ))
                     )}
                   </tbody>
@@ -601,7 +693,7 @@ export default function Results({ activeView = 'results', onNavigate, onLogout, 
                 <div className="table-footer">
                   <span className="footer-pagination-info">
                     Showing {filteredCandidates.length} of {candidateRows.length} candidates
-                    {searchTerm || selectedPosition !== 'All' || selectedParty !== 'All' ? ' after filters' : ''}
+                    {hasActiveFilters ? ' after filters' : ''}
                   </span>
                 </div>
               </div>
@@ -610,5 +702,64 @@ export default function Results({ activeView = 'results', onNavigate, onLogout, 
         </div>
       </main>
     </div>
+  );
+}
+
+/**
+ * One position's rows inside the grouped detail table, with a tier section
+ * header (National/Provincial) above the first position of each tier and a
+ * position subheader above its candidates.
+ */
+function TableSectionRows({ firstInTier, tierLabel, positionLabel, rows, provisional }) {
+  return (
+    <>
+      {firstInTier && (
+        <tr className="tier-section-row">
+          <td colSpan="7">{tierLabel}</td>
+        </tr>
+      )}
+      <tr className="position-subheader-row">
+        <td colSpan="7">{positionLabel}</td>
+      </tr>
+      {rows.map((row) => {
+        const isLeadingProvisional = row.status === 'LEADING' && provisional;
+        const statusLabel = isLeadingProvisional ? 'LEADING (PROVISIONAL)' : row.status;
+        const pillClass = row.status === 'WINNER' ? 'pill-winner'
+          : row.status === 'TIE' ? 'pill-tie'
+            : row.status === 'LEADING' ? 'pill-leading'
+              : 'pill-eliminated';
+        const fillClass = row.status === 'WINNER' ? 'fill-green'
+          : row.status === 'LEADING' ? 'fill-blue'
+            : 'fill-red';
+        return (
+          <tr key={`${row.id ?? row.name}-${row.position}`}>
+            <td className="rank-cell">{row.rank}</td>
+            <td>
+              <div className="candidate-name-cell">
+                <span className="avatar-initials">{row.initials}</span>
+                <span className="candidate-table-name">{row.name}</span>
+              </div>
+            </td>
+            <td className="text-muted-cell">{row.position}</td>
+            <td className="text-muted-cell hidden-party">{row.party}</td>
+            <td className="votes-cell">{row.votes}</td>
+            <td className="percentage-cell">
+              <div className="table-progress-wrap">
+                <span className="pct-text">{row.percentage.toFixed(1)}%</span>
+                <div className="table-progress-bg">
+                  <div
+                    className={`table-progress-fill ${fillClass}`}
+                    style={{ width: `${row.percentage.toFixed(2)}%` }}
+                  />
+                </div>
+              </div>
+            </td>
+            <td>
+              <span className={`status-pill ${pillClass}`}>{statusLabel}</span>
+            </td>
+          </tr>
+        );
+      })}
+    </>
   );
 }
