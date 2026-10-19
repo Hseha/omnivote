@@ -24,6 +24,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: production
+    permissions:
+      contents: read
+      # Required by the Tailscale OIDC action below (join the tailnet).
+      id-token: write
     steps:
       # Manual runs build the dispatch SHA; called runs build the ref their
       # caller passes (the auto-release workflow's bump commit).
@@ -54,7 +58,21 @@ jobs:
         working-directory: user-flutter
         run: flutter test
 
-      - name: Validate public API and signing inputs
+      # The API pre-flight below runs over the tailnet, so the runner has to
+      # be on it. The public URL in front of the production server is a
+      # Tailscale Funnel edge — an EXTERNAL dependency that must not be able
+      # to fail this build. A broken edge once made the API check fail with a
+      # TLS error and skipped every step after it, so the signed APKs were
+      # never produced.
+      - name: Connect to the production tailnet
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ vars.TS_OAUTH_CLIENT_ID }}
+          audience: ${{ vars.TS_AUDIENCE }}
+          tags: tag:omnivote-ci
+          ping: ${{ vars.DEPLOY_HOST }}
+
+      - name: Validate API and signing inputs
         env:
           API_BASE_URL: ${{ vars.PRODUCTION_API_BASE_URL }}
           KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
@@ -79,9 +97,37 @@ jobs:
               ;;
           esac
 
+          # Reach the API over the tailnet. --resolve keeps the real hostname
+          # for SNI and the Host header (the certificate is issued for the
+          # name, not for the 100.x address) while the connection itself
+          # stays inside the tailnet. The resolver exits non-zero rather than
+          # printing an empty address, so a failure here stops the build
+          # instead of silently falling back to the public path.
+          url_host="$(python3 -c 'import sys, urllib.parse; print(urllib.parse.urlsplit(sys.argv[1]).hostname or "")' "$API_BASE_URL")"
+          : "${url_host:?Could not read a hostname from PRODUCTION_API_BASE_URL}"
+          tailnet_ip="$(bash .github/scripts/resolve-tailnet-ip.sh "$url_host")"
+          echo "Validating $API_BASE_URL over the tailnet ($url_host -> $tailnet_ip)"
+
           curl --fail --silent --show-error --max-time 20 \
             --output /dev/null \
+            --resolve "${url_host}:443:${tailnet_ip}" \
             "$API_BASE_URL/election/status"
+
+      # Reported, never fatal. The public Funnel URL is what students
+      # actually hit, so an outage there matters — but it is not a reason to
+      # throw away a signed build. The scheduled "Funnel health check"
+      # workflow watches this path and fails the run when it stays down.
+      - name: Probe the public student endpoint
+        env:
+          API_BASE_URL: ${{ vars.PRODUCTION_API_BASE_URL }}
+        run: |
+          set -Eeuo pipefail
+          if curl --fail --silent --show-error --max-time 20 \
+               --output /dev/null "$API_BASE_URL/election/status"; then
+            echo "Public student endpoint is reachable."
+          else
+            echo "::warning title=Public student endpoint unreachable::$API_BASE_URL did not answer. The API itself was validated over the tailnet and the build continues, but students cannot reach the app until the Funnel edge recovers. The scheduled 'Funnel health check' workflow reports the same condition."
+          fi
 
       - name: Configure release signing
         env:

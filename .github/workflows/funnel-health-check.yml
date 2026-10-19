@@ -1,0 +1,81 @@
+# ============================================================================
+# Probes the PUBLIC student endpoint on a schedule.
+#
+# The student app and the public results page are served through a Tailscale
+# Funnel edge in front of the production server. That edge is an external
+# dependency: when it breaks, the server is healthy, the API is healthy, and
+# every student still gets a connection error.
+#
+# Nothing else in CI notices that. The release build's own API pre-flight now
+# validates over the tailnet (so a broken edge can never fail a build or skip
+# the signing steps), which means the public path needs a check of its own.
+#
+# The check also probes the tailnet side, so the failure says WHICH half is
+# broken:
+#
+#   public fails, tailnet works  -> the Funnel edge is the problem
+#   both fail                     -> the production server itself is down
+#
+# A failed run is the alert: GitHub notifies the repository's watchers and the
+# run carries an ::error:: annotation naming the endpoint and the fix.
+# ============================================================================
+name: Funnel health check
+
+on:
+  schedule:
+    # Every 30 minutes. The odd minutes avoid the top-of-hour stampede that
+    # GitHub's scheduler already creates for every other scheduled workflow.
+    - cron: '7,37 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: funnel-health-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Check the public student endpoint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    permissions:
+      contents: read
+      # Required by the Tailscale OIDC action (join the tailnet).
+      id-token: write
+    steps:
+      # Joining the tailnet and pinging the server is also the "is the
+      # production box alive?" half of the diagnosis: the action fails this
+      # step when the host cannot be reached, which is exactly the signal
+      # that distinguishes a dead server from a broken Funnel edge.
+      - name: Connect to the production tailnet
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ vars.TS_OAUTH_CLIENT_ID }}
+          audience: ${{ vars.TS_AUDIENCE }}
+          tags: tag:omnivote-ci
+          ping: ${{ vars.DEPLOY_HOST }}
+
+      - name: Probe the public Funnel endpoint
+        env:
+          API_BASE_URL: ${{ vars.PRODUCTION_API_BASE_URL }}
+        run: |
+          set -Eeuo pipefail
+          : "${API_BASE_URL:?Set PRODUCTION_API_BASE_URL in the production environment}"
+
+          # Three attempts: the edge occasionally drops a single connection,
+          # and a monitor that cries wolf gets ignored.
+          for attempt in 1 2 3; do
+            if curl --fail --silent --show-error --max-time 20 \
+                 --output /dev/null "$API_BASE_URL/election/status"; then
+              echo "Public student endpoint is healthy."
+              exit 0
+            fi
+            echo "attempt $attempt: $API_BASE_URL/election/status did not answer"
+            if [ "$attempt" -lt 3 ]; then sleep 30; fi
+          done
+
+          echo "::error title=Public student endpoint unreachable::$API_BASE_URL did not answer after 3 attempts. The tailnet path to the production server works (see the previous step), so the Tailscale Funnel edge in front of it is the broken side — students cannot reach the app. Re-register the funnel on the server: sudo tailscale funnel --bg --https=443 http://127.0.0.1:8080 (and :8443 -> http://127.0.0.1:8081). If that does not restore it, restart tailscaled."
+          exit 1
