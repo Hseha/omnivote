@@ -195,6 +195,8 @@ restore procedure before collecting real election data.
 
 | Document | Purpose |
 |---|---|
+| [`PRODUCT.md`](PRODUCT.md) | What OmniVote is, who each surface is for, and the boundaries between them |
+| [`DESIGN.md`](DESIGN.md) | The visual authority — tokens, theme packs, and shared component rules |
 | [`deploy/README.md`](deploy/README.md) | Production server and deployment runbook |
 | [`docs/ARCHITECTURE_GUIDE.md`](docs/ARCHITECTURE_GUIDE.md) | System architecture and request flow |
 | [`docs/01_PROJECT_OVERVIEW.md`](docs/01_PROJECT_OVERVIEW.md) | Roles, election lifecycle, and product overview |
