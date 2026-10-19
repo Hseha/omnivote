@@ -84,6 +84,23 @@ if [[ -d "$APP_DIR/backend-laravel/storage" && -d "$APP_DIR/backend-laravel/boot
 fi
 install -d -o "$WEB_USER" -g "$WEB_USER" /var/www/omnivote/letsencrypt
 
+# The deploy account owns the checkout, and git refuses to operate on a
+# repository owned by somebody else ("detected dubious ownership"). The
+# exemption below means a future ownership drift cannot break the deploy: git
+# is told to trust this directory for the deploy account specifically.
+sudo -u "$DEPLOY_USER" git config --global --add safe.directory "$APP_DIR"
+
+# The forced command for the CI/CD deploy key. It snapshots deploy.sh before
+# running it, because the script resets the very checkout it lives in and
+# bash would otherwise re-read the replaced file mid-run (see the script's
+# own header for the full explanation).
+install -m 755 "$APP_DIR/deploy/omnivote-deploy" /usr/local/sbin/omnivote-deploy
+
+# The root-owned helper that installs the rendered nginx vhosts. The deploy
+# account may call it but never writes to /etc/nginx itself, and it restores
+# the previous vhosts if the new ones fail `nginx -t`.
+install -m 755 "$APP_DIR/deploy/omnivote-nginx-vhosts" /usr/local/sbin/omnivote-nginx-vhosts
+
 # ---------------------------------------------------------------------------
 log "4/9  Hardening PHP-FPM (see deploy/php-fpm-pool.conf for tuning)"
 PHP_INI="/etc/php/$PHP_VER/fpm/php.ini"

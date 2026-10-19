@@ -73,6 +73,12 @@ jobs:
             -v "$PWD/nginx-ci/certs:/etc/ssl/private:ro" \
             nginx:alpine nginx -t
 
+      - name: Validate the deploy script
+        # The deploy script has broken production twice, in two different
+        # ways, both of which only showed up at deploy time. These checks are
+        # cheap and catch the next one before it reaches the server.
+        run: bash deploy/tests/deploy-script_test.sh
+
       - name: Set up PHP 8.4
         uses: shivammathur/setup-php@v2
         with:
