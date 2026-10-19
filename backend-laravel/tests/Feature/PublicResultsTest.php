@@ -301,6 +301,62 @@ class PublicResultsTest extends TestCase
             ->assertJsonPath('data.0.votes', 2);
     }
 
+    public function test_ssg_officer_roster_exposes_the_position_electorate_hierarchy(): void
+    {
+        $this->closeVoting();
+        $this->twoFactorOff();
+
+        // A global seat: one position, no electorate.
+        $this->makeCandidate('ref-ana', 'Ana', 'president', votes: 3, elected: true);
+
+        // A scoped seat: one position contested per (department, year level).
+        $this->makeCandidate(
+            'ref-bob',
+            'Bob',
+            'year_level_representative',
+            votes: 2,
+            elected: true,
+            department: 'Computer Studies',
+            yearLevel: '3',
+        );
+
+        $this->asAdmin()
+            ->getJson('/api/admin/ssg/officers')
+            ->assertOk()
+            ->assertJsonCount(2, 'data')
+            // The global seat carries the base label alone, with no electorate.
+            ->assertJsonPath('data.0.position_key', 'president')
+            ->assertJsonPath('data.0.position_base_label', 'President')
+            ->assertJsonPath('data.0.position_scope', null)
+            ->assertJsonPath('data.0.position_scoped', false)
+            ->assertJsonPath('data.0.is_elected', true)
+            // The scoped seat returns the base position and the electorate
+            // separately, so the console nests the winner under the position
+            // instead of repeating the position name on every row.
+            ->assertJsonPath('data.1.position_key', 'year_level_representative')
+            ->assertJsonPath('data.1.position_base_label', 'Year Level Representative')
+            ->assertJsonPath('data.1.position_scope', 'Computer Studies · Year 3')
+            ->assertJsonPath('data.1.position_scoped', true)
+            ->assertJsonPath('data.1.is_elected', true);
+    }
+
+    public function test_ssg_officer_roster_marks_unfinalized_rows_as_provisional(): void
+    {
+        $this->closeVoting();
+        $this->twoFactorOff();
+
+        // No finalize has run, so the roster falls back to the raw vote
+        // leaders. Those rows are NOT confirmed winners, and the console
+        // labels them as provisional rather than "Elected".
+        $this->makeCandidate('ref-ana', 'Ana', 'president', votes: 2);
+
+        $this->asAdmin()
+            ->getJson('/api/admin/ssg/officers')
+            ->assertOk()
+            ->assertJsonPath('data.0.name', 'Ana')
+            ->assertJsonPath('data.0.is_elected', false);
+    }
+
     public function test_ssg_officer_roster_waits_until_voting_closes(): void
     {
         $this->twoFactorOff();

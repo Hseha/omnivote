@@ -9,6 +9,25 @@ use App\Support\TermArchive;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 
+/**
+ * The certified officer roster, shared by the SSG President web console and
+ * the mobile projection.
+ *
+ * The response is a flat `data` array of seated officers in ballot order
+ * (national tier first, then provincial; positions in their configured
+ * `sort_order`). Each row carries the fields the console needs to rebuild the
+ * tier -> position -> electorate hierarchy:
+ *
+ *   - `tier`                 — the position's tier (national / provincial)
+ *   - `position_key`         — the position slug, the grouping key
+ *   - `position_base_label`  — the position label on its own
+ *   - `position_scope`       — the electorate label (null for a global seat)
+ *   - `position_scoped`      — whether the position is scoped at all
+ *   - `seat_count`           — seats contested per electorate
+ *   - `is_elected`           — true for confirmed winners, false for the
+ *                              provisional top-N fallback used before a
+ *                              finalize has run
+ */
 class SsgOfficerController extends Controller
 {
     public function index(): JsonResponse
@@ -96,11 +115,21 @@ class SsgOfficerController extends Controller
                     $officers->push([
                         'position_key' => $position->slug,
                         'position_label' => $scope ? "{$position->label} — {$scope}" : $position->label,
+                        // The base label and the scope are also returned
+                        // separately so the console can rebuild the
+                        // position -> electorate hierarchy without parsing the
+                        // display string above.
+                        'position_base_label' => $position->label,
+                        'position_scope' => $scope,
+                        'position_scoped' => ! $position->isGloballyScoped(),
                         'candidate_ref' => $candidate->candidate_ref,
                         'name' => $candidate->user?->name ?? $candidate->candidate_ref,
                         'votes' => (int) $candidate->vote_total,
                         'seat_count' => $position->seat_count,
                         'tier' => $position->tier,
+                        // This branch only runs for candidates explicitly marked
+                        // `elected`, so every row here is a confirmed winner.
+                        'is_elected' => true,
                     ]);
                 });
 
@@ -131,11 +160,17 @@ class SsgOfficerController extends Controller
                     $officers->push([
                         'position_key' => $positionKey,
                         'position_label' => $label,
+                        'position_base_label' => $position->label,
+                        'position_scope' => $scope,
+                        'position_scoped' => ! $position->isGloballyScoped(),
                         'candidate_ref' => $row->candidate_ref,
                         'name' => $candidates->get($row->candidate_ref)?->user?->name ?? $row->candidate_ref,
                         'votes' => (int) $row->votes,
                         'seat_count' => $seatCount,
                         'tier' => $position->tier,
+                        // No finalize has run, so these are the provisional
+                        // top-N by votes rather than confirmed winners.
+                        'is_elected' => false,
                     ]);
                 }
             }
