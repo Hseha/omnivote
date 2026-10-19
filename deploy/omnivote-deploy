@@ -1,0 +1,46 @@
+#!/bin/sh
+# ============================================================================
+# Forced command for the CI/CD deploy key.
+#
+# Install as /usr/local/sbin/omnivote-deploy, mode 755, and reference it from
+# the deploy account's authorized_keys:
+#
+#   restrict,command="/usr/local/sbin/omnivote-deploy" ssh-ed25519 ...
+#
+# WHY THIS EXISTS — the script snapshots itself before running:
+#
+# The deploy script lives INSIDE the checkout it deploys, and the checkout is
+# reset to origin/main part-way through the run:
+#
+#   git reset --hard "origin/$BRANCH"      # deploy/deploy.sh, line ~102
+#
+# bash reads a script file LAZILY, seeking to the next command by byte offset
+# rather than parsing the whole file up front. Replacing the file under a
+# running bash therefore makes bash resume at the wrong offset in the NEW
+# file: commands can be skipped, or a fragment of the new file can be
+# executed. That is not hypothetical — it is how the "Syncing nginx vhosts
+# from repo templates" step came to exist in the repository but never run:
+# the deploy of the commit that introduced it silently skipped it.
+#
+# Copying the script to a temporary file first pins the exact text the
+# running bash will read, so a mid-run reset can no longer change what is
+# executed. The copy runs with the same working directory and environment as
+# the in-place script would have had.
+# ============================================================================
+set -eu
+
+APP_DIR="${APP_DIR:-/var/www/omnivote}"
+SCRIPT="$APP_DIR/deploy/deploy.sh"
+
+if [ ! -f "$SCRIPT" ]; then
+    echo "ERROR: $SCRIPT is missing; the deploy user cannot deploy." >&2
+    exit 1
+fi
+
+tmp="$(mktemp "${TMPDIR:-/tmp}/omnivote-deploy.XXXXXXXX.sh")"
+trap 'rm -f "$tmp"' EXIT INT TERM
+
+cat "$SCRIPT" > "$tmp"
+chmod 700 "$tmp"
+
+/bin/bash "$tmp"

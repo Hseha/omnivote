@@ -1,0 +1,74 @@
+#!/bin/sh
+# ============================================================================
+# Installs the two nginx vhosts that the deploy script renders, validates the
+# result, and reloads nginx.
+#
+# Install as /usr/local/sbin/omnivote-nginx-vhosts, mode 755, root-owned, and
+# grant the deploy account permission to run it:
+#
+#   omnivote-deploy ALL=(root) NOPASSWD: /usr/local/sbin/omnivote-nginx-vhosts
+#
+# WHY A HELPER INSTEAD OF THREE `sudo` CALLS IN THE DEPLOY SCRIPT
+#
+# The obvious alternative is to let the deploy account run `sudo cp` into
+# /etc/nginx/sites-available and `sudo systemctl reload nginx` directly. That
+# hands the deploy account the ability to write an arbitrary path under
+# /etc/nginx and to reload nginx at will. This helper keeps the blast radius
+# to "install these two rendered files, or leave the working configuration
+# alone" — the deploy account can pass files in, but it cannot write to
+# /etc/nginx itself and cannot invoke nginx with arguments of its choosing.
+#
+# The previous vhosts are backed up and restored if the new ones fail
+# `nginx -t`, so a bad template can never leave nginx without a working
+# configuration.
+# ============================================================================
+set -eu
+
+NGINX_SITE_DIR=/etc/nginx/sites-available
+SRC_OMNIVOTE=/tmp/omnivote-omnivote.conf
+SRC_FUNNEL=/tmp/omnivote-funnel-api.conf
+NGINX_BIN=/usr/sbin/nginx
+
+if [ "$(/usr/bin/id -u)" -ne 0 ]; then
+    echo "ERROR: this helper must run as root." >&2
+    exit 1
+fi
+
+if [ ! -x "$NGINX_BIN" ]; then
+    echo "ERROR: $NGINX_BIN is missing; nginx is not installed." >&2
+    exit 1
+fi
+
+for src in "$SRC_OMNIVOTE" "$SRC_FUNNEL"; do
+    if [ ! -f "$src" ]; then
+        echo "ERROR: $src is missing; the deploy did not render the vhost templates." >&2
+        exit 1
+    fi
+done
+
+backup_dir="$(mktemp -d /tmp/omnivote-nginx-backup.XXXXXX)"
+trap 'rm -rf "$backup_dir"' EXIT INT TERM
+
+for name in omnivote omnivote-funnel-api; do
+    if [ -f "$NGINX_SITE_DIR/$name" ]; then
+        cp -p "$NGINX_SITE_DIR/$name" "$backup_dir/$name"
+    fi
+done
+
+install -m 644 "$SRC_OMNIVOTE" "$NGINX_SITE_DIR/omnivote"
+install -m 644 "$SRC_FUNNEL" "$NGINX_SITE_DIR/omnivote-funnel-api"
+
+if ! "$NGINX_BIN" -t; then
+    echo "ERROR: the rendered vhosts are invalid; restoring the previous ones." >&2
+    for name in omnivote omnivote-funnel-api; do
+        if [ -f "$backup_dir/$name" ]; then
+            cp -p "$backup_dir/$name" "$NGINX_SITE_DIR/$name"
+        fi
+    done
+    "$NGINX_BIN" -t || true
+    echo "ERROR: the previous vhosts are back in place; nginx was not reloaded." >&2
+    exit 1
+fi
+
+/bin/systemctl reload nginx
+echo "nginx vhosts installed and reloaded."

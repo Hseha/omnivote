@@ -32,12 +32,29 @@ fi
 cd "$APP_DIR" || exit 1
 
 for tool in git "$PHP" composer npm; do
-  if ! command -v "$tool" >/dev/null 2>&1; then
-    echo "ERROR: '$tool' is not on PATH, so this deploy cannot finish. Nothing has been changed." >&2
-    echo "       The previous release is still live." >&2
-    exit 1
-  fi
+    if ! command -v "$tool" >/dev/null 2>&1; then
+        echo "ERROR: '$tool' is not on PATH, so this deploy cannot finish. Nothing has been changed." >&2
+        echo "       The previous release is still live." >&2
+        exit 1
+    fi
 done
+
+# The sync below is the first step that touches the git directory, so it is
+# also the first step that fails if the checkout's ownership has drifted away
+# from the account running the deploy. git refuses to operate on a repository
+# owned by somebody else ("detected dubious ownership in repository at ..."),
+# and that error is cryptic: it does not say who to chown it to. So the check
+# is explicit here, while the previous release is still whole and serving.
+if ! git -C "$APP_DIR" rev-parse --short HEAD >/dev/null 2>&1; then
+    echo "ERROR: git cannot operate on $APP_DIR as $(id -un)." >&2
+    echo "       git refuses a repository owned by another account." >&2
+    echo "       Fix it with:" >&2
+    echo "         sudo chown -R $(id -un):$(id -gn) $APP_DIR/.git" >&2
+    echo "         sudo -u $(id -un) git config --global --add safe.directory $APP_DIR" >&2
+    echo "       Nothing has been changed. The previous release is still live." >&2
+    exit 1
+fi
+
 
 for unit in omnivote-worker.service omnivote-backup.timer php8.4-fpm.service; do
   if ! /bin/systemctl cat "$unit" >/dev/null 2>&1; then
@@ -56,13 +73,21 @@ check_sudo() {
 }
 PERMISSION_HELPER=/usr/local/sbin/omnivote-deploy-permissions
 if [ ! -x "$PERMISSION_HELPER" ]; then
-  echo "ERROR: required root-owned permission helper is missing: $PERMISSION_HELPER" >&2
-  exit 1
+    echo "ERROR: required root-owned permission helper is missing: $PERMISSION_HELPER" >&2
+    exit 1
+fi
+NGINX_VHOST_HELPER=/usr/local/sbin/omnivote-nginx-vhosts
+if [ ! -x "$NGINX_VHOST_HELPER" ]; then
+    echo "ERROR: required root-owned nginx helper is missing: $NGINX_VHOST_HELPER" >&2
+    echo "       It installs the rendered vhosts and reloads nginx." >&2
+    exit 1
 fi
 check_sudo "$PERMISSION_HELPER"
+check_sudo "$NGINX_VHOST_HELPER"
 check_sudo /bin/systemctl restart omnivote-worker.service
 check_sudo /bin/systemctl restart php8.4-fpm
 check_sudo /bin/systemctl enable --now omnivote-backup.timer
+
 
 # The reset keeps .env (it is untracked), but the release is unusable without it.
 if [ ! -f backend-laravel/.env ]; then
@@ -187,15 +212,22 @@ log "Syncing nginx vhosts from repo templates"
 # so the /ssg/ console mount and any other nginx changes survive every deploy.
 # Without this, a server provisioned before the /ssg/ block was added keeps
 # serving the old vhost and /ssg/setup returns nginx 404 before Laravel boots.
+#
+# The template paths are absolute: this script has cd'd into backend-laravel
+# by now, so a relative "deploy/nginx-omnivote.conf" does not exist and the
+# step dies on a "No such file" from sed.
+cd "$APP_DIR" || exit 1
 if command -v tailscale >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
-  PRIMARY_HOST="$(tailscale status --json 2>/dev/null \
-    | python3 -c 'import sys,json; print(json.load(sys.stdin).get("Self",{}).get("DNSName","").rstrip("."))' 2>/dev/null || true)"
+    PRIMARY_HOST="$(tailscale status --json 2>/dev/null \
+        | python3 -c 'import sys,json; print(json.load(sys.stdin).get("Self",{}).get("DNSName","").rstrip("."))' 2>/dev/null || true)"
 fi
 PRIMARY_HOST="${PRIMARY_HOST:-$(hostname -f)}"
-sed "s|__PRIMARY_HOST__|$PRIMARY_HOST|g" deploy/nginx-omnivote.conf > /tmp/omnivote-omnivote.conf
-sed "s|__PRIMARY_HOST__|$PRIMARY_HOST|g" deploy/nginx-funnel-api.conf > /tmp/omnivote-funnel-api.conf
-sudo cp /tmp/omnivote-omnivote.conf /etc/nginx/sites-available/omnivote
-sudo cp /tmp/omnivote-funnel-api.conf /etc/nginx/sites-available/omnivote-funnel-api
-sudo nginx -t && sudo systemctl reload nginx
+sed "s|__PRIMARY_HOST__|$PRIMARY_HOST|g" "$APP_DIR/deploy/nginx-omnivote.conf" > /tmp/omnivote-omnivote.conf
+sed "s|__PRIMARY_HOST__|$PRIMARY_HOST|g" "$APP_DIR/deploy/nginx-funnel-api.conf" > /tmp/omnivote-funnel-api.conf
+# The install, the nginx -t and the reload all happen inside a root-owned
+# helper, so the deploy account never gets to write to /etc/nginx or invoke
+# nginx with arguments of its own choosing.
+sudo "$NGINX_VHOST_HELPER"
+
 
 log "Deployed $(git rev-parse --short HEAD) on $BRANCH"

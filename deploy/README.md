@@ -512,6 +512,30 @@ sudo systemctl restart php8.4-fpm
 sudo systemctl reload nginx
 ```
 
+> **Run every git command in this checkout as `omnivote-deploy`.** The
+> checkout belongs to that account, and git refuses to operate on a repository
+> owned by somebody else ("detected dubious ownership in repository at ...").
+> That refusal is not the only consequence: the usual "fix" is to hand the
+> checkout over with `sudo chown -R $USER:$USER /var/www/omnivote/.git`, and
+> doing so **breaks the CI deploy** — CI connects as `omnivote-deploy`, which
+> then sees a repository owned by someone else and aborts before the sync.
+>
+> If you hit the ownership error, do not chown. Run the command as the deploy
+> account:
+>
+> ```bash
+> sudo -u omnivote-deploy git -C /var/www/omnivote pull --ff-only
+> ```
+>
+> If the checkout's ownership has already drifted, restore it and let the
+> deploy account keep a `safe.directory` exemption (the deploy script checks
+> for this and prints the same two commands):
+>
+> ```bash
+> sudo chown -R omnivote-deploy:www-data /var/www/omnivote/.git
+> sudo -u omnivote-deploy git config --global --add safe.directory /var/www/omnivote
+> ```
+
 ---
 
 ## Continuous deployment (auto-deploy on push)
@@ -617,13 +641,20 @@ configuration.
 
    Put one line in `authorized_keys`, prefixing the generated public key:
    `restrict,command="/usr/local/sbin/omnivote-deploy" ssh-ed25519 ...`.
-   Set the file owner to `omnivote-deploy` and mode to `600`. Install this
-   root-owned wrapper at `/usr/local/sbin/omnivote-deploy`:
+   Set the file owner to `omnivote-deploy` and mode to `600`. Install the
+   root-owned wrapper from the reviewed `main` checkout:
    ```bash
-   #!/bin/sh
-   set -eu
-   exec /bin/bash /var/www/omnivote/deploy/deploy.sh
+   sudo install -o root -g root -m 0755 \
+     /var/www/omnivote/deploy/omnivote-deploy \
+     /usr/local/sbin/omnivote-deploy
    ```
+   The wrapper snapshots `deploy.sh` into a temporary file before running it.
+   That is not ceremony: the deploy script lives inside the checkout it
+   deploys and resets that checkout part-way through the run, and bash re-reads
+   a script file lazily by byte offset. Without the snapshot, a script that
+   rewrites itself mid-run resumes at the wrong offset in the new file — which
+   is how the "Syncing nginx vhosts from repo templates" step came to exist in
+   the repository without ever running.
 
    Install it as root-owned and executable (`root:root`, mode `755`). The SSH
    key cannot request a shell or forward ports; every connection runs only the
@@ -639,9 +670,18 @@ configuration.
    ```
    It preserves `storage/app/backups` as `www-data:www-data` mode `2700`, and
    refuses to run if that directory is missing or has different permissions.
+   Then install the nginx vhost helper the same way:
+   ```bash
+   sudo install -o root -g root -m 0755 \
+     /var/www/omnivote/deploy/omnivote-nginx-vhosts \
+     /usr/local/sbin/omnivote-nginx-vhosts
+   ```
+   It installs the two rendered vhosts, validates them with `nginx -t`, and
+   restores the previous vhosts if the new ones are invalid. The deploy
+   account can call it but cannot write to `/etc/nginx` itself.
    Then create `/etc/sudoers.d/omnivote-deploy` with:
    ```sudoers
-   omnivote-deploy ALL=(root) NOPASSWD: /usr/local/sbin/omnivote-deploy-permissions, /bin/systemctl restart omnivote-worker.service, /bin/systemctl restart php8.4-fpm, /bin/systemctl enable --now omnivote-backup.timer
+   omnivote-deploy ALL=(root) NOPASSWD: /usr/local/sbin/omnivote-deploy-permissions, /usr/local/sbin/omnivote-nginx-vhosts, /bin/systemctl restart omnivote-worker.service, /bin/systemctl restart php8.4-fpm, /bin/systemctl enable --now omnivote-backup.timer
    ```
    Validate it with `sudo visudo -cf /etc/sudoers.d/omnivote-deploy`; keep
    mode `440`. Do not grant general passwordless sudo.
