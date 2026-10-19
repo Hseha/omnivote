@@ -125,7 +125,7 @@ class ResultsController extends Controller
                                 }),
                         ]);
                     });
-                });
+            });
 
         // Ballot order, not the alphabetical slug order the ledger groups
         // arrive in: national officers first (President … Custodian) by the
@@ -344,6 +344,12 @@ class ResultsController extends Controller
      * announcement from the current certified/tied candidates state. Called
      * after finalize and after every tie-break so the student app always sees
      * the live decision.
+     *
+     * The body is a short notice, not a copy of the results: the winners
+     * themselves are listed per position on the results screen and at
+     * GET /api/results. Only the seats that are still tied are enumerated
+     * here, because a result that has not been decided is the one thing the
+     * results screen cannot imply on its own.
      */
     public function refreshResultsAnnouncement(?User $user = null)
     {
@@ -365,51 +371,38 @@ class ResultsController extends Controller
             return null;
         }
 
-        $lines = collect([]);
-        $positions = collect([]);
-
-        foreach ($winners as $winner) {
-            $positions->push([
-                'label' => $this->positionAnnouncementLabel($winner),
-                'name' => $winner->user?->name ?: $winner->candidate_ref,
-                'rank' => $winner->winner_rank,
-            ]);
-        }
+        $ties = collect([]);
 
         foreach ($tied as $candidate) {
-            $positions->push([
+            $ties->push([
                 'label' => $this->positionAnnouncementLabel($candidate),
                 'name' => $candidate->user?->name ?: $candidate->candidate_ref,
-                'tie' => true,
             ]);
         }
 
-        foreach ($positions->groupBy('label') as $label => $entry) {
-            $winnersText = $entry->filter(fn ($p) => empty($p['tie']))
-                ->sortBy('rank')
-                ->pluck('name')
-                ->implode(', ');
-            $tieText = $entry->filter(fn ($p) => ! empty($p['tie']))
-                ->pluck('name')
-                ->implode(', ');
+        // The announcement is a NOTICE, not a second copy of the results.
+        //
+        // It used to enumerate every winner — one bullet per race, which for
+        // a real election ran to sixty-three bullets and five thousand
+        // characters, and rendered as an unreadable wall of text on every
+        // surface that shows an announcement. The winners are already listed
+        // per position, grouped National then Provincial, on the results
+        // screen and at GET /api/results. What belongs here is that the
+        // results are out, where to see them, and — the one thing the results
+        // screen cannot imply — which seats are still undecided.
+        $body = $winners->isEmpty()
+            ? 'The election results are still being decided.'
+            : "The election results are in.\n\n"
+                .'Open the Results tab to see each winner, their electorate and their vote count.';
 
-            $parts = [];
-            if ($winnersText) {
-                $parts[] = $winnersText;
-            }
-            if ($tieText) {
-                $parts[] = "TIE for a seat: {$tieText} (awaiting decision)";
-            }
-            if ($parts) {
-                $lines->push("• {$label}: ".implode(' — ', $parts));
-            }
+        $tieLines = $ties
+            ->groupBy('label')
+            ->map(fn ($entry, $label) => '• '.$label.': TIE for a seat: '.$entry->pluck('name')->implode(', ').' (awaiting decision)')
+            ->values();
+
+        if ($tieLines->isNotEmpty()) {
+            $body .= "\n\nStill awaiting a decision:\n".$tieLines->implode("\n");
         }
-
-        if ($lines->isEmpty()) {
-            return null;
-        }
-
-        $body = "The election results are in.\n\n".$lines->implode("\n");
 
         $announcement = Announcement::where('title', self::RESULTS_ANNOUNCEMENT_TITLE)->first();
 

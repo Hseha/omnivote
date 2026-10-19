@@ -149,4 +149,47 @@
   font-size: 0.875rem;
   color: var(--text);
   line-height: 1.55;
+  /* An announcement body may be written with line breaks — the results
+     announcement is a bullet list, and a staff member can paste a formatted
+     notice. HTML collapses those newlines by default, which turns a
+     structured body into one run-on paragraph. */
+  white-space: pre-line;
+  overflow-wrap: break-word;
+}
+
+/* A long body is clamped until the reader asks for the rest. The toggle
+   that reveals it lives right below the body, so the two stay together. */
+.announcements-item-body.is-clamped {
+  display: -webkit-box;
+  -webkit-line-clamp: 8;
+  line-clamp: 8;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.announcements-item-more {
+  display: inline-block;
+  /* The card is a flex column (and a global button rule centres its text),
+     so the toggle has to opt out of both to sit under the body. */
+  align-self: flex-start;
+  text-align: left;
+  margin-top: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--brand-primary);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.announcements-item-more:hover {
+  text-decoration: underline;
+}
+
+.announcements-item-more:focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 2px;
+  border-radius: 4px;
 }

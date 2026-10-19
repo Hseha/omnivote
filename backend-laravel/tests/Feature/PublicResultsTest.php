@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Http\Controllers\ResultsController;
+use App\Models\Announcement;
 use App\Models\Candidate;
 use App\Models\User;
 use Illuminate\Database\Schema\Blueprint;
@@ -228,6 +230,76 @@ class PublicResultsTest extends TestCase
             ['Amy', 'Zoe'],
             collect($this->results()->json('results.0.candidates'))->pluck('name')->all(),
         );
+    }
+
+    public function test_the_results_announcement_is_a_summary_and_keeps_the_tied_seats(): void
+    {
+        $this->closeVoting();
+
+        // One certified winner...
+        $this->makeCandidate('ref-ana', 'Ana', 'president', votes: 3, elected: true);
+        // ...and a seat that is still tied between two candidates.
+        $this->makeCandidate('ref-bob', 'Bob', 'governor', votes: 2, status: 'tied');
+        $this->makeCandidate('ref-cara', 'Cara', 'governor', votes: 2, status: 'tied');
+
+        $announcement = app(ResultsController::class)
+            ->refreshResultsAnnouncement();
+
+        $this->assertNotNull($announcement);
+        $this->assertSame('Official Election Results', $announcement->title);
+
+        $body = $announcement->body;
+
+        // It says the results are out, and where to read them.
+        $this->assertStringContainsString('The election results are in.', $body);
+        $this->assertStringContainsString('Open the Results tab', $body);
+
+        // The seats that are NOT decided are the one thing the results screen
+        // cannot imply, so they are the only thing enumerated.
+        $this->assertStringContainsString('Still awaiting a decision:', $body);
+        $this->assertStringContainsString('Bob, Cara', $body);
+        $this->assertStringContainsString('awaiting decision', $body);
+
+        // The winners are NOT listed here — the results screen does that, per
+        // position. A real election ran to sixty-three bullets and five
+        // thousand characters, which read as a wall of text everywhere.
+        $this->assertStringNotContainsString('Ana', $body);
+        $this->assertStringNotContainsString('President:', $body);
+
+        // A notice, not a data dump.
+        $this->assertLessThan(800, strlen($body));
+    }
+
+    public function test_the_results_announcement_is_rebuilt_in_place_not_duplicated(): void
+    {
+        $this->closeVoting();
+
+        $this->makeCandidate('ref-ana', 'Ana', 'president', votes: 3, elected: true);
+
+        $controller = app(ResultsController::class);
+        $first = $controller->refreshResultsAnnouncement();
+        $second = $controller->refreshResultsAnnouncement();
+
+        $this->assertNotNull($first);
+        $this->assertNotNull($second);
+        $this->assertSame($first->id, $second->id);
+        $this->assertSame(1, Announcement::count());
+    }
+
+    public function test_the_results_announcement_does_not_claim_results_are_in_when_nothing_is_decided(): void
+    {
+        $this->closeVoting();
+
+        // A tie with no certified winner anywhere: nothing has been decided.
+        $this->makeCandidate('ref-bob', 'Bob', 'president', votes: 2, status: 'tied');
+
+        $announcement = app(ResultsController::class)
+            ->refreshResultsAnnouncement();
+
+        $this->assertNotNull($announcement);
+        $this->assertStringNotContainsString('The election results are in.', $announcement->body);
+        $this->assertStringContainsString('still being decided', $announcement->body);
+        $this->assertStringContainsString('Bob', $announcement->body);
     }
 
     public function test_ssg_officer_roster_returns_elected_officers_with_position_and_name(): void
@@ -598,6 +670,7 @@ class PublicResultsTest extends TestCase
         ?string $department = null,
         ?string $yearLevel = null,
         ?string $party = null,
+        ?string $status = null,
     ): Candidate {
         $candidate = Candidate::create([
             'user_id' => $this->makeUser([
@@ -610,8 +683,8 @@ class PublicResultsTest extends TestCase
             'candidate_ref' => $ref,
             'party_name' => $party,
             'approval_status' => 'approved',
-            'election_status' => $elected ? 'elected' : 'pending',
-            'winner_rank' => $elected ? 1 : null,
+            'election_status' => $status ?? ($elected ? 'elected' : 'pending'),
+            'winner_rank' => $status === 'elected' || ($status === null && $elected) ? 1 : null,
             'vote_total' => $votes,
         ]);
 
@@ -687,6 +760,18 @@ class PublicResultsTest extends TestCase
             $table->timestamp('last_used_at')->nullable();
             $table->timestamp('expires_at')->nullable();
             $table->timestamps();
+        });
+
+        // The auto-generated results announcement lives here. Only the
+        // columns the generator and the projections read are needed.
+        Schema::create('announcements', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedInteger('user_id');
+            $table->string('title');
+            $table->text('body');
+            $table->timestamp('published_at')->nullable();
+            $table->timestamps();
+            $table->index(['published_at', 'created_at']);
         });
 
         Schema::create('positions', function (Blueprint $table) {
