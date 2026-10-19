@@ -194,6 +194,11 @@ cat <<EOF
      sudo cp deploy/omnivote-health.service deploy/omnivote-health.timer /etc/systemd/system/
      sudo systemctl daemon-reload && sudo systemctl enable --now omnivote-health.timer
 
+ Optional: install the vote-deadline reminder timer (10-minute interval;
+ messages non-voters during the final hour before polls close):
+     sudo cp deploy/omnivote-reminders.service deploy/omnivote-reminders.timer /etc/systemd/system/
+     sudo systemctl daemon-reload && sudo systemctl enable --now omnivote-reminders.timer
+
  The dedicated $DEPLOY_USER owns the checkout; PHP-FPM and workers run as
  www-data. Later releases are deployed by deploy/deploy.sh. (Do not put backticks in this heredoc:
  it is unquoted so that \$APP_URL expands, and backticks would be executed.)

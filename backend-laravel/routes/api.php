@@ -13,6 +13,7 @@ use App\Http\Controllers\BallotController;
 use App\Http\Controllers\CandidacyAvailabilityController;
 use App\Http\Controllers\CandidacyController;
 use App\Http\Controllers\CandidateController;
+use App\Http\Controllers\DeviceTokenController;
 use App\Http\Controllers\ElectionController;
 use App\Http\Controllers\ElectionRecordsController;
 use App\Http\Controllers\NotificationController;
@@ -396,6 +397,11 @@ Route::middleware(['auth:sanctum', 'role:student,candidate,ssg_president', 'pass
     // screen). Written to every active staff member's in-app notification
     // feed so the root cause can be investigated. Reuses user_notifications.
     Route::post('/reports', [ProblemReportController::class, 'store']);
+
+    // FCM push registration (Flutter fetches the token after login and on
+    // resume; logout drops it so a signed-out device stops receiving pushes).
+    Route::post('/device-tokens', [DeviceTokenController::class, 'store']);
+    Route::delete('/device-tokens', [DeviceTokenController::class, 'destroy']);
 
     Route::post('/candidate/apply', [CandidateController::class, 'store'])
         ->middleware('checkPhase:registration');
