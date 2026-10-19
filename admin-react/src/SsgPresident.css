@@ -1,43 +1,120 @@
-.ssg-sidebar-title {
+/* SSG President console — page rules.
+ * Shares the admin shell (tokens, .card, .sidebar, .top-header, .main-content)
+ * from index.css so it follows the global light/dark theme + theme packs.
+ * Page-specific component rules only; shell classes are not redefined. */
+
+.ssg-president .sidebar {
+  width: 290px;
+}
+
+/* ===== Announcements live in the sidebar (read-mostly governance console) ===== */
+
+.ssg-announcement-panel {
   display: flex;
-  gap: 8px;
-  align-items: center;
-  margin: 24px 20px;
-  color: #94a3b8;
-  font-size: 0.72rem;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.ssg-panel-head { display: flex; align-items: center; gap: 8px; }
+
+.ssg-announcement-panel h3 {
+  margin: 0 0 2px;
+  font-size: 1rem;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  color: var(--heading);
 }
 
-.ssg-content {
-  display: grid;
-  gap: 20px;
-  padding: 24px;
-}
-
-.ssg-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 20px;
+.ssg-announcement-panel .muted-text {
+  margin: 0 0 8px;
 }
 
 .ssg-form {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .ssg-form input,
 .ssg-form textarea {
-  border: 1px solid #dbe3ef;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 10px 12px;
+  padding: 8px 10px;
   font: inherit;
+  width: 100%;
+}
+
+.ssg-form textarea {
+  resize: vertical;
+  min-height: 64px;
 }
 
 .ssg-checkbox {
   display: flex;
   gap: 8px;
   align-items: center;
+  font-size: 0.78rem;
+  color: var(--text);
+}
+
+/* The save action spans the panel width for a clear primary call-to-action */
+.ssg-announcement-panel .primary-button {
+  width: 100%;
+}
+
+.ssg-announcements {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ssg-announcements article {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.ssg-announcements article:last-child {
+  border-bottom: 0;
+}
+
+.ssg-announcement-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ssg-announcement-byline {
+  margin: 4px 0 0;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.ssg-announcement-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.ssg-announcement-delete:hover:not(:disabled) {
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.07);
+}
+
+.ssg-announcement-delete:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* ===== Certified Officer Roster =====
@@ -47,7 +124,7 @@
 
 .ssg-roster {
   display: grid;
-  gap: 12px;
+  gap: 24px;
 }
 
 .ssg-roster-header h3 {
@@ -69,41 +146,23 @@
 }
 
 .ssg-tier-card {
-  --ssg-tier-accent: #2563eb;
-  --ssg-tier-accent-soft: rgba(37, 99, 235, 0.1);
-  --ssg-tier-accent-wash: rgba(37, 99, 235, 0.045);
+  --ssg-tier-accent: var(--tier-national);
+  --ssg-tier-accent-soft: var(--tier-accent-soft);
+  --ssg-tier-accent-wash: var(--tier-accent-wash);
   overflow: hidden;
 }
 
 .ssg-tier-provincial {
-  --ssg-tier-accent: #7c3aed;
-  --ssg-tier-accent-soft: rgba(124, 58, 237, 0.1);
-  --ssg-tier-accent-wash: rgba(124, 58, 237, 0.045);
+  --ssg-tier-accent: var(--tier-provincial);
+  --ssg-tier-accent-soft: var(--tier-accent-soft);
+  --ssg-tier-accent-wash: var(--tier-accent-wash);
 }
 
 /* Fallback tier for a seat on an unrecognised tier value. */
 .ssg-tier-other {
-  --ssg-tier-accent: #64748b;
-  --ssg-tier-accent-soft: rgba(100, 116, 139, 0.12);
-  --ssg-tier-accent-wash: rgba(100, 116, 139, 0.055);
-}
-
-[data-theme='dark'] .ssg-tier-card {
-  --ssg-tier-accent: #60a5fa;
-  --ssg-tier-accent-soft: rgba(96, 165, 250, 0.14);
-  --ssg-tier-accent-wash: rgba(96, 165, 250, 0.07);
-}
-
-[data-theme='dark'] .ssg-tier-provincial {
-  --ssg-tier-accent: #a78bfa;
-  --ssg-tier-accent-soft: rgba(167, 139, 250, 0.14);
-  --ssg-tier-accent-wash: rgba(167, 139, 250, 0.07);
-}
-
-[data-theme='dark'] .ssg-tier-other {
-  --ssg-tier-accent: #94a3b8;
-  --ssg-tier-accent-soft: rgba(148, 163, 184, 0.14);
-  --ssg-tier-accent-wash: rgba(148, 163, 184, 0.07);
+  --ssg-tier-accent: var(--tier-other);
+  --ssg-tier-accent-soft: var(--tier-accent-soft);
+  --ssg-tier-accent-wash: var(--tier-accent-wash);
 }
 
 /* The tier is carried by a soft accent wash on the card header and by the
@@ -122,6 +181,7 @@
 .ssg-tier-header h3 {
   margin: 0 0 2px;
   font-size: 1rem;
+  font-weight: 700;
   color: var(--heading);
 }
 
@@ -145,7 +205,7 @@
 
 .ssg-tier-positions {
   display: grid;
-  gap: 18px;
+  gap: 12px;
 }
 
 .ssg-position {
@@ -154,8 +214,8 @@
 }
 
 .ssg-position + .ssg-position {
-  padding-top: 16px;
-  border-top: 1px solid var(--border-subtle);
+  padding-top: 0;
+  border-top: 0;
 }
 
 .ssg-position-head {
@@ -219,7 +279,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 0;
+  padding: 8px 0;
   border-bottom: 1px solid var(--border-subtle);
 }
 
@@ -252,10 +312,6 @@
   border-color: rgba(245, 158, 11, 0.3);
 }
 
-[data-theme='dark'] .ssg-elected-badge.ssg-provisional {
-  color: #fbbf24;
-}
-
 .ssg-officer-votes {
   margin-left: auto;
   flex-shrink: 0;
@@ -264,64 +320,8 @@
   font-variant-numeric: tabular-nums;
 }
 
-.ssg-announcements article {
-  border-bottom: 1px solid #e5e7eb;
-  padding: 12px 0;
-}
-
-.ssg-announcements article:last-child {
-  border-bottom: 0;
-}
-
-.ssg-announcement-byline {
-  margin: 4px 0 0;
-  font-size: 0.75rem;
-  color: var(--text-muted);
-}
-
-.ssg-announcement-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.ssg-announcement-delete {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
-}
-
-.ssg-announcement-delete:hover:not(:disabled) {
-  color: #ef4444;
-  border-color: rgba(239, 68, 68, 0.5);
-  background: rgba(239, 68, 68, 0.08);
-}
-
-.ssg-announcement-delete:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
 @media (max-width: 1100px) {
-  /* The two tier cards go side by side only when there is room for both
-     cabinets; below that they stack so neither column is squeezed. */
   .ssg-roster-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 900px) {
-  .ssg-grid {
     grid-template-columns: 1fr;
   }
 }
