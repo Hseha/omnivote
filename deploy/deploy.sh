@@ -182,4 +182,20 @@ sudo /bin/systemctl restart php8.4-fpm
 log "Ensuring the backup timer is enabled"
 sudo /bin/systemctl enable --now omnivote-backup.timer
 
+log "Syncing nginx vhosts from repo templates"
+# Re-render both vhost templates (substituting __PRIMARY_HOST__) and install them,
+# so the /ssg/ console mount and any other nginx changes survive every deploy.
+# Without this, a server provisioned before the /ssg/ block was added keeps
+# serving the old vhost and /ssg/setup returns nginx 404 before Laravel boots.
+if command -v tailscale >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
+  PRIMARY_HOST="$(tailscale status --json 2>/dev/null \
+    | python3 -c 'import sys,json; print(json.load(sys.stdin).get("Self",{}).get("DNSName","").rstrip("."))' 2>/dev/null || true)"
+fi
+PRIMARY_HOST="${PRIMARY_HOST:-$(hostname -f)}"
+sed "s|__PRIMARY_HOST__|$PRIMARY_HOST|g" deploy/nginx-omnivote.conf > /tmp/omnivote-omnivote.conf
+sed "s|__PRIMARY_HOST__|$PRIMARY_HOST|g" deploy/nginx-funnel-api.conf > /tmp/omnivote-funnel-api.conf
+sudo cp /tmp/omnivote-omnivote.conf /etc/nginx/sites-available/omnivote
+sudo cp /tmp/omnivote-funnel-api.conf /etc/nginx/sites-available/omnivote-funnel-api
+sudo nginx -t && sudo systemctl reload nginx
+
 log "Deployed $(git rev-parse --short HEAD) on $BRANCH"
