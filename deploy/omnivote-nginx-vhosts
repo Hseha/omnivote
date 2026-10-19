@@ -24,12 +24,26 @@
 # ============================================================================
 set -eu
 
-NGINX_SITE_DIR=/etc/nginx/sites-available
-SRC_OMNIVOTE=/tmp/omnivote-omnivote.conf
-SRC_FUNNEL=/tmp/omnivote-funnel-api.conf
-NGINX_BIN=/usr/sbin/nginx
+# The site directory, the sources, the nginx binary, the reload command and
+# the installer are all overridable so deploy/tests/nginx-vhost-helper_test.sh
+# can drive this helper against a temporary directory.
+#
+# That is safe in production: the deploy account reaches this helper through
+# a sudoers rule that runs with env_reset, so it can neither set these
+# variables nor point the helper anywhere but the real nginx configuration.
+NGINX_SITE_DIR="${NGINX_SITE_DIR:-/etc/nginx/sites-available}"
+SRC_OMNIVOTE="${SRC_OMNIVOTE:-/tmp/omnivote-omnivote.conf}"
+SRC_FUNNEL="${SRC_FUNNEL:-/tmp/omnivote-funnel-api.conf}"
+NGINX_BIN="${NGINX_BIN:-/usr/sbin/nginx}"
+NGINX_RELOAD_CMD="${NGINX_RELOAD_CMD:-/bin/systemctl reload nginx}"
+INSTALL_BIN="${INSTALL_BIN:-install}"
 
-if [ "$(/usr/bin/id -u)" -ne 0 ]; then
+REAL_SITE_DIR=/etc/nginx/sites-available
+
+# Root is required to write the real nginx configuration and to reload
+# nginx. A test run against a temporary directory needs neither, so the
+# check is tied to the real target.
+if [ "$NGINX_SITE_DIR" = "$REAL_SITE_DIR" ] && [ "$(/usr/bin/id -u)" -ne 0 ]; then
     echo "ERROR: this helper must run as root." >&2
     exit 1
 fi
@@ -44,6 +58,14 @@ for src in "$SRC_OMNIVOTE" "$SRC_FUNNEL"; do
         echo "ERROR: $src is missing; the deploy did not render the vhost templates." >&2
         exit 1
     fi
+    # An empty render must never be installed over a working vhost. A shell
+    # redirect creates the output file before the command that fills it runs,
+    # so a render that fails part way through leaves a zero-byte file behind
+    # — which, installed over the live configuration, empties it.
+    if [ ! -s "$src" ]; then
+        echo "ERROR: $src is empty; refusing to install an empty vhost." >&2
+        exit 1
+    fi
 done
 
 backup_dir="$(mktemp -d /tmp/omnivote-nginx-backup.XXXXXX)"
@@ -55,20 +77,38 @@ for name in omnivote omnivote-funnel-api; do
     fi
 done
 
-install -m 644 "$SRC_OMNIVOTE" "$NGINX_SITE_DIR/omnivote"
-install -m 644 "$SRC_FUNNEL" "$NGINX_SITE_DIR/omnivote-funnel-api"
+# Put the previous vhosts back. Each restore is attempted independently: a
+# failure on one file must not stop the other from being restored, because
+# the failure is exactly the situation where both need putting back.
+restore_previous() {
+    for name in omnivote omnivote-funnel-api; do
+        if [ -f "$backup_dir/$name" ]; then
+            if ! cp -p "$backup_dir/$name" "$NGINX_SITE_DIR/$name"; then
+                echo "ERROR: could not restore $NGINX_SITE_DIR/$name" >&2
+            fi
+        fi
+    done
+}
+
+# Both files are installed before anything is validated, so a failure part
+# way through would otherwise leave one vhost updated and the other stale
+# with no way back. The `||` in the condition means `set -e` does not abort
+# on the first failure — the restore runs instead.
+if ! "$INSTALL_BIN" -m 644 "$SRC_OMNIVOTE" "$NGINX_SITE_DIR/omnivote" ||
+   ! "$INSTALL_BIN" -m 644 "$SRC_FUNNEL" "$NGINX_SITE_DIR/omnivote-funnel-api"; then
+    echo "ERROR: could not install the rendered vhosts; restoring the previous ones." >&2
+    restore_previous
+    echo "ERROR: the previous vhosts are back in place; nginx was not reloaded." >&2
+    exit 1
+fi
 
 if ! "$NGINX_BIN" -t; then
     echo "ERROR: the rendered vhosts are invalid; restoring the previous ones." >&2
-    for name in omnivote omnivote-funnel-api; do
-        if [ -f "$backup_dir/$name" ]; then
-            cp -p "$backup_dir/$name" "$NGINX_SITE_DIR/$name"
-        fi
-    done
+    restore_previous
     "$NGINX_BIN" -t || true
     echo "ERROR: the previous vhosts are back in place; nginx was not reloaded." >&2
     exit 1
 fi
 
-/bin/systemctl reload nginx
+sh -c "$NGINX_RELOAD_CMD"
 echo "nginx vhosts installed and reloaded."
