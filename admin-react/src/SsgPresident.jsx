@@ -98,10 +98,8 @@ function seatFillLabel(filled, seatCount) {
   return `${filled} of ${seatCount} ${seatCount === 1 ? 'seat' : 'seats'}`;
 }
 
-/**
- * One seated officer. The status badge distinguishes a confirmed winner from
- * the provisional top-N the backend falls back to before a finalize has run.
- */
+/** One seated officer. The status badge distinguishes a confirmed winner from
+ *  the provisional top-N the backend falls back to before a finalize has run. */
 function OfficerRow({ officer }) {
   return (
     <li className="ssg-officer">
@@ -128,11 +126,9 @@ function OfficerList({ officers }) {
   );
 }
 
-/**
- * A position and the officers seated in it. A scoped seat (one contested per
- * college / year level) is broken out into its electorates, each with its own
- * fill count; a global seat lists its winners straight under the position.
- */
+/** A position and the officers seated in it. A scoped seat (one contested per
+ *  college / year level) is broken out into its electorates, each with its
+ *  own fill count; a global seat lists its winners straight under the position. */
 function PositionBlock({ position }) {
   const scopeGroups = Array.from(position.scopeGroups.values());
   const filled = scopeGroups.reduce((total, group) => total + group.officers.length, 0);
@@ -257,25 +253,99 @@ export default function SsgPresident({ onLogout }) {
   };
 
   return (
-    <div className="dashboard-container">
+    <div className="dashboard-container ssg-president">
       <aside className="sidebar">
         <div className="logo-area">
           <div className="logo-icon"><OmniVoteMark className="sidebar-logo-img" /></div>
           <div><h1 className="brand-name">OmniVote</h1><p className="brand-sub">ELECTION CONSOLE</p></div>
         </div>
         <div className="ssg-sidebar-title"><ShieldCheck size={16} /> SSG PRESIDENT</div>
+
+        {/* Announcements moved into the sidebar so the main view stays the
+            calm, full-width certified-officer roster. */}
+        <div className="ssg-announcement-panel">
+          <div className="ssg-panel-head">
+            <Megaphone size={20} />
+            <h3>Announcements</h3>
+            <p className="muted-text">Share updates with students.</p>
+          </div>
+          <form className="ssg-form" onSubmit={createAnnouncement}>
+            <label htmlFor="announcement-title">Title</label>
+            <input
+              id="announcement-title"
+              value={draft.title}
+              onChange={(event) => setDraft({ ...draft, title: event.target.value })}
+              required
+            />
+            <label htmlFor="announcement-body">Message</label>
+            <textarea
+              id="announcement-body"
+              value={draft.body}
+              onChange={(event) => setDraft({ ...draft, body: event.target.value })}
+              rows="3"
+              required
+            />
+            <label className="ssg-checkbox">
+              <input
+                type="checkbox"
+                checked={draft.published}
+                onChange={(event) => setDraft({ ...draft, published: event.target.value })}
+              />
+              Publish immediately
+            </label>
+            <button type="submit" className="primary-button" disabled={saving}>
+              {saving ? 'Saving...' : 'Save announcement'}
+            </button>
+          </form>
+
+          <section className="ssg-announcements">
+            {loading ? (
+              <p className="muted-text">Loading announcements...</p>
+            ) : announcements.length === 0 ? (
+              <p className="muted-text">No announcements yet.</p>
+            ) : (
+              announcements.slice(0, 5).map((announcement) => (
+                <article key={announcement.id}>
+                  <div className="ssg-announcement-head">
+                    <strong>{announcement.title}</strong>
+                    {canDeleteAnnouncement(announcement, user) && (
+                      <button
+                        type="button"
+                        className="ssg-announcement-delete"
+                        aria-label={`Delete "${announcement.title}"`}
+                        disabled={deletingId === announcement.id}
+                        onClick={() => deleteAnnouncement(announcement)}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
+                  <p className="ssg-announcement-byline">
+                    Posted by {announcement.author?.name || 'Staff'}
+                  </p>
+                  <p>{announcement.body}</p>
+                </article>
+              ))
+            )}
+          </section>
+        </div>
+
         <div className="sidebar-footer-container">
           <button type="button" onClick={handleLogout} className="logout-button">
             <LogOut size={18} /> Logout
           </button>
-          <div className="sidebar-footer"><span className="status-dot-green" /> {user?.name || 'SSG President'}</div>
+          <div className="sidebar-footer">
+            <span className="status-dot-green" /> {user?.name || 'SSG President'}
+          </div>
         </div>
       </aside>
 
       <main className="main-content">
         <header className="top-header">
           <MobileMenuButton />
-          <div className="breadcrumb"><span className="muted">SSG / </span><strong>President Dashboard</strong></div>
+          <div className="breadcrumb">
+            <span className="muted">SSG / </span><strong>President Dashboard</strong>
+          </div>
           <div className="user-profile">
             <span className="user-name">{user?.name || 'SSG President'}</span>
             <span className="user-role">SSG President</span>
@@ -285,7 +355,7 @@ export default function SsgPresident({ onLogout }) {
         <div className="ssg-content">
           <div className="page-header">
             <h2>Welcome back, {(user?.name || 'SSG President').split(' ')[0]}</h2>
-            <p className="page-subtext">Manage certified officers and publish student announcements.</p>
+            <p className="page-subtext">Certified Officer Roster — who holds each seat, in which electorate, and how filled.</p>
           </div>
 
           {error && <div className="warning-banner">{error}</div>}
@@ -293,9 +363,14 @@ export default function SsgPresident({ onLogout }) {
 
           <section className="ssg-roster">
             <div className="ssg-roster-header">
-              <div><h3>Certified Officer Roster</h3><p className="muted-text">Available after voting is closed.</p></div>
+              <div>
+                <h3>Certified Officer Roster</h3>
+                <p className="muted-text">Available after voting is closed.</p>
+              </div>
             </div>
-            {loading ? <div className="card"><p className="muted-text">Loading officer roster...</p></div> : officersUnavailable ? (
+            {loading ? (
+              <div className="card"><p className="muted-text">Loading officer roster...</p></div>
+            ) : officersUnavailable ? (
               <div className="card"><p className="muted-text">Certified officers are listed here once voting closes.</p></div>
             ) : (
               <div className="ssg-roster-grid">
@@ -326,42 +401,6 @@ export default function SsgPresident({ onLogout }) {
                 ))}
               </div>
             )}
-          </section>
-
-          <section className="ssg-grid">
-            <form className="card ssg-form" onSubmit={createAnnouncement}>
-              <div className="card-header"><div><h3>Publish Announcement</h3><p className="muted-text">Share updates with students.</p></div><Megaphone size={20} /></div>
-              <label htmlFor="announcement-title">Title</label>
-              <input id="announcement-title" value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} required />
-              <label htmlFor="announcement-body">Message</label>
-              <textarea id="announcement-body" value={draft.body} onChange={(event) => setDraft({ ...draft, body: event.target.value })} rows="5" required />
-              <label className="ssg-checkbox"><input type="checkbox" checked={draft.published} onChange={(event) => setDraft({ ...draft, published: event.target.checked })} /> Publish immediately</label>
-              <button type="submit" className="primary-button" disabled={saving}>{saving ? 'Saving...' : 'Save announcement'}</button>
-            </form>
-
-            <section className="card">
-              <div className="card-header"><div><h3>Recent Announcements</h3><p className="muted-text">Your published updates.</p></div></div>
-              {loading ? <p className="muted-text">Loading announcements...</p> : announcements.length === 0 ? <p className="muted-text">No announcements yet.</p> : (
-                <div className="ssg-announcements">{announcements.slice(0, 5).map((announcement) => <article key={announcement.id}>
-                <div className="ssg-announcement-head">
-                  <strong>{announcement.title}</strong>
-                  {canDeleteAnnouncement(announcement, user) && (
-                    <button
-                      type="button"
-                      className="ssg-announcement-delete"
-                      aria-label={`Delete "${announcement.title}"`}
-                      disabled={deletingId === announcement.id}
-                      onClick={() => deleteAnnouncement(announcement)}
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  )}
-                </div>
-                <p className="ssg-announcement-byline">Posted by {announcement.author?.name || 'Staff'}</p>
-                <p>{announcement.body}</p>
-              </article>)}</div>
-              )}
-            </section>
           </section>
         </div>
       </main>

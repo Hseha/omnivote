@@ -52,6 +52,24 @@
   color-scheme: light;
 }
 
+
+/* Derived tier tokens for the SSG President console (national / provincial).
+   National uses the shell brand blue; Provincial is its own designated
+   accent (one accent per idea), per docs/07_DESIGN_SYSTEM.md. */
+:root {
+  --tier-national: var(--brand-primary);
+  --tier-provincial: #7c3aed;
+  --tier-other: #64748b;
+  --tier-accent-soft: rgba(37, 99, 235, 0.08);
+  --tier-accent-wash: rgba(37, 99, 235, 0.05);
+}
+
+/* SSG President derived tokens for dark rendering */
+[data-theme='dark'] {
+  --tier-accent-soft: rgba(96, 165, 250, 0.1);
+  --tier-accent-wash: rgba(96, 165, 250, 0.06);
+}
+
 /* ===== Theme tokens: dark ===== */
 [data-theme='dark'] {
   --bg: #0b0f19;
