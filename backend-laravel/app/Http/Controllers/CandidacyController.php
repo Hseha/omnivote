@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Candidate;
 use App\Models\Phase;
+use App\Support\SsgPresidentGrant;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -13,7 +14,8 @@ use Illuminate\Support\Facades\Storage;
  *
  *   GET    /api/candidacy/me — full application payload (status, photo URL,
  *          position, rejection reason, seat competition, and — once polls
- *          close — the candidate's own finalized outcome).
+ *          close AND the results are finalized — the candidate's own
+ *          outcome).
  *   PUT    /api/candidacy/me — edit a still-pending application (registration
  *          phase only, mirroring the apply gate).
  *   DELETE /api/candidacy/me — withdraw a still-pending application.
@@ -42,12 +44,17 @@ class CandidacyController extends Controller
                 ->whereIn('approval_status', ['pending', 'approved'])
                 ->count();
 
-        // The applicant's own finalized outcome is only revealed once polls
-        // close — the same gate public /api/results uses. Before that the
-        // row fields are pre-finalize defaults and would leak nothing useful
-        // anyway, but the phase check keeps one consistent disclosure rule.
+        // The applicant's own outcome is only revealed once polls close AND
+        // the results are finalized (the same two gates public /api/results
+        // carries). In the close → finalize window the row fields are still
+        // pre-tally defaults ("pending", zero votes), so disclosing them
+        // would show the candidate a meaningless "not elected" card for a
+        // race that has not been decided yet — the app instead renders the
+        // "awaiting official results" state while this stays null.
         $electionOutcome = null;
-        if ($candidate->approval_status === 'approved' && Phase::current()?->name === 'voting_closed') {
+        if ($candidate->approval_status === 'approved'
+            && Phase::current()?->name === 'voting_closed'
+            && SsgPresidentGrant::resultsPublished()) {
             $electionOutcome = [
                 'status' => $candidate->election_status,
                 'rank' => $candidate->winner_rank,

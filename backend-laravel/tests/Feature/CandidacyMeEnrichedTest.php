@@ -147,6 +147,7 @@ class CandidacyMeEnrichedTest extends TestCase
     public function test_election_outcome_is_revealed_once_polls_close(): void
     {
         $this->closeVoting();
+        $this->publishResults();
 
         $student = $this->makeUser(['name' => 'Votes Candidate']);
         Candidate::create([
@@ -168,6 +169,30 @@ class CandidacyMeEnrichedTest extends TestCase
             ->assertJsonPath('election_outcome.rank', 1)
             ->assertJsonPath('election_outcome.votes', 43)
             ->assertJsonPath('election_outcome.certified', true);
+    }
+
+    public function test_election_outcome_stays_null_between_close_and_finalize(): void
+    {
+        // Polls closed, results not yet finalized: the candidate row still
+        // carries pre-tally defaults, so the app must show the "awaiting
+        // official results" state instead of a fake "not elected" verdict.
+        $this->closeVoting();
+
+        $student = $this->makeUser(['name' => 'Waiting Candidate']);
+        Candidate::create([
+            'user_id' => $student->id,
+            'position_id' => $this->positionId('president'),
+            'candidate_ref' => (string) Str::uuid(),
+            'platform_statement' => 'Platform.',
+            'approval_status' => 'approved',
+            'election_status' => 'pending',
+        ]);
+
+        $this->actingAs($student, 'sanctum')
+            ->getJson('/api/candidacy/me')
+            ->assertOk()
+            ->assertJsonPath('status', 'approved')
+            ->assertJsonPath('election_outcome', null);
     }
 
     public function test_rejection_persists_the_reason_and_notifies_the_applicant(): void
@@ -294,6 +319,15 @@ class CandidacyMeEnrichedTest extends TestCase
                 ['value' => $value, 'updated_at' => now()],
             );
         }
+    }
+
+    /** Raises the results_published flag the way Finalize Winners does. */
+    private function publishResults(): void
+    {
+        DB::table('election_settings')->updateOrInsert(
+            ['key' => 'results_published'],
+            ['value' => '1', 'updated_at' => now()],
+        );
     }
 
     /** Configures a live voting window → derived phase voting_open. */

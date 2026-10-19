@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Jobs\SendPushToUsers;
 use App\Mail\AdminNotificationMail;
 use App\Models\User;
 use App\Models\UserNotification;
@@ -10,11 +11,14 @@ use Illuminate\Support\Facades\Mail;
 
 /**
  * Writes in-app notifications (and, when the matching notification setting is
- * enabled, an admin email) for platform events.
+ * enabled, an admin email) for platform events — and fans the same payload
+ * out to registered phones as FCM push (queued, best-effort; see
+ * App\Jobs\SendPushToUsers).
  *
- * Every call is best-effort: a failed insert or a failed mail send is logged
- * and swallowed so notification delivery can never break the flow that
- * triggered it (registration, voting, imports, admin actions).
+ * Every call is best-effort: a failed insert, a failed mail send or a failed
+ * push dispatch is logged and swallowed so notification delivery can never
+ * break the flow that triggered it (registration, voting, imports, admin
+ * actions).
  */
 class Notifier
 {
@@ -71,7 +75,7 @@ class Notifier
      * the admin role should be paged — not every panel user. Best-effort like
      * the rest of this class.
      *
-     * @return int  number of administrators notified
+     * @return int number of administrators notified
      */
     public static function toAdminUsersInApp(
         string $type,
@@ -118,7 +122,7 @@ class Notifier
      * chunk is logged and the loop continues rather than aborting the caller.
      *
      * @param  array{year_level?: ?string, department?: ?string, course?: ?string}  $filters
-     * @return int  number of students notified
+     * @return int number of students notified
      */
     public static function notifyStudents(
         string $type,
@@ -165,6 +169,10 @@ class Notifier
 
                 UserNotification::insert($rows);
                 $count += count($rows);
+
+                // Same payload as phone push: every registered device of this
+                // chunk's recipients rings once the queued job runs.
+                self::queuePush($students->pluck('id')->all(), $title, $body, $link);
             });
 
             return $count;
@@ -173,6 +181,54 @@ class Notifier
 
             return 0;
         }
+    }
+
+    /**
+     * Write the same in-app notification to an explicit list of user ids and
+     * queue the matching phone push, in chunks (used by the timed vote
+     * reminder, whose recipient list is already narrowed to non-voters).
+     *
+     * Best-effort like the rest of this class: a failed chunk is logged and
+     * the loop continues.
+     *
+     * @param  array<int, int>  $userIds
+     * @return int number of recipients notified
+     */
+    public static function notifyUserList(
+        array $userIds,
+        string $type,
+        string $title,
+        ?string $body = null,
+        ?string $link = null,
+    ): int {
+        $count = 0;
+        $now = now();
+
+        foreach (array_chunk($userIds, 500) as $chunk) {
+            try {
+                $rows = [];
+                foreach ($chunk as $userId) {
+                    $rows[] = [
+                        'user_id' => $userId,
+                        'type' => $type,
+                        'title' => $title,
+                        'body' => $body,
+                        'link' => $link,
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ];
+                }
+
+                UserNotification::insert($rows);
+                $count += count($rows);
+
+                self::queuePush($chunk, $title, $body, $link);
+            } catch (\Throwable $e) {
+                Log::warning('Notification fan-out failed: '.$e->getMessage());
+            }
+        }
+
+        return $count;
     }
 
     /**
@@ -216,8 +272,33 @@ class Notifier
                 'body' => $body,
                 'link' => $link,
             ]);
+
+            // Phone push rides along with every in-app row: the queued job
+            // no-ops for users with no registered device (or when FCM/push is
+            // not configured), so this stays safe for staff accounts too.
+            self::queuePush([$userId], $title, $body, $link);
         } catch (\Throwable $e) {
             Log::warning('Notification insert failed: '.$e->getMessage());
+        }
+    }
+
+    /**
+     * Dispatch the queued FCM job for a recipient batch. Isolated and
+     * best-effort: a queue hiccup must never undo a successfully written
+     * in-app row.
+     *
+     * @param  array<int, int>  $userIds
+     */
+    private static function queuePush(array $userIds, string $title, ?string $body, ?string $link): void
+    {
+        if ($userIds === []) {
+            return;
+        }
+
+        try {
+            SendPushToUsers::dispatch($userIds, $title, $body, $link);
+        } catch (\Throwable $e) {
+            Log::warning('Push dispatch failed: '.$e->getMessage());
         }
     }
 

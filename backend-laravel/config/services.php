@@ -31,8 +31,24 @@ return [
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),
-            'channel' => env('SLACK_BOT_USER_DEFAULT_CHANNEL'),
+            'channel' => env('SLACK_BOT_USER_CHANNEL'),
         ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Firebase Cloud Messaging (phone push)
+    |--------------------------------------------------------------------------
+    |
+    | FIREBASE_PROJECT_ID is the Firebase project id; FIREBASE_CREDENTIALS
+    | points at the service-account JSON (a path, or the JSON itself inline).
+    | When either is missing, App\Support\FcmPush is inert: notifications stay
+    | in-app and nothing fails.
+    |
+    */
+    'firebase' => [
+        'project_id' => env('FIREBASE_PROJECT_ID'),
+        'credentials' => env('FIREBASE_CREDENTIALS'),
     ],
 
 ];
