@@ -178,13 +178,18 @@ export default function Results({ activeView = 'results', onNavigate, onLogout, 
   // A finalize has run once any candidate carries a non-pending status.
   const isFinalized = candidateRows.some((c) => c.electionStatus !== 'pending');
 
+  // Whether a row belongs in View All Elected / View Unsuccessful. Mirrors the
+  // per-view branch inside getFilteredCandidates below — keep the two in sync.
+  const isElectedRow = (item) => item.status === 'WINNER'
+    || (item.status === 'LEADING' && !isFinalized);
+  const isUnsuccessfulRow = (item) => item.status === 'Did not win';
+
   const getFilteredCandidates = () => {
     return candidateRows.filter(item => {
       // Pre-finalize the group leader is 'LEADING', not 'WINNER' — keep it in
       // the elected list (marked provisional) so the view is never blank.
-      if (subView === 'elected' && item.status !== 'WINNER'
-        && !(item.status === 'LEADING' && !isFinalized)) return false;
-      if (subView === 'unsuccessful' && item.status !== 'Did not win') return false;
+      if (subView === 'elected' && !isElectedRow(item)) return false;
+      if (subView === 'unsuccessful' && !isUnsuccessfulRow(item)) return false;
       if (selectedPosition !== 'All' && item.position !== selectedPosition) return false;
       if (selectedTier !== 'All' && item.tier !== selectedTier) return false;
       if (selectedParty !== 'All' && item.party !== selectedParty) return false;
@@ -199,6 +204,24 @@ export default function Results({ activeView = 'results', onNavigate, onLogout, 
     .sort((a, b) => a.localeCompare(b));
   const partyOptions = Array.from(
     new Set(candidateRows.map((r) => r.party).filter((p) => p && p !== '—')),
+  ).sort((a, b) => a.localeCompare(b));
+
+  // Position options shrink to the selected tier AND the current detail view:
+  // National shows only National positions with rows in this view, Provincial
+  // only Provincial ones, All shows everything with rows in this view. This
+  // covers View All Candidates, View All Elected and View Unsuccessful alike,
+  // so a listed position can never yield an empty table in the current view.
+  const viewRowsForOptions = subView === 'elected'
+    ? candidateRows.filter(isElectedRow)
+    : subView === 'unsuccessful'
+      ? candidateRows.filter(isUnsuccessfulRow)
+      : candidateRows;
+  const positionOptions = Array.from(
+    new Set(
+      viewRowsForOptions
+        .filter((r) => selectedTier === 'All' || r.tier === selectedTier)
+        .map((r) => r.position),
+    ),
   ).sort((a, b) => a.localeCompare(b));
 
   // Ballot order grouping for the detail table: National first, then
@@ -380,21 +403,21 @@ export default function Results({ activeView = 'results', onNavigate, onLogout, 
 
               {/* Navigation Action Buttons Row */}
               <div className="results-action-buttons">
-                <button 
+                <button
                   className="btn-action btn-blue"
-                  onClick={() => setSubView('all-candidates')}
+                  onClick={() => { setSelectedPosition('All'); setSubView('all-candidates'); }}
                 >
                   View All Candidates Results
                 </button>
-                <button 
+                <button
                   className="btn-action btn-green"
-                  onClick={() => setSubView('elected')}
+                  onClick={() => { setSelectedPosition('All'); setSubView('elected'); }}
                 >
                   View All Elected
                 </button>
-                <button 
+                <button
                   className="btn-action btn-red"
-                  onClick={() => setSubView('unsuccessful')}
+                  onClick={() => { setSelectedPosition('All'); setSubView('unsuccessful'); }}
                 >
                   View All Unsuccessful
                 </button>
@@ -607,7 +630,13 @@ export default function Results({ activeView = 'results', onNavigate, onLogout, 
                     <select 
                       className="filter-select"
                       value={selectedTier}
-                      onChange={(e) => setSelectedTier(e.target.value)}
+                      onChange={(e) => {
+                        setSelectedTier(e.target.value);
+                        // The position list is tier-scoped, so a previously picked
+                        // position may no longer exist — reset to All instead of
+                        // leaving a dead-end selection that yields zero rows.
+                        setSelectedPosition('All');
+                      }}
                     >
                       <option value="All">Level: All</option>
                       {tierOptions.map((tier) => (
@@ -626,11 +655,9 @@ export default function Results({ activeView = 'results', onNavigate, onLogout, 
                       onChange={(e) => setSelectedPosition(e.target.value)}
                     >
                       <option value="All">Position: All</option>
-                      {Array.from(new Set(candidateRows.map(r => r.position)))
-                        .sort((a,b) => a.localeCompare(b))
-                        .map(pos => (
-                          <option key={pos} value={pos}>{pos}</option>
-                        ))}
+                      {positionOptions.map(pos => (
+                        <option key={pos} value={pos}>{pos}</option>
+                      ))}
                     </select>
                     <ChevronDown size={14} className="dropdown-arrow" />
                   </div>
