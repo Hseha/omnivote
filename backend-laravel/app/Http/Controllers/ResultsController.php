@@ -100,7 +100,7 @@ class ResultsController extends Controller
                                 ->reject(fn ($row) => $archivedRefs->contains($row->candidate_ref))
                                 ->sortByDesc(fn ($row) => (int) $row->votes)
                                 ->values()
-                                ->map(function ($row) use ($candidates, $positionKey) {
+                                ->map(function ($row) use ($candidates, $positionKey, $position) {
                                     // A ledger row can outlive its candidate
                                     // (withdrawn, deleted) and a position_key can
                                     // outlive its Position row. Look both up
@@ -111,6 +111,11 @@ class ResultsController extends Controller
                                         'id' => $candidate?->id,
                                         'name' => $candidate?->user?->name ?? $row->candidate_ref,
                                         'position_key' => $positionKey,
+                                        // Party + tier drive the admin filter
+                                        // dropdowns and the student app's
+                                        // National/Provincial grouping.
+                                        'party_name' => $candidate?->party_name ?: '—',
+                                        'tier' => $position?->tier,
                                         'votes' => (int) $row->votes,
                                         'candidate_ref' => $row->candidate_ref,
                                         'election_status' => $candidate?->election_status ?? 'pending',

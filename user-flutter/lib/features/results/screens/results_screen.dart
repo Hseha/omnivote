@@ -17,13 +17,17 @@ import '../../../core/widgets/loading_skeleton.dart';
 import '../../../core/widgets/top_bar.dart';
 import '../../../data/models/election_result_model.dart';
 import '../../../data/models/election_status_model.dart';
+import '../../../data/repositories/result_repository.dart';
 import '../../dashboard/providers/announcements_provider.dart';
 import '../../dashboard/providers/election_status_provider.dart';
 import '../providers/results_provider.dart';
 
-/// Election Results: per-position tallies once `voting_closed`, plus an
-/// anonymous receipt-token verification box. Before the polls close this
-/// screen only shows turnout/status, never per-candidate numbers.
+/// Election Results: official winners first, once `voting_closed` AND an admin
+/// has run Finalize Winners (the API returns 403 `results_not_published`
+/// until then — students never see provisional tallies). The default view is
+/// a calm winners-per-position list grouped National → Provincial; the full
+/// per-candidate tallies stay collapsed behind "View full results". An
+/// anonymous receipt-token verification box is always available.
 class ResultsScreen extends ConsumerStatefulWidget {
   const ResultsScreen({super.key});
 
@@ -34,6 +38,7 @@ class ResultsScreen extends ConsumerStatefulWidget {
 class _ResultsScreenState extends ConsumerState<ResultsScreen> {
   final TextEditingController _receiptController = TextEditingController();
   String? _verifyToken;
+  bool _showFullTallies = false;
 
   @override
   void dispose() {
@@ -123,14 +128,7 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
         children: [
           _NotYetPublished(onRefresh: refreshAll),
           AppSpacing.vMd,
-          _ReceiptVerifier(
-            controller: _receiptController,
-            onVerify: () {
-              final token = _receiptController.text.trim();
-              if (token.isNotEmpty) setState(() => _verifyToken = token);
-            },
-          ),
-          if (_verifyToken != null) _VerificationResult(token: _verifyToken!),
+          ..._verifierWidgets(),
         ],
       );
     }
@@ -146,19 +144,34 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
                 return const EmptyState(
                   message: 'No results published yet',
                   subMessage:
-                      'Tallies appear here once voting closes and results are finalized.',
+                      'Winners appear here once election officials finalize the results.',
                   icon: Icons.bar_chart_outlined,
                 );
               }
+              final runs = _positionRuns(results);
               return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const _AnnouncementBanner(),
-                  // The API returns one group per electorate for a scoped seat
-                  // (e.g. one Year Level Representative card per college·year),
-                  // already in ballot order. Collapse each consecutive run of
-                  // same-position scoped groups into a single master card so a
-                  // 20-electorate seat doesn't bury the rest of the ballot.
-                  ..._masterCardSections(results),
+                  // Calm default: one compact winner card per position,
+                  // National first then Provincial. The full per-candidate
+                  // tallies stay collapsed so the list never buries the
+                  // outcome under twenty electorate sub-blocks.
+                  ..._winnersSections(runs),
+                  AppSpacing.vMd,
+                  _FullResultsToggle(
+                    expanded: _showFullTallies,
+                    positionCount: runs.length,
+                    onToggle: () =>
+                        setState(() => _showFullTallies = !_showFullTallies),
+                  ),
+                  if (_showFullTallies) ...[
+                    AppSpacing.vSm,
+                    // One group per electorate for a scoped seat, already in
+                    // ballot order; consecutive same-position scoped groups
+                    // collapse into a single master card.
+                    ..._masterCardSections(results),
+                  ],
                 ],
               );
             },
@@ -169,27 +182,41 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
                 LoadingSkeleton.card(),
               ],
             ),
-            error: (err, stack) => ErrorState(
-              message: apiErrorMessage(
-                err,
-                fallback:
-                    'Results are not available yet or the API is unreachable.',
-              ),
-              onRetry: () => refreshAll(),
-            ),
-          ),
-          AppSpacing.vMd,
-          _ReceiptVerifier(
-            controller: _receiptController,
-            onVerify: () {
-              final token = _receiptController.text.trim();
-              if (token.isNotEmpty) setState(() => _verifyToken = token);
+            error: (err, stack) {
+              if (err is ResultsNotPublishedException) {
+                return const _AwaitingFinalization();
+              }
+              return ErrorState(
+                message: apiErrorMessage(
+                  err,
+                  fallback:
+                      'Results are not available yet or the API is unreachable.',
+                ),
+                onRetry: () => refreshAll(),
+              );
             },
           ),
-          if (_verifyToken != null) _VerificationResult(token: _verifyToken!),
+          AppSpacing.vMd,
+          ..._verifierWidgets(),
         ],
       ),
     );
+  }
+
+  /// Receipt-verification widgets, shared by every phase branch of this
+  /// screen so the verifier stays reachable without scrolling past the
+  /// whole ballot.
+  List<Widget> _verifierWidgets() {
+    return [
+      _ReceiptVerifier(
+        controller: _receiptController,
+        onVerify: () {
+          final token = _receiptController.text.trim();
+          if (token.isNotEmpty) setState(() => _verifyToken = token);
+        },
+      ),
+      if (_verifyToken != null) _VerificationResult(token: _verifyToken!),
+    ];
   }
 
   Widget _buildResultCard(ElectionResult result) {
@@ -255,6 +282,255 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
       widgets.add(_ScopedMasterCard(groups: run));
     }
     return widgets;
+  }
+
+  /// Collapses consecutive same-position groups into one run per seat (a
+  /// global seat is a single-group run), carrying the tier for the winners
+  /// section headers.
+  List<_PositionRun> _positionRuns(List<ElectionResult> results) {
+    final runs = <_PositionRun>[];
+    var i = 0;
+    while (i < results.length) {
+      final current = results[i];
+      if (!current.isScoped) {
+        runs.add(_PositionRun(
+          tier: current.tier,
+          label: current.positionLabel ?? current.positionKey,
+          groups: [current],
+        ));
+        i++;
+        continue;
+      }
+
+      final run = <ElectionResult>[];
+      while (i < results.length &&
+          results[i].isScoped &&
+          results[i].positionKey == current.positionKey) {
+        run.add(results[i]);
+        i++;
+      }
+      runs.add(_PositionRun(
+        tier: run.first.tier,
+        label: run.first.baseLabel,
+        groups: run,
+      ));
+    }
+    return runs;
+  }
+
+  /// Winners-first sections: a tier header (National / Provincial) whenever
+  /// the tier changes, then one compact winner card per seat.
+  List<Widget> _winnersSections(List<_PositionRun> runs) {
+    final widgets = <Widget>[];
+    String? prevTier;
+    for (final run in runs) {
+      if (run.tier != prevTier) {
+        widgets.add(_TierSectionHeader(
+          label: run.tier == 'national'
+              ? 'National Winners'
+              : run.tier == 'provincial'
+                  ? 'Provincial Winners'
+                  : 'Winners',
+        ));
+        prevTier = run.tier;
+      }
+      widgets.add(_PositionWinnersCard(run: run));
+    }
+    return widgets;
+  }
+}
+
+/// One contested seat: a global position is a single-group run, a scoped
+/// position spans one group per electorate.
+class _PositionRun {
+  final String? tier;
+  final String label;
+  final List<ElectionResult> groups;
+
+  const _PositionRun({
+    required this.tier,
+    required this.label,
+    required this.groups,
+  });
+}
+
+/// Small uppercase divider between the National and Provincial winner cards.
+class _TierSectionHeader extends StatelessWidget {
+  final String label;
+
+  const _TierSectionHeader({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(
+        top: AppSpacing.sm,
+        bottom: AppSpacing.sm,
+      ),
+      child: Text(
+        label.toUpperCase(),
+        style: AppTextStyles.of(context).labelLarge.copyWith(
+              color: Theme.of(context).colorScheme.primary,
+              letterSpacing: 0.6,
+            ),
+      ),
+    );
+  }
+}
+
+/// Compact "who won this seat" card: trophy + winner name (with party and
+/// vote count), one block per electorate for a scoped seat. Ties are listed
+/// with an amber chip; seats nobody has won yet say so calmly.
+class _PositionWinnersCard extends StatelessWidget {
+  final _PositionRun run;
+
+  const _PositionWinnersCard({required this.run});
+
+  @override
+  Widget build(BuildContext context) {
+    final appText = AppTextStyles.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    final perElectorate = run.groups.length > 1;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+      child: AppCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(
+                  Icons.emoji_events_outlined,
+                  size: 18,
+                  color: AppColors.successGreen,
+                ),
+                AppSpacing.hSm,
+                Expanded(
+                  child: Text(run.label, style: appText.titleMedium),
+                ),
+              ],
+            ),
+            AppSpacing.vSm,
+            for (var g = 0; g < run.groups.length; g++) ...[
+              if (g > 0) AppSpacing.vSm,
+              if (perElectorate)
+                Text(
+                  run.groups[g].scopeLabel ?? '',
+                  style: appText.labelLarge.copyWith(color: scheme.primary),
+                ),
+              if (perElectorate) AppSpacing.vXs,
+              ..._winnerRows(run.groups[g], appText),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _winnerRows(ElectionResult group, AppTextStyles appText) {
+    final winners = group.candidates.where((c) => c.isElected).toList();
+    final ties = group.candidates.where((c) => c.isTied).toList();
+
+    if (winners.isEmpty && ties.isEmpty) {
+      return [
+        Text('Awaiting certification', style: appText.bodySmall),
+      ];
+    }
+
+    return [
+      for (final winner in winners)
+        Padding(
+          padding: const EdgeInsets.only(bottom: AppSpacing.xs),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(winner.name, style: appText.titleSmall),
+              ),
+              if (winner.partyName != null &&
+                  winner.partyName!.isNotEmpty &&
+                  winner.partyName != '—') ...[
+                _ResultChip(
+                  label: winner.partyName!,
+                  bg: AppColors.tagBlueBg,
+                  fg: AppColors.tagBlueText,
+                ),
+                AppSpacing.hSm,
+              ],
+              Text(
+                '${winner.votes} votes',
+                style: appText.labelSmall,
+              ),
+            ],
+          ),
+        ),
+      for (final tied in ties)
+        Padding(
+          padding: const EdgeInsets.only(bottom: AppSpacing.xs),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(tied.name, style: appText.titleSmall),
+              ),
+              const _ResultChip(
+                label: 'TIE',
+                bg: AppColors.resultTieBg,
+                fg: AppColors.resultTieFg,
+              ),
+            ],
+          ),
+        ),
+    ];
+  }
+}
+
+/// Show/hide switch for the detailed per-candidate tallies.
+class _FullResultsToggle extends StatelessWidget {
+  final bool expanded;
+  final int positionCount;
+  final VoidCallback onToggle;
+
+  const _FullResultsToggle({
+    required this.expanded,
+    required this.positionCount,
+    required this.onToggle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final appText = AppTextStyles.of(context);
+    return Center(
+      child: TextButton.icon(
+        onPressed: onToggle,
+        icon: Icon(
+          expanded ? Icons.expand_less : Icons.expand_more,
+          size: 18,
+        ),
+        label: Text(
+          expanded
+              ? 'Hide detailed results'
+              : 'View full results ($positionCount positions)',
+          style: appText.labelLarge,
+        ),
+      ),
+    );
+  }
+}
+
+/// Shown after the polls close but before any admin has run Finalize
+/// Winners: no numbers, just a calm explanation and a refresh.
+class _AwaitingFinalization extends StatelessWidget {
+  const _AwaitingFinalization();
+
+  @override
+  Widget build(BuildContext context) {
+    return EmptyState(
+      message: 'Results are being finalized.',
+      subMessage:
+          'The official winners will appear here once election officials finalize '
+          'the results. Pull down to refresh.',
+      icon: Icons.hourglass_top_outlined,
+    );
   }
 }
 

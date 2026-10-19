@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\ApplySessionLifetime;
 use App\Http\Middleware\CheckPhase;
+use App\Http\Middleware\CheckResultsPublished;
 use App\Http\Middleware\EnsurePasswordChanged;
 use App\Http\Middleware\EnsurePermission;
 use App\Http\Middleware\EnsureRole;
@@ -27,6 +28,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->statefulApi()
             ->alias([
                 'checkPhase' => CheckPhase::class,
+                'resultsPublished' => CheckResultsPublished::class,
                 'permission' => EnsurePermission::class,
                 'role' => EnsureRole::class,
                 'passwordChanged' => EnsurePasswordChanged::class,
