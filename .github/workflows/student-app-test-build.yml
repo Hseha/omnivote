@@ -97,21 +97,39 @@ jobs:
               ;;
           esac
 
-          # Reach the API over the tailnet. --resolve keeps the real hostname
-          # for SNI and the Host header (the certificate is issued for the
-          # name, not for the 100.x address) while the connection itself
-          # stays inside the tailnet. The resolver exits non-zero rather than
-          # printing an empty address, so a failure here stops the build
-          # instead of silently falling back to the public path.
+          # Reach the API over the tailnet where possible. --resolve keeps the
+          # real hostname for SNI and the Host header (the certificate is
+          # issued for the name, not for the 100.x address) while the
+          # connection itself stays inside the tailnet.
+          #
+          # The tailnet route needs the CI tag granted tcp:443 to the server
+          # in the tailnet ACLs. Until that grant exists the server silently
+          # drops the connection, so the tailnet attempt is bounded to a short
+          # timeout and the check falls back to the public path — a missing
+          # grant must not be able to block a release either.
           url_host="$(python3 -c 'import sys, urllib.parse; print(urllib.parse.urlsplit(sys.argv[1]).hostname or "")' "$API_BASE_URL")"
           : "${url_host:?Could not read a hostname from PRODUCTION_API_BASE_URL}"
-          tailnet_ip="$(bash .github/scripts/resolve-tailnet-ip.sh "$url_host")"
-          echo "Validating $API_BASE_URL over the tailnet ($url_host -> $tailnet_ip)"
 
-          curl --fail --silent --show-error --max-time 20 \
-            --output /dev/null \
-            --resolve "${url_host}:443:${tailnet_ip}" \
-            "$API_BASE_URL/election/status"
+          tailnet_ip=""
+          if tailnet_ip="$(bash .github/scripts/resolve-tailnet-ip.sh "$url_host" 2>/dev/null)"; then
+            echo "Validating $API_BASE_URL over the tailnet ($url_host -> $tailnet_ip)"
+          else
+            echo "Could not resolve $url_host to a tailnet address."
+          fi
+
+          if [ -n "$tailnet_ip" ] &&
+             curl --fail --silent --show-error --max-time 10 \
+               --output /dev/null \
+               --resolve "${url_host}:443:${tailnet_ip}" \
+               "$API_BASE_URL/election/status"; then
+            echo "API validated over the tailnet."
+          else
+            echo "::warning title=Production API not reachable over the tailnet::Falling back to the public path. The tailnet route needs the CI tag granted tcp:443 to the server in the Tailscale ACLs; the server drops the connection without that grant."
+            curl --fail --silent --show-error --max-time 20 \
+              --output /dev/null \
+              "$API_BASE_URL/election/status"
+            echo "API validated over the public path."
+          fi
 
       # Reported, never fatal. The public Funnel URL is what students
       # actually hit, so an outage there matters — but it is not a reason to
@@ -126,7 +144,7 @@ jobs:
                --output /dev/null "$API_BASE_URL/election/status"; then
             echo "Public student endpoint is reachable."
           else
-            echo "::warning title=Public student endpoint unreachable::$API_BASE_URL did not answer. The API itself was validated over the tailnet and the build continues, but students cannot reach the app until the Funnel edge recovers. The scheduled 'Funnel health check' workflow reports the same condition."
+            echo "::warning title=Public student endpoint unreachable::$API_BASE_URL did not answer. The API itself was validated (over the tailnet, or over the public path if the tailnet route is not granted), so the build continues — but students cannot reach the app until the Funnel edge recovers. The scheduled 'Funnel health check' workflow reports the same condition."
           fi
 
       - name: Configure release signing
