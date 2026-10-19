@@ -184,6 +184,25 @@ server {
         add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'" always;
     }
 
+    location = /ssg { return 301 /ssg/; }
+
+    location /ssg/ {
+        # Same React bundle as /admin/, second mount for the elected SSG
+        # President (no staff Basic gate in production; staging has no gate
+        # at all). Without this block /ssg/setup falls through to
+        # `location /` -> Laravel, which has no GET /ssg/setup route, so the
+        # one-time setup link dies before the SPA ever boots.
+        alias ${APP_DIR}/backend-laravel/public/admin/;
+        index index.html;
+        try_files \$uri \$uri/ /ssg/index.html;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "no-referrer" always;
+        add_header Permissions-Policy "geolocation=(), microphone=(), camera=()" always;
+        add_header Strict-Transport-Security "max-age=31536000" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'" always;
+    }
+
     location / {
         try_files \$uri \$uri/ /index.php?\$query_string;
     }
