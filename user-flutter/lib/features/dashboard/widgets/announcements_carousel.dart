@@ -11,6 +11,7 @@ import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/error_state.dart';
 import '../../../core/widgets/loading_skeleton.dart';
 import '../../../core/widgets/section_header.dart';
+import '../../../data/models/announcement_model.dart';
 import '../providers/announcements_provider.dart';
 
 /// Published announcements as a horizontal scrollable row, newest first with
@@ -20,6 +21,10 @@ import '../providers/announcements_provider.dart';
 /// States: skeleton cards while loading, an [EmptyState] when there is
 /// nothing published, and an [ErrorState] with retry (re-fetches the
 /// provider) when the load fails.
+///
+/// A card is two lines of body tall, which is enough for a notice but not for
+/// a long post — the results announcement lists every elected officer. Tapping
+/// a card opens the whole announcement in a sheet.
 class AnnouncementsCarousel extends ConsumerWidget {
   const AnnouncementsCarousel({super.key});
 
@@ -55,10 +60,7 @@ class AnnouncementsCarousel extends ConsumerWidget {
                   return SizedBox(
                     width: 260,
                     child: _AnnouncementCard(
-                      title: announcement.title,
-                      body: announcement.body,
-                      authorName: announcement.authorName,
-                      authorAvatarUrl: announcement.authorAvatarUrl,
+                      announcement: announcement,
                       isLatest: index == 0,
                     ),
                   );
@@ -87,17 +89,11 @@ class AnnouncementsCarousel extends ConsumerWidget {
 }
 
 class _AnnouncementCard extends StatelessWidget {
-  final String title;
-  final String body;
-  final String? authorName;
-  final String? authorAvatarUrl;
+  final Announcement announcement;
   final bool isLatest;
 
   const _AnnouncementCard({
-    required this.title,
-    required this.body,
-    required this.authorName,
-    required this.authorAvatarUrl,
+    required this.announcement,
     required this.isLatest,
   });
 
@@ -109,6 +105,9 @@ class _AnnouncementCard extends StatelessWidget {
         horizontal: AppMetrics.rowPaddingH,
         vertical: AppMetrics.rowPaddingV,
       ),
+      // The card is a link to the whole announcement: the two lines of body
+      // it shows are a preview, not the post.
+      onTap: () => _openAnnouncement(context),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -127,7 +126,7 @@ class _AnnouncementCard extends StatelessWidget {
               ],
               Expanded(
                 child: Text(
-                  title,
+                  announcement.title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: appText.titleSmall,
@@ -138,25 +137,25 @@ class _AnnouncementCard extends StatelessWidget {
           AppSpacing.vXs,
           Expanded(
             child: Text(
-              body,
+              announcement.body,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: appText.labelSmall,
             ),
           ),
-          if (authorName?.isNotEmpty ?? false) ...[
+          if (announcement.authorName?.isNotEmpty ?? false) ...[
             AppSpacing.vXs,
             Row(
               children: [
                 CachedAvatar(
-                  imageUrl: authorAvatarUrl,
+                  imageUrl: announcement.authorAvatarUrl,
                   radius: 10,
-                  initials: authorName,
+                  initials: announcement.authorName,
                 ),
                 AppSpacing.hXs,
                 Expanded(
                   child: Text(
-                    authorName!,
+                    announcement.authorName!,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: appText.labelSmall,
@@ -166,6 +165,76 @@ class _AnnouncementCard extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+  /// Opens the whole announcement in a sheet. The carousel card only has room
+  /// for two lines, and an announcement can be long — the results post lists
+  /// every elected officer.
+  Future<void> _openAnnouncement(BuildContext context) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => _AnnouncementSheet(
+        announcement: announcement,
+      ),
+    );
+  }
+}
+
+class _AnnouncementSheet extends StatelessWidget {
+
+  final Announcement announcement;
+
+  const _AnnouncementSheet({required this.announcement});
+
+  @override
+  Widget build(BuildContext context) {
+    final appText = AppTextStyles.of(context);
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              announcement.title,
+              style: appText.titleMedium,
+            ),
+            AppSpacing.vSm,
+            if (announcement.authorName?.isNotEmpty ?? false) ...[
+              Row(
+                children: [
+                  CachedAvatar(
+                    imageUrl: announcement.authorAvatarUrl,
+                    radius: 14,
+                    initials: announcement.authorName,
+                  ),
+                  AppSpacing.hXs,
+                  Expanded(
+                    child: Text(
+                      announcement.authorName!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: appText.labelSmall,
+                    ),
+                  ),
+                ],
+              ),
+              AppSpacing.vSm,
+            ],
+            Flexible(
+              child: SingleChildScrollView(
+                child: Text(
+                  announcement.body,
+                  style: appText.bodySmall,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

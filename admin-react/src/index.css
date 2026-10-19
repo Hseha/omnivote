@@ -52,6 +52,37 @@
   color-scheme: light;
 }
 
+
+/* Derived tier tokens for the SSG President console (national / provincial).
+   National uses the shell brand blue; Provincial is its own designated
+   accent (one accent per idea), per docs/07_DESIGN_SYSTEM.md.
+
+   Each tier carries its OWN soft and wash tints, not one shared pair: the
+   wash tints a card header and the soft tint a badge, so a provincial card
+   that borrowed the national blue would read as blue while calling itself
+   violet. */
+:root {
+  --tier-national: var(--brand-primary);
+  --tier-provincial: #7c3aed;
+  --tier-other: #64748b;
+  --tier-accent-soft: rgba(37, 99, 235, 0.1);
+  --tier-accent-wash: rgba(37, 99, 235, 0.045);
+  --tier-provincial-soft: rgba(124, 58, 237, 0.1);
+  --tier-provincial-wash: rgba(124, 58, 237, 0.045);
+  --tier-other-soft: rgba(100, 116, 139, 0.12);
+  --tier-other-wash: rgba(100, 116, 139, 0.055);
+}
+
+/* SSG President derived tokens for dark rendering */
+[data-theme='dark'] {
+  --tier-accent-soft: rgba(96, 165, 250, 0.14);
+  --tier-accent-wash: rgba(96, 165, 250, 0.07);
+  --tier-provincial-soft: rgba(167, 139, 250, 0.14);
+  --tier-provincial-wash: rgba(167, 139, 250, 0.07);
+  --tier-other-soft: rgba(148, 163, 184, 0.14);
+  --tier-other-wash: rgba(148, 163, 184, 0.07);
+}
+
 /* ===== Theme tokens: dark ===== */
 [data-theme='dark'] {
   --bg: #0b0f19;

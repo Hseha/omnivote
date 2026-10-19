@@ -23,6 +23,11 @@ function formatDate(value) {
   return Number.isNaN(date.getTime()) ? '' : date.toLocaleString();
 }
 
+// A body longer than this is clamped behind a "Show more" toggle. The
+// threshold is a character count rather than a measurement, so whether the
+// toggle appears is deterministic and needs no layout pass to decide.
+const BODY_CLAMP_CHARS = 320;
+
 export default function Announcements({
   onLogout,
   activeView = 'announcements',
@@ -36,6 +41,13 @@ export default function Announcements({
   const [deletingId, setDeletingId] = useState(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  // Which announcement bodies are expanded, by id. A body over
+  // BODY_CLAMP_CHARS is clamped until the reader asks for the rest.
+  const [expanded, setExpanded] = useState({});
+
+  const toggleExpanded = (id) => {
+    setExpanded((previous) => ({ ...previous, [id]: !previous[id] }));
+  };
 
   const loadAnnouncements = useCallback(async () => {
     setLoading(true);
@@ -161,34 +173,54 @@ export default function Announcements({
               <p className="muted-text">No announcements yet. Publish the first one above.</p>
             ) : (
               <div className="announcements-list">
-                {announcements.map((announcement) => (
-                  <article className="announcement-item" key={announcement.id}>
-                    <div className="announcements-item-header">
-                      <strong className="announcements-item-title">{announcement.title}</strong>
-                      <div className="announcements-item-actions">
-                        <span className={`announcements-item-status ${announcement.published_at ? 'is-published' : 'is-draft'}`}>
-                          {announcement.published_at ? 'Published' : 'Draft'}
-                        </span>
-                        {canDeleteAnnouncement(announcement, currentUser) && (
-                          <button
-                            type="button"
-                            className="announcements-item-delete"
-                            aria-label={`Delete "${announcement.title}"`}
-                            disabled={deletingId === announcement.id}
-                            onClick={() => deleteAnnouncement(announcement)}
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        )}
+                {announcements.map((announcement) => {
+                  const body = announcement.body || '';
+                  const isLong = body.length > BODY_CLAMP_CHARS;
+                  const isExpanded = Boolean(expanded[announcement.id]);
+
+                  return (
+                    <article className="announcement-item" key={announcement.id}>
+                      <div className="announcements-item-header">
+                        <strong className="announcements-item-title">{announcement.title}</strong>
+                        <div className="announcements-item-actions">
+                          <span className={`announcements-item-status ${announcement.published_at ? 'is-published' : 'is-draft'}`}>
+                            {announcement.published_at ? 'Published' : 'Draft'}
+                          </span>
+                          {canDeleteAnnouncement(announcement, currentUser) && (
+                            <button
+                              type="button"
+                              className="announcements-item-delete"
+                              aria-label={`Delete "${announcement.title}"`}
+                              disabled={deletingId === announcement.id}
+                              onClick={() => deleteAnnouncement(announcement)}
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                    <p className="announcements-item-byline">
-                      Posted by {announcement.author?.name || 'Staff'}
-                      {formatDate(announcement.published_at) ? ` • ${formatDate(announcement.published_at)}` : ''}
-                    </p>
-                    <p className="announcements-item-body">{announcement.body}</p>
-                  </article>
-                ))}
+                      <p className="announcements-item-byline">
+                        Posted by {announcement.author?.name || 'Staff'}
+                        {formatDate(announcement.published_at) ? ` • ${formatDate(announcement.published_at)}` : ''}
+                      </p>
+                      <p
+                        className={`announcements-item-body${isLong && !isExpanded ? ' is-clamped' : ''}`}
+                      >
+                        {body}
+                      </p>
+                      {isLong && (
+                        <button
+                          type="button"
+                          className="announcements-item-more"
+                          onClick={() => toggleExpanded(announcement.id)}
+                          aria-expanded={isExpanded}
+                        >
+                          {isExpanded ? 'Show less' : 'Show more'}
+                        </button>
+                      )}
+                    </article>
+                  );
+                })}
               </div>
             )}
           </section>
