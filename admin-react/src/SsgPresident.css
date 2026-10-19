@@ -71,53 +71,52 @@
 .ssg-tier-card {
   --ssg-tier-accent: #2563eb;
   --ssg-tier-accent-soft: rgba(37, 99, 235, 0.1);
-  position: relative;
+  --ssg-tier-accent-wash: rgba(37, 99, 235, 0.045);
   overflow: hidden;
-  padding-top: 24px;
-}
-
-/* The tier accent bar along the top edge is what separates the two
-   cabinets at a glance. */
-.ssg-tier-card::before {
-  content: '';
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 3px;
-  background: var(--ssg-tier-accent);
 }
 
 .ssg-tier-provincial {
   --ssg-tier-accent: #7c3aed;
   --ssg-tier-accent-soft: rgba(124, 58, 237, 0.1);
+  --ssg-tier-accent-wash: rgba(124, 58, 237, 0.045);
 }
 
 /* Fallback tier for a seat on an unrecognised tier value. */
 .ssg-tier-other {
   --ssg-tier-accent: #64748b;
   --ssg-tier-accent-soft: rgba(100, 116, 139, 0.12);
+  --ssg-tier-accent-wash: rgba(100, 116, 139, 0.055);
 }
 
 [data-theme='dark'] .ssg-tier-card {
   --ssg-tier-accent: #60a5fa;
   --ssg-tier-accent-soft: rgba(96, 165, 250, 0.14);
+  --ssg-tier-accent-wash: rgba(96, 165, 250, 0.07);
 }
 
 [data-theme='dark'] .ssg-tier-provincial {
   --ssg-tier-accent: #a78bfa;
   --ssg-tier-accent-soft: rgba(167, 139, 250, 0.14);
+  --ssg-tier-accent-wash: rgba(167, 139, 250, 0.07);
 }
 
 [data-theme='dark'] .ssg-tier-other {
   --ssg-tier-accent: #94a3b8;
   --ssg-tier-accent-soft: rgba(148, 163, 184, 0.14);
+  --ssg-tier-accent-wash: rgba(148, 163, 184, 0.07);
 }
 
+/* The tier is carried by a soft accent wash on the card header and by the
+   tier badge, not by a coloured stripe along the card edge. */
 .ssg-tier-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 16px;
+  margin: -20px -20px 16px;
+  padding: 18px 20px;
+  background: var(--ssg-tier-accent-wash);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .ssg-tier-header h3 {
