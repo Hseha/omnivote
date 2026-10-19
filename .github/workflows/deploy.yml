@@ -87,6 +87,13 @@ jobs:
         # cheap and catch the next one before it reaches the server.
         run: bash deploy/tests/deploy-script_test.sh
 
+      - name: Validate the tailnet IP resolver
+        # The release build's API pre-flight resolves the production host to
+        # its tailnet address through this helper. A bug here would either
+        # break the release build or — worse — silently point it back at the
+        # public path, so it is covered by a hermetic test.
+        run: bash .github/tests/resolve-tailnet-ip_test.sh
+
       - name: Set up PHP 8.4
         uses: shivammathur/setup-php@v2
         with:
