@@ -40,33 +40,229 @@
   align-items: center;
 }
 
-.ssg-table-wrap {
-  overflow-x: auto;
+/* ===== Certified Officer Roster =====
+   Hierarchy: tier card (National / Provincial) -> position -> electorate
+   -> officer. The two tier cards sit side by side so the national and
+   provincial cabinets read as separate bodies at a glance. */
+
+.ssg-roster {
+  display: grid;
+  gap: 12px;
 }
 
-.ssg-table {
-  width: 100%;
-  border-collapse: collapse;
+.ssg-roster-header h3 {
+  margin: 0 0 2px;
+  font-size: 1.05rem;
+  color: var(--heading);
 }
 
-.ssg-table th,
-.ssg-table td {
-  border-bottom: 1px solid #e5e7eb;
-  padding: 12px;
-  text-align: left;
+.ssg-roster-header p {
+  margin: 0;
+  font-size: 0.82rem;
 }
 
-.ssg-roster-group + .ssg-roster-group {
-  margin-top: 20px;
+.ssg-roster-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
 }
 
-.ssg-roster-group-title {
-  margin: 0 0 8px;
+.ssg-tier-card {
+  --ssg-tier-accent: #2563eb;
+  --ssg-tier-accent-soft: rgba(37, 99, 235, 0.1);
+  position: relative;
+  overflow: hidden;
+  padding-top: 24px;
+}
+
+/* The tier accent bar along the top edge is what separates the two
+   cabinets at a glance. */
+.ssg-tier-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: var(--ssg-tier-accent);
+}
+
+.ssg-tier-provincial {
+  --ssg-tier-accent: #7c3aed;
+  --ssg-tier-accent-soft: rgba(124, 58, 237, 0.1);
+}
+
+/* Fallback tier for a seat on an unrecognised tier value. */
+.ssg-tier-other {
+  --ssg-tier-accent: #64748b;
+  --ssg-tier-accent-soft: rgba(100, 116, 139, 0.12);
+}
+
+[data-theme='dark'] .ssg-tier-card {
+  --ssg-tier-accent: #60a5fa;
+  --ssg-tier-accent-soft: rgba(96, 165, 250, 0.14);
+}
+
+[data-theme='dark'] .ssg-tier-provincial {
+  --ssg-tier-accent: #a78bfa;
+  --ssg-tier-accent-soft: rgba(167, 139, 250, 0.14);
+}
+
+[data-theme='dark'] .ssg-tier-other {
+  --ssg-tier-accent: #94a3b8;
+  --ssg-tier-accent-soft: rgba(148, 163, 184, 0.14);
+}
+
+.ssg-tier-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.ssg-tier-header h3 {
+  margin: 0 0 2px;
+  font-size: 1rem;
+  color: var(--heading);
+}
+
+.ssg-tier-header p {
+  margin: 0;
   font-size: 0.78rem;
+}
+
+.ssg-tier-badge {
+  flex-shrink: 0;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--ssg-tier-accent-soft);
+  color: var(--ssg-tier-accent);
+  font-size: 0.62rem;
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.ssg-tier-positions {
+  display: grid;
+  gap: 18px;
+}
+
+.ssg-position {
+  display: grid;
+  gap: 8px;
+}
+
+.ssg-position + .ssg-position {
+  padding-top: 16px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.ssg-position-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ssg-position-title {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--heading);
+}
+
+.ssg-seat-chip {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
   color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 600;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A scoped seat is contested per electorate, so the electorate is its own
+   labelled block nested under the position. */
+.ssg-scope-group {
+  display: grid;
+  gap: 4px;
+  padding-left: 12px;
+  border-left: 2px solid var(--border-subtle);
+}
+
+.ssg-scope-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ssg-scope-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.ssg-officer-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.ssg-officer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.ssg-officer:last-child {
+  border-bottom: 0;
+}
+
+.ssg-officer-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.ssg-elected-badge {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--badge-bg);
+  color: var(--badge-color);
+  border: 1px solid var(--badge-border);
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ssg-elected-badge.ssg-provisional {
+  background: rgba(245, 158, 11, 0.14);
+  color: #b45309;
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+[data-theme='dark'] .ssg-elected-badge.ssg-provisional {
+  color: #fbbf24;
+}
+
+.ssg-officer-votes {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .ssg-announcements article {
@@ -115,6 +311,14 @@
 .ssg-announcement-delete:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+@media (max-width: 1100px) {
+  /* The two tier cards go side by side only when there is room for both
+     cabinets; below that they stack so neither column is squeezed. */
+  .ssg-roster-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 900px) {

@@ -19,12 +19,151 @@ function canDeleteAnnouncement(announcement, user) {
 }
 
 // Tier-grouped roster sections: national seats first, provincial second.
-// A row without `tier` (older backend) counts as national, and the backend
-// already returns each group in seating order.
-const ROSTER_GROUPS = [
-  { tier: 'national', label: 'National Winners' },
-  { tier: 'provincial', label: 'Provincial Winners' },
+// The backend already returns each tier in seating order.
+const ROSTER_TIERS = [
+  { tier: 'national', label: 'National Winners', empty: 'No national officers yet.' },
+  { tier: 'provincial', label: 'Provincial Winners', empty: 'No provincial officers yet.' },
+  // Safety net: a seat on an unrecognised tier (a legacy value, say) must
+  // still reach the President rather than vanish from the roster.
+  { tier: 'other', label: 'Other Officers', empty: 'No other officers yet.' },
 ];
+
+/**
+ * Groups the flat officer list into the console's tier -> position ->
+ * electorate -> officer hierarchy.
+ *
+ * The backend already seats the rows in ballot order (national before
+ * provincial, positions in their configured order, winners within a seat by
+ * vote count), so the grouping below preserves that order instead of
+ * re-sorting it — the President sees the roster in ballot order.
+ *
+ * `position_key` groups a position; a scoped position (one contested per
+ * college / year level) is split further by its electorate label. A global
+ * seat has no electorate, so it lands in the single `''` group.
+ */
+function buildRoster(officers) {
+  const tiers = new Map();
+
+  officers.forEach((officer) => {
+    // A row without `tier` (older backend) counts as national; anything that
+    // is neither national nor provincial lands in the `other` bucket so it is
+    // never silently dropped.
+    const rawTier = officer.tier || 'national';
+    const tier = ROSTER_TIERS.some((entry) => entry.tier === rawTier) ? rawTier : 'other';
+
+    if (!tiers.has(tier)) tiers.set(tier, new Map());
+    const positions = tiers.get(tier);
+
+    const positionKey = officer.position_key;
+    if (!positions.has(positionKey)) {
+      const seatCount = Number(officer.seat_count);
+      positions.set(positionKey, {
+        key: positionKey,
+        label: officer.position_base_label || officer.position_label,
+        scoped: Boolean(officer.position_scoped),
+        seatCount: Number.isFinite(seatCount) ? seatCount : null,
+        scopeGroups: new Map(),
+      });
+    }
+    const position = positions.get(positionKey);
+
+    // An unscoped seat has one electorate: the position itself.
+    const scopeKey = officer.position_scope || '';
+    if (!position.scopeGroups.has(scopeKey)) {
+      position.scopeGroups.set(scopeKey, {
+        key: scopeKey,
+        label: officer.position_scope,
+        officers: [],
+      });
+    }
+    position.scopeGroups.get(scopeKey).officers.push(officer);
+  });
+
+  return ROSTER_TIERS
+    .map((tier) => {
+      const positions = tiers.get(tier.tier);
+      return {
+        ...tier,
+        positions: positions ? Array.from(positions.values()) : [],
+      };
+    })
+    // The `other` bucket is a safety net for an unrecognised tier, not a real
+    // cabinet — it stays hidden until something actually lands in it.
+    .filter((tier) => tier.tier !== 'other' || tier.positions.length > 0);
+}
+
+/** "3 of 12 seats" — how many of a seat's places are actually filled. */
+function seatFillLabel(filled, seatCount) {
+  if (!Number.isFinite(seatCount) || seatCount <= 0) return null;
+  return `${filled} of ${seatCount} ${seatCount === 1 ? 'seat' : 'seats'}`;
+}
+
+/**
+ * One seated officer. The status badge distinguishes a confirmed winner from
+ * the provisional top-N the backend falls back to before a finalize has run.
+ */
+function OfficerRow({ officer }) {
+  return (
+    <li className="ssg-officer">
+      <span className="ssg-officer-name">{officer.name}</span>
+      {officer.is_elected ? (
+        <span className="ssg-elected-badge">Elected</span>
+      ) : (
+        <span className="ssg-elected-badge ssg-provisional">Provisional</span>
+      )}
+      <span className="ssg-officer-votes">
+        {Number(officer.votes || 0).toLocaleString()} votes
+      </span>
+    </li>
+  );
+}
+
+function OfficerList({ officers }) {
+  return (
+    <ul className="ssg-officer-list">
+      {officers.map((officer) => (
+        <OfficerRow key={`${officer.position_key}-${officer.candidate_ref}`} officer={officer} />
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * A position and the officers seated in it. A scoped seat (one contested per
+ * college / year level) is broken out into its electorates, each with its own
+ * fill count; a global seat lists its winners straight under the position.
+ */
+function PositionBlock({ position }) {
+  const scopeGroups = Array.from(position.scopeGroups.values());
+  const filled = scopeGroups.reduce((total, group) => total + group.officers.length, 0);
+
+  return (
+    <div className="ssg-position">
+      <div className="ssg-position-head">
+        <h4 className="ssg-position-title">{position.label}</h4>
+        {/* A global seat has one electorate, so its fill count belongs on the
+            position header; a scoped seat fills per electorate instead. */}
+        {!position.scoped && seatFillLabel(filled, position.seatCount) && (
+          <span className="ssg-seat-chip">{seatFillLabel(filled, position.seatCount)}</span>
+        )}
+      </div>
+
+      {position.scoped
+        ? scopeGroups.map((group) => (
+          <div className="ssg-scope-group" key={group.key}>
+            <div className="ssg-scope-head">
+              <span className="ssg-scope-label">{group.label || 'Unassigned electorate'}</span>
+              {seatFillLabel(group.officers.length, position.seatCount) && (
+                <span className="ssg-seat-chip">{seatFillLabel(group.officers.length, position.seatCount)}</span>
+              )}
+            </div>
+            <OfficerList officers={group.officers} />
+          </div>
+        ))
+        : scopeGroups.map((group) => <OfficerList key={group.key} officers={group.officers} />)}
+    </div>
+  );
+}
 
 export default function SsgPresident({ onLogout }) {
   const { user, logout } = useAuth();
@@ -152,29 +291,40 @@ export default function SsgPresident({ onLogout }) {
           {error && <div className="warning-banner">{error}</div>}
           {notice && <div className="success-banner">{notice}</div>}
 
-          <section className="card">
-            <div className="card-header">
+          <section className="ssg-roster">
+            <div className="ssg-roster-header">
               <div><h3>Certified Officer Roster</h3><p className="muted-text">Available after voting is closed.</p></div>
             </div>
-            {loading ? <p className="muted-text">Loading officer roster...</p> : officersUnavailable ? (
-              <p className="muted-text">Certified officers are listed here once voting closes.</p>
-            ) : officers.length === 0 ? (
-              <p className="muted-text">No certified officers are available yet.</p>
+            {loading ? <div className="card"><p className="muted-text">Loading officer roster...</p></div> : officersUnavailable ? (
+              <div className="card"><p className="muted-text">Certified officers are listed here once voting closes.</p></div>
             ) : (
-              ROSTER_GROUPS
-                .map((group) => ({
-                  ...group,
-                  rows: officers.filter((officer) => (officer.tier ?? 'national') === group.tier),
-                }))
-                .filter((group) => group.rows.length > 0)
-                .map((group) => (
-                  <div className="ssg-roster-group" key={group.tier}>
-                    <h4 className="ssg-roster-group-title">{group.label}</h4>
-                    <div className="ssg-table-wrap"><table className="ssg-table"><thead><tr><th>Position</th><th>Officer</th><th>Votes</th></tr></thead><tbody>
-                      {group.rows.map((officer) => <tr key={`${officer.position_key}-${officer.candidate_ref}`}><td>{officer.position_label}</td><td>{officer.name}</td><td>{officer.votes}</td></tr>)}
-                    </tbody></table></div>
-                  </div>
-                ))
+              <div className="ssg-roster-grid">
+                {buildRoster(officers).map((tier) => (
+                  <section className={`card ssg-tier-card ssg-tier-${tier.tier}`} key={tier.tier}>
+                    <div className="card-header ssg-tier-header">
+                      <div>
+                        <h3>{tier.label}</h3>
+                        <p className="muted-text">
+                          {tier.positions.length === 0
+                            ? 'No positions seated yet.'
+                            : `${tier.positions.length} ${tier.positions.length === 1 ? 'position' : 'positions'}`}
+                        </p>
+                      </div>
+                      <span className="ssg-tier-badge">{tier.tier}</span>
+                    </div>
+
+                    {tier.positions.length === 0 ? (
+                      <p className="muted-text">{tier.empty}</p>
+                    ) : (
+                      <div className="ssg-tier-positions">
+                        {tier.positions.map((position) => (
+                          <PositionBlock key={position.key} position={position} />
+                        ))}
+                      </div>
+                    )}
+                  </section>
+                ))}
+              </div>
             )}
           </section>
 
