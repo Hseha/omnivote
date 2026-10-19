@@ -289,7 +289,7 @@ export default function SsgPresident({ onLogout }) {
               <input
                 type="checkbox"
                 checked={draft.published}
-                onChange={(event) => setDraft({ ...draft, published: event.target.value })}
+                onChange={(event) => setDraft({ ...draft, published: event.target.checked })}
               />
               Publish immediately
             </label>
@@ -323,7 +323,7 @@ export default function SsgPresident({ onLogout }) {
                   <p className="ssg-announcement-byline">
                     Posted by {announcement.author?.name || 'Staff'}
                   </p>
-                  <p>{announcement.body}</p>
+                  <p className="ssg-announcement-body">{announcement.body}</p>
                 </article>
               ))
             )}

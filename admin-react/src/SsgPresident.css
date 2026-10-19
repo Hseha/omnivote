@@ -7,8 +7,24 @@
   width: 290px;
 }
 
-/* ===== Announcements live in the sidebar (read-mostly governance console) ===== */
+/* The console's own section label in the sidebar. */
+.ssg-sidebar-title {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 20px 20px 12px;
+  color: var(--nav-color);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
 
+/* ===== Announcements live in the sidebar (read-mostly governance console) =====
+
+   The sidebar is dark in every theme, so the panel takes its text from the
+   sidebar's own palette rather than the page's light-surface tokens: the
+   heading and the checkbox label were the page's --heading and --text,
+   which put near-black text on the near-black sidebar — invisible. */
 .ssg-announcement-panel {
   display: flex;
   flex-direction: column;
@@ -23,11 +39,14 @@
   margin: 0 0 2px;
   font-size: 1rem;
   font-weight: 700;
-  color: var(--heading);
+  color: #ffffff;
 }
 
 .ssg-announcement-panel .muted-text {
   margin: 0 0 8px;
+  /* --nav-color is the sidebar's own text colour; --text-muted measures
+     3.83:1 on the sidebar, under the 4.5:1 AA threshold for small text. */
+  color: var(--nav-color);
 }
 
 .ssg-form {
@@ -54,7 +73,9 @@
   gap: 8px;
   align-items: center;
   font-size: 0.78rem;
-  color: var(--text);
+  /* The panel sits on the dark sidebar, so the label takes the sidebar's
+     text colour — the page's --text measured 1.02:1 here, invisible. */
+  color: var(--nav-color);
 }
 
 /* The save action spans the panel width for a clear primary call-to-action */
@@ -69,7 +90,10 @@
 }
 
 .ssg-announcements article {
-  border: 1px solid var(--border);
+  /* The panel is on the dark sidebar, where the light theme's --border
+     (#e2e8f0) reads as a hard white outline. A translucent white hairline
+     does the same job without shouting. */
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 8px;
   padding: 10px 12px;
 }
@@ -88,7 +112,25 @@
 .ssg-announcement-byline {
   margin: 4px 0 0;
   font-size: 0.72rem;
-  color: var(--text-muted);
+  color: var(--nav-color);
+}
+
+/* An announcement body may be written with line breaks — the results
+   announcement is a bullet list. HTML collapses those newlines by default,
+   which turns a structured body into one run-on paragraph. */
+.ssg-announcement-body {
+  margin: 6px 0 0;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  white-space: pre-line;
+  overflow-wrap: break-word;
+  /* The panel is a fixed-width column in a scrolling sidebar, so a long body
+     is capped rather than pushing the rest of the console down. */
+  display: -webkit-box;
+  -webkit-line-clamp: 10;
+  line-clamp: 10;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .ssg-announcement-delete {
@@ -97,7 +139,7 @@
   justify-content: center;
   width: 24px;
   height: 24px;
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 6px;
   background: transparent;
   color: var(--text-muted);
@@ -154,15 +196,15 @@
 
 .ssg-tier-provincial {
   --ssg-tier-accent: var(--tier-provincial);
-  --ssg-tier-accent-soft: var(--tier-accent-soft);
-  --ssg-tier-accent-wash: var(--tier-accent-wash);
+  --ssg-tier-accent-soft: var(--tier-provincial-soft);
+  --ssg-tier-accent-wash: var(--tier-provincial-wash);
 }
 
 /* Fallback tier for a seat on an unrecognised tier value. */
 .ssg-tier-other {
   --ssg-tier-accent: var(--tier-other);
-  --ssg-tier-accent-soft: var(--tier-accent-soft);
-  --ssg-tier-accent-wash: var(--tier-accent-wash);
+  --ssg-tier-accent-soft: var(--tier-other-soft);
+  --ssg-tier-accent-wash: var(--tier-other-wash);
 }
 
 /* The tier is carried by a soft accent wash on the card header and by the
@@ -310,6 +352,12 @@
   background: rgba(245, 158, 11, 0.14);
   color: #b45309;
   border-color: rgba(245, 158, 11, 0.3);
+}
+
+/* The light amber measures 3.42:1 on the dark surface, under the 4.5:1 AA
+   threshold for small text, so dark mode needs the lighter tone. */
+[data-theme='dark'] .ssg-elected-badge.ssg-provisional {
+  color: #fbbf24;
 }
 
 .ssg-officer-votes {
