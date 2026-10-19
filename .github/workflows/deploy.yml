@@ -73,6 +73,14 @@ jobs:
             -v "$PWD/nginx-ci/certs:/etc/ssl/private:ro" \
             nginx:alpine nginx -t
 
+      - name: Validate the nginx vhost helper
+        # The helper overwrites the live nginx vhosts and is the one piece of
+        # the deploy path with a destructive failure mode. This drives it
+        # against a temporary directory and proves it always puts the previous
+        # vhosts back — including when the install itself fails part way
+        # through.
+        run: bash deploy/tests/nginx-vhost-helper_test.sh
+
       - name: Validate the deploy script
         # The deploy script has broken production twice, in two different
         # ways, both of which only showed up at deploy time. These checks are
