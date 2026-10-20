@@ -40,7 +40,10 @@ const STORAGE_KEY = 'omnivote:admin:settings';
 
 const DEFAULT_SETTINGS = {
   security: { sessionTimeout: 30, maxLoginAttempts: 5, twoFactorRequired: false, selfRegistrationEnabled: false, passwordMinLength: 12, passwordRequireSpecial: true, passwordRequireNumber: true, passwordRequireUpper: true },
-  voting: { registrationStart: '2026-09-01T00:00:00', registrationEnd: '2026-09-15T23:59:59', votingStart: '2026-09-18T08:00:00', votingEnd: '2026-09-22T20:00:00', termEndsAt: '', maxVotesPerVoter: 1, allowVoteChange: false, voteConfirmationRequired: true, showResultsAfterClose: true },
+  // The window dates start EMPTY. They used to ship with a hard-coded 2026
+  // schedule, which meant a fresh install displayed a phantom election and
+  // the first "Save" wrote it to the server — a schedule nobody had set.
+  voting: { registrationStart: '', registrationEnd: '', votingStart: '', votingEnd: '', termEndsAt: '', maxVotesPerVoter: 1, allowVoteChange: false, voteConfirmationRequired: true, showResultsAfterClose: true },
   branding: { siteName: 'OmniVote', logoUrl: '', primaryColor: '#2563eb', secondaryColor: '#64748b', faviconUrl: '', headerText: 'Secure Election Platform', footerText: 'Powered by OmniVote Administration Console' },
   backup: { autoBackup: true, backupFrequency: 'daily', backupRetention: 30, remoteStorage: false, backupEncryption: true },
   notifications: { emailEnabled: true, smsEnabled: false, pushEnabled: true, emailOnVote: false, emailOnResult: true, emailOnAdminAction: true, smsOnCritical: true, dailyDigest: false, notifyOnRegistration: true },
@@ -454,8 +457,13 @@ function VotingWindowDialog({ field, voting, onCommit, onClose }) {
  * Clears the schedule, deactivates the phase, un-certifies every candidate,
  * resets voter turnout flags, and truncates the vote ledger.
  */
-function ResetElectionDialog({ onConfirm, onClose, resetting }) {
+function ResetElectionDialog({ onConfirm, onClose, resetting, phase = null }) {
   const [confirmText, setConfirmText] = useState('');
+
+  // The polls have closed: the cycle's roster is already on record, but the
+  // anonymous ledger is about to be discarded. Say so before the admin types
+  // RESET, not after.
+  const pollsClosed = phase === 'voting_closed';
 
   return (
     <div className="settings-modal-overlay" onClick={onClose}>
@@ -495,6 +503,15 @@ function ResetElectionDialog({ onConfirm, onClose, resetting }) {
             archived as officers (Past Terms) and are <strong>not</strong>
             deleted or removed.
           </p>
+          {pollsClosed && (
+            <p className="settings-modal-warning-note">
+              <strong>The polls have closed.</strong> The cycle&apos;s candidate roster is
+              already on record, but this permanently discards the anonymous vote
+              ledger — any vote counts that have not been declared as results are
+              lost with it. Declare the winners in Results first if you need those
+              numbers.
+            </p>
+          )}
           <p className="settings-modal-warning-note">
             Use this only when starting a brand-new election cycle. If you only
             need to clear the schedule dates, edit the Voting Windows above and
@@ -813,10 +830,20 @@ export default function Settings({ onLogout, onNavigate, initialTab = 'profile' 
     setResetting(true);
     setError('');
     try {
-      await api.post('/admin/election/reset', { confirm: 'reset_election' });
+      const res = await api.post('/admin/election/reset', { confirm: 'reset_election' });
       setSaved('Election reset to a clean slate — schedule, candidates, votes, and ledger all cleared.');
       setTimeout(() => setSaved(''), 5000);
       setResetDialog(false);
+      // The reset also cleared the voting schedule. Drop the cached copy of
+      // the settings first — otherwise the form falls back to a stale cache
+      // and keeps showing the dates the reset just removed.
+      if (res?.data?.settings_cleared) {
+        try {
+          localStorage.removeItem(STORAGE_KEY);
+        } catch {
+          /* storage unavailable — the reload below still refreshes the form */
+        }
+      }
       // Re-derive the phase AND reload the form + its localStorage cache so
       // the voting-window fields stop showing the pre-reset schedule.
       refreshElectionStatus();
@@ -1691,6 +1718,7 @@ export default function Settings({ onLogout, onNavigate, initialTab = 'profile' 
           onConfirm={resetElection}
           onClose={() => setResetDialog(false)}
           resetting={resetting}
+          phase={phase}
         />
       )}
       {restoreDialog && (

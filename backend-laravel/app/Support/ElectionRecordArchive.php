@@ -45,11 +45,17 @@ class ElectionRecordArchive
 
             $stamp = now()->toDateTimeString();
 
+            // The opaque reference the ballot uses. Frozen onto the record so
+            // the final tally can be folded back in when the administrator
+            // declares the winners. Guarded: an install that predates the
+            // column still archives the roster.
+            $hasCandidateRef = Schema::hasColumn('election_candidate_records', 'candidate_ref');
+
             foreach ($rows as $candidate) {
                 $user = $candidate->user;
                 $position = $candidate->position;
 
-                ElectionCandidateRecord::create([
+                $attributes = [
                     'term_label' => $termLabel,
                     'cycle_id' => $cycleId,
                     'user_name' => $user?->name ?? null,
@@ -69,7 +75,13 @@ class ElectionRecordArchive
                     'certified_winner' => (bool) ($candidate->certified_winner ?? false),
                     'slogan' => $candidate->slogan ?? null,
                     'snapshot_at' => $stamp,
-                ]);
+                ];
+
+                if ($hasCandidateRef) {
+                    $attributes['candidate_ref'] = $candidate->candidate_ref ?? null;
+                }
+
+                ElectionCandidateRecord::create($attributes);
             }
 
             return $rows->count();

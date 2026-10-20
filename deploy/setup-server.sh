@@ -216,6 +216,11 @@ cat <<EOF
      sudo cp deploy/omnivote-reminders.service deploy/omnivote-reminders.timer /etc/systemd/system/
      sudo systemctl daemon-reload && sudo systemctl enable --now omnivote-reminders.timer
 
+ Optional: install the closed-cycle archive timer (10-minute interval;
+ captures the election cycle into Election Records once voting closes):
+     sudo cp deploy/omnivote-archive-cycle.service deploy/omnivote-archive-cycle.timer /etc/systemd/system/
+     sudo systemctl daemon-reload && sudo systemctl enable --now omnivote-archive-cycle.timer
+
  The dedicated $DEPLOY_USER owns the checkout; PHP-FPM and workers run as
  www-data. Later releases are deployed by deploy/deploy.sh. (Do not put backticks in this heredoc:
  it is unquoted so that \$APP_URL expands, and backticks would be executed.)

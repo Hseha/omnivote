@@ -9,6 +9,7 @@ use App\Models\Position;
 use App\Models\User;
 use App\Models\VoteLedger;
 use App\Support\CandidateRoleSync;
+use App\Support\ElectionCycleArchive;
 use App\Support\ElectionTally;
 use App\Support\Notifier;
 use App\Support\ResultsPublisher;
@@ -260,6 +261,13 @@ class ResultsController extends Controller
                 'certified_winner' => true,
                 'certified_at' => now(),
             ]);
+
+        // The cycle's archive now has its final numbers. The tally only
+        // exists from this point on — `vote_total` is written by the
+        // finalization itself — so a cycle captured when the polls closed
+        // holds zeros until this runs. Best-effort: an archive failure must
+        // never fail a finalization.
+        ElectionCycleArchive::finalizeCycle();
 
         // Publication: raise the results_published flag (unblocking the SSG
         // grant) and automatically hand the single seat to the elected winner

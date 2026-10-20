@@ -17,6 +17,15 @@ class ElectionCandidateRecord extends Model
 
     protected $guarded = [];
 
+    /**
+     * The table has no `created_at` / `updated_at` columns — it is a frozen
+     * record of a past cycle, and `snapshot_at` is the only instant it
+     * carries. Leaving Eloquent's timestamps on made every insert fail with
+     * "Unknown column 'updated_at'", which the archive's catch swallowed: the
+     * Election Records archive silently wrote nothing at all.
+     */
+    public $timestamps = false;
+
     protected $casts = [
         'vote_total' => 'integer',
         'winner_rank' => 'integer',
