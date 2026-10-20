@@ -45,6 +45,11 @@ export default function Announcements({
   // BODY_CLAMP_CHARS is clamped until the reader asks for the rest.
   const [expanded, setExpanded] = useState({});
 
+  // The SSG President publishes from their own console, where "Staff
+  // Announcements" would be the wrong label — they are an elected officer,
+  // not election staff.
+  const isPresident = currentUser?.role === 'ssg_president';
+
   const toggleExpanded = (id) => {
     setExpanded((previous) => ({ ...previous, [id]: !previous[id] }));
   };
@@ -115,7 +120,7 @@ export default function Announcements({
 
         <div className="announcements-body">
           <div className="page-header">
-            <h2>Staff Announcements</h2>
+            <h2>{isPresident ? 'Announcements' : 'Staff Announcements'}</h2>
             <p className="page-subtext">Publish announcements that students will see in the OmniVote mobile app. Your name is shown as the author.</p>
           </div>
 
@@ -164,7 +169,11 @@ export default function Announcements({
             <div className="card-header">
               <div>
                 <h3>Published Announcements</h3>
-                <p className="muted-text">Every announcement posted by staff, newest first.</p>
+                <p className="muted-text">
+                  {isPresident
+                    ? 'Every announcement published to students, newest first. You can remove the ones you posted.'
+                    : 'Every announcement posted by staff, newest first.'}
+                </p>
               </div>
             </div>
             {loading ? (

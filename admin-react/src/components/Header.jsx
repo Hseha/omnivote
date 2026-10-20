@@ -5,6 +5,7 @@ import { useElectionStatus } from '../lib/ElectionStatusContext';
 import { fallbackAvatarOnError, initialsAvatarDataUri } from '../lib/avatar';
 import { displayPhase, roleLabel } from '../lib/phase';
 import { formatClock } from '../lib/datetime';
+import { IS_SSG_CONSOLE } from '../lib/api';
 import NotificationCenter from './NotificationCenter';
 import PhaseStatusDialog from './PhaseStatusDialog';
 import MobileMenuButton from './MobileMenuButton';
@@ -25,6 +26,10 @@ import './Header.css';
  */
 export default function Header({
   breadcrumb = '',
+  // The two consoles are separate mounts of the same bundle, so the breadcrumb
+  // root follows the mount: "SSG / …" in the President console, "System / …"
+  // in the staff console.
+  breadcrumbPrefix = IS_SSG_CONSOLE ? 'SSG' : 'System',
   children,
   currentUser = null,
   onNavigate = null,
@@ -49,7 +54,7 @@ export default function Header({
       <div className="breadcrumb">
         {breadcrumb === '' ? null : (
           <>
-            <span className="muted">System / </span>
+            <span className="muted">{breadcrumbPrefix} / </span>
             <strong className="breadcrumb-title">{breadcrumb}</strong>
           </>
         )}

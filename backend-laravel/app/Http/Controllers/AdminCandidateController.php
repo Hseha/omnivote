@@ -55,25 +55,7 @@ class AdminCandidateController extends Controller
         // dropdown matches what students see, even for parties that have no
         // candidate rows yet (previously derived from distinct candidate
         // party_name — silently hiding empty parties like SVEA).
-        $parties = Schema::hasTable('parties')
-            ? Party::query()
-                ->whereNotNull('name')
-                ->where('name', '!=', '')
-                ->orderBy('sort_order')
-                ->pluck('name')
-                ->values()
-            : collect();
-
-        // Keep the dropdown useful even if the managed table is empty.
-        if ($parties->isEmpty()) {
-            $parties = Candidate::query()
-                ->whereNotNull('party_name')
-                ->where('party_name', '!=', '')
-                ->distinct()
-                ->orderBy('party_name')
-                ->pluck('party_name')
-                ->values();
-        }
+        $parties = $this->parties();
 
         $departments = Schema::hasTable('departments')
             ? Department::query()
@@ -156,6 +138,7 @@ class AdminCandidateController extends Controller
                     'rejected' => (int) ($counts['rejected'] ?? 0),
                 ],
                 'parties' => $parties->all(),
+                'party_details' => $this->partyDetails(),
                 'departments' => $departments->all(),
             ],
         ]);
@@ -263,6 +246,14 @@ class AdminCandidateController extends Controller
             'sort_order' => ((int) Party::max('sort_order')) + 1,
         ]);
 
+        AuditLog::record(
+            $request,
+            'party_added',
+            ($request->user()?->name ?? 'Admin')." added party '{$party->name}'.",
+            'party',
+            $party->id,
+        );
+
         return response()->json([
             'message' => 'Party added.',
             'party' => [
@@ -271,6 +262,114 @@ class AdminCandidateController extends Controller
                 'sort_order' => $party->sort_order,
             ],
         ], 201);
+    }
+
+    /**
+     * DELETE /api/admin/parties — remove a party from the canonical
+     * `parties` table so it stops appearing in the student app's party picker
+     * and in the admin filters.
+     *
+     * A party that candidates are still running under cannot go: the students
+     * pick their party from this table, so removing it would leave their
+     * candidacy pointing at a party that no longer exists.
+     *
+     * The party is referenced by NAME (`candidates.party_name` is plain text,
+     * never a foreign key), so nothing cascades — the guard above is what
+     * keeps the reference data honest.
+     */
+    public function destroyParty(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+        ]);
+
+        $name = trim($validated['name']);
+
+        $party = Party::query()
+            ->whereRaw('LOWER(name) = ?', [mb_strtolower($name)])
+            ->first();
+
+        if ($party === null) {
+            return response()->json(['message' => "Party '{$name}' does not exist."], 404);
+        }
+
+        $candidateCount = Candidate::query()
+            ->whereRaw('LOWER(party_name) = ?', [mb_strtolower($party->name)])
+            ->count();
+
+        if ($candidateCount > 0) {
+            return response()->json([
+                'message' => "Party '{$party->name}' still has {$candidateCount} candidate(s). Remove or move them first.",
+                'candidate_count' => $candidateCount,
+            ], 409);
+        }
+
+        $party->delete();
+
+        AuditLog::record(
+            $request,
+            'party_deleted',
+            ($request->user()?->name ?? 'Admin')." deleted party '{$party->name}'.",
+            'party',
+            $party->id,
+        );
+
+        return response()->json([
+            'message' => "Party '{$party->name}' removed.",
+            'parties' => $this->parties()->all(),
+            'party_details' => $this->partyDetails(),
+        ]);
+    }
+
+    /**
+     * The canonical party list, as names.
+     *
+     * Falls back to the distinct party names on the candidate rows so the
+     * dropdown stays useful on an install whose managed table is empty.
+     *
+     * @return \Illuminate\Support\Collection<int, string>
+     */
+    private function parties()
+    {
+        if (Schema::hasTable('parties')) {
+            $parties = Party::query()
+                ->whereNotNull('name')
+                ->where('name', '!=', '')
+                ->orderBy('sort_order')
+                ->pluck('name')
+                ->values();
+
+            if ($parties->isNotEmpty()) {
+                return $parties;
+            }
+        }
+
+        return Candidate::query()
+            ->whereNotNull('party_name')
+            ->where('party_name', '!=', '')
+            ->distinct()
+            ->orderBy('party_name')
+            ->pluck('party_name')
+            ->values();
+    }
+
+    /**
+     * The party list with how many candidates run under each one.
+     *
+     * The console uses this to explain why a party cannot be removed yet,
+     * rather than letting the admin discover it through a failed request.
+     *
+     * @return array<int, array{name: string, candidate_count: int}>
+     */
+    private function partyDetails(): array
+    {
+        return $this->parties()->map(function (string $name) {
+            $count = Candidate::query()
+                ->whereRaw('LOWER(party_name) = ?', [mb_strtolower($name)])
+                ->count();
+
+            return ['name' => $name, 'candidate_count' => $count];
+        })->values()->all();
     }
 
     public function update(UpdateCandidateStatusRequest $request, Candidate $candidate): JsonResponse

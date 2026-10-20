@@ -3,170 +3,54 @@
  * from index.css so it follows the global light/dark theme + theme packs.
  * Page-specific component rules only; shell classes are not redefined. */
 
-.ssg-president .sidebar {
-  width: 290px;
-}
+/* ===== Page header =====
 
-/* The console's own section label in the sidebar. */
-.ssg-sidebar-title {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  margin: 20px 20px 12px;
-  color: var(--nav-color);
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-}
-
-/* ===== Announcements live in the sidebar (read-mostly governance console) =====
-
-   The sidebar is dark in every theme, so the panel takes its text from the
-   sidebar's own palette rather than the page's light-surface tokens: the
-   heading and the checkbox label were the page's --heading and --text,
-   which put near-black text on the near-black sidebar — invisible. */
-.ssg-announcement-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 16px;
-  overflow-y: auto;
-}
-
-.ssg-panel-head { display: flex; align-items: center; gap: 8px; }
-
-.ssg-announcement-panel h3 {
-  margin: 0 0 2px;
-  font-size: 1rem;
-  font-weight: 700;
-  color: #ffffff;
-}
-
-.ssg-announcement-panel .muted-text {
-  margin: 0 0 8px;
-  /* --nav-color is the sidebar's own text colour; --text-muted measures
-     3.83:1 on the sidebar, under the 4.5:1 AA threshold for small text. */
-  color: var(--nav-color);
-}
-
-.ssg-form {
+   The console uses the shared <Header> and <Sidebar>, so the only chrome it
+   owns is the greeting block: a console badge, the welcome line and the
+   one-line explanation of what the roster shows. */
+.ssg-page-header {
   display: grid;
-  gap: 8px;
+  gap: 6px;
+  justify-items: start;
 }
 
-.ssg-form input,
-.ssg-form textarea {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px 10px;
-  font: inherit;
-  width: 100%;
+.ssg-page-header h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--heading);
+  margin: 0;
 }
 
-.ssg-form textarea {
-  resize: vertical;
-  min-height: 64px;
+/* The subtext carries its own spacing in the page-header variant used by the
+   other views; here the section gap already provides the rhythm. */
+.ssg-page-header .page-subtext {
+  margin: 0;
 }
 
-.ssg-checkbox {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  font-size: 0.78rem;
-  /* The panel sits on the dark sidebar, so the label takes the sidebar's
-     text colour — the page's --text measured 1.02:1 here, invisible. */
-  color: var(--nav-color);
-}
-
-/* The save action spans the panel width for a clear primary call-to-action */
-.ssg-announcement-panel .primary-button {
-  width: 100%;
-}
-
-.ssg-announcements {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.ssg-announcements article {
-  /* The panel is on the dark sidebar, where the light theme's --border
-     (#e2e8f0) reads as a hard white outline. A translucent white hairline
-     does the same job without shouting. */
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 8px;
-  padding: 10px 12px;
-}
-
-.ssg-announcements article:last-child {
-  border-bottom: 0;
-}
-
-.ssg-announcement-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.ssg-announcement-byline {
-  margin: 4px 0 0;
-  font-size: 0.72rem;
-  color: var(--nav-color);
-}
-
-/* An announcement body may be written with line breaks — the results
-   announcement is a bullet list. HTML collapses those newlines by default,
-   which turns a structured body into one run-on paragraph. */
-.ssg-announcement-body {
-  margin: 6px 0 0;
-  font-size: 0.78rem;
-  line-height: 1.5;
-  white-space: pre-line;
-  overflow-wrap: break-word;
-  /* The panel is a fixed-width column in a scrolling sidebar, so a long body
-     is capped rather than pushing the rest of the console down. */
-  display: -webkit-box;
-  -webkit-line-clamp: 10;
-  line-clamp: 10;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.ssg-announcement-delete {
+.ssg-console-badge {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
-}
-
-.ssg-announcement-delete:hover:not(:disabled) {
-  color: #ef4444;
-  border-color: rgba(239, 68, 68, 0.4);
-  background: rgba(239, 68, 68, 0.07);
-}
-
-.ssg-announcement-delete:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--tier-accent-soft);
+  color: var(--tier-national);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 /* ===== Certified Officer Roster =====
+
    Hierarchy: tier card (National / Provincial) -> position -> electorate
    -> officer. The two tier cards sit side by side so the national and
    provincial cabinets read as separate bodies at a glance. */
 
 .ssg-roster {
   display: grid;
-  gap: 24px;
+  gap: 16px;
 }
 
 .ssg-roster-header h3 {
@@ -220,7 +104,9 @@
   border-bottom: 1px solid var(--border-subtle);
 }
 
-.ssg-tier-header h3 {
+/* Scoped under the tier card so it outranks the generic `.card h3` rule,
+   which would otherwise force a 1.05rem heading with a 16px bottom margin. */
+.ssg-tier-card .ssg-tier-header h3 {
   margin: 0 0 2px;
   font-size: 1rem;
   font-weight: 700;
@@ -253,11 +139,6 @@
 .ssg-position {
   display: grid;
   gap: 8px;
-}
-
-.ssg-position + .ssg-position {
-  padding-top: 0;
-  border-top: 0;
 }
 
 .ssg-position-head {
@@ -368,7 +249,10 @@
   font-variant-numeric: tabular-nums;
 }
 
-@media (max-width: 1100px) {
+/* The two tier cards share the content column, not the viewport: the sidebar
+   takes 260px of the window, so the cards only sit side by side once the
+   remaining content column is wide enough for two comfortable columns. */
+@media (max-width: 1180px) {
   .ssg-roster-grid {
     grid-template-columns: 1fr;
   }

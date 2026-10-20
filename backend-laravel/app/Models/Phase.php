@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\ElectionCycleArchive;
 use App\Support\Notifier;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -231,6 +232,15 @@ class Phase extends Model
         // phase, but a manual call with the same name must not re-notify.
         if ($previous !== $name) {
             static::announce($name);
+
+            // The transition into voting_closed is the moment the cycle's
+            // outcome is fixed: capture the roster, the ballot and the
+            // turnout, so the cycle survives the next clean-slate reset.
+            // Best-effort — the archive swallows its own failures, so a
+            // transient DB issue can never break phase reconciliation.
+            if ($name === 'voting_closed') {
+                ElectionCycleArchive::snapshotClosedCycle();
+            }
         }
 
         return $phase->fresh();

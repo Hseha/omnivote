@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Phase;
 use App\Support\AuditLog;
+use App\Support\ElectionCycleArchive;
 use App\Support\TermArchive;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
@@ -340,6 +341,13 @@ class SettingsController extends Controller
                 );
             }
             DB::table('phases')->update(['is_active' => false]);
+
+            // The election is over: the next one starts a fresh cycle.
+            // The term end is NOT touched here — it is its own field in the
+            // form, and a term end can legitimately exist without a voting
+            // window. The normal save above already un-sets it when the form
+            // blanks it.
+            ElectionCycleArchive::clearCycleId();
 
             return;
         }

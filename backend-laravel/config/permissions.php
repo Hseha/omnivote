@@ -31,6 +31,11 @@ return [
             'announcements.view',
             'announcements.create',
             'announcements.edit',
+            // Removing a party is a school-wide configuration change, not a
+            // candidacy review: the party list is what every student picks
+            // from on the apply form. Admin only, like the department and
+            // course catalogues. Adding a party stays on `candidates.review`.
+            'parties.manage',
         ],
         'teacher' => [
             'dashboard.view',

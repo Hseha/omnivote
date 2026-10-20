@@ -22,6 +22,11 @@
 # Must stay ignored: git clean -fd respects this, so a deploy's git reset/clean
 # cannot delete the live console. Never commit hashed build artifacts.
 /public/admin
+# The SSG President console is the same build served from a second mount
+# (/ssg/). nginx aliases it to /public/admin/ in production; this symlink is
+# the local-dev equivalent so `php artisan serve` can serve it too.
+# Ignore it for the same reason as /public/admin: it points at build output.
+/public/ssg
 /storage/*.key
 /storage/pail
 /vendor

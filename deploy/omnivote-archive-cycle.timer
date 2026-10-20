@@ -1,0 +1,24 @@
+# ============================================================================
+# OmniVote — closed-cycle archive timer
+# ----------------------------------------------------------------------------
+# Fires omnivote-archive-cycle.service every 10 minutes (and once shortly
+# after boot). The command reads the live phase and does nothing unless the
+# polls have closed, so a 10-minute cadence is always safe: the archive is
+# idempotent per cycle, so a repeated tick can never duplicate records.
+#
+# Install (with the matching .service):
+#   sudo cp deploy/omnivote-archive-cycle.service deploy/omnivote-archive-cycle.timer /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now omnivote-archive-cycle.timer
+# ============================================================================
+
+[Unit]
+Description=Run the OmniVote closed election cycle archive every 10 minutes
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

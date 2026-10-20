@@ -82,20 +82,6 @@
   }
 }
 
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 16px;
-}
-
-.card-header h3 {
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--heading);
-}
-
 /* SVG Timeline Chart Placeholder */
 .chart-card {
   display: flex;

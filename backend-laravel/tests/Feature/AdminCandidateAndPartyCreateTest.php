@@ -76,6 +76,62 @@ class AdminCandidateAndPartyCreateTest extends TestCase
             ->assertStatus(409);
     }
 
+    public function test_admin_can_delete_a_party_nobody_runs_under(): void
+    {
+        $this->asAdmin()
+            ->deleteJson('/api/admin/parties?name=SVEA')
+            ->assertOk()
+            ->assertJsonPath('message', "Party 'SVEA' removed.");
+
+        $this->assertSame(0, DB::table('parties')->where('name', 'SVEA')->count());
+    }
+
+    public function test_deleting_a_party_is_case_insensitive(): void
+    {
+        $this->asAdmin()
+            ->deleteJson('/api/admin/parties?name=svea')
+            ->assertOk();
+
+        $this->assertSame(0, DB::table('parties')->where('name', 'SVEA')->count());
+    }
+
+    public function test_a_party_with_candidates_cannot_be_deleted(): void
+    {
+        $this->makeCandidate('ref-asle', 'Ana', 'president', 'ASLE');
+
+        $this->asAdmin()
+            ->deleteJson('/api/admin/parties?name=ASLE')
+            ->assertStatus(409)
+            ->assertJsonPath('candidate_count', 1);
+
+        // The party survives the refused delete.
+        $this->assertSame(1, DB::table('parties')->where('name', 'ASLE')->count());
+    }
+
+    public function test_deleting_an_unknown_party_is_a_404(): void
+    {
+        $this->asAdmin()
+            ->deleteJson('/api/admin/parties?name=NOPE')
+            ->assertStatus(404);
+    }
+
+    public function test_deleting_a_party_writes_an_audit_row(): void
+    {
+        $this->asAdmin()
+            ->deleteJson('/api/admin/parties?name=SVEA')
+            ->assertOk();
+
+        $this->assertSame(1, DB::table('audit_logs')->where('action', 'party_deleted')->count());
+    }
+
+    public function test_teachers_cannot_delete_a_party(): void
+    {
+        $this->actingAs($this->makeUser(['email' => 'teacher@example.test', 'role' => 'teacher']), 'web')
+            ->withHeaders(['Origin' => 'http://localhost'])
+            ->deleteJson('/api/admin/parties?name=SVEA')
+            ->assertStatus(403);
+    }
+
     public function test_admin_can_create_a_pending_candidate_for_a_student(): void
     {
         $student = $this->makeUser(['student_id' => 'S-2026-0001', 'name' => 'Bailey Reyes']);
@@ -253,6 +309,18 @@ class AdminCandidateAndPartyCreateTest extends TestCase
             ['name' => 'ASLE', 'sort_order' => 1, 'created_at' => now(), 'updated_at' => now()],
             ['name' => 'SVEA', 'sort_order' => 2, 'created_at' => now(), 'updated_at' => now()],
         ]);
+
+        // The audit trail the party add/delete writes to.
+        Schema::create('audit_logs', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('user_id')->nullable();
+            $table->string('action', 100);
+            $table->string('entity_type', 50)->nullable();
+            $table->unsignedBigInteger('entity_id')->nullable();
+            $table->text('details')->nullable();
+            $table->string('ip_address', 45)->nullable();
+            $table->timestamps();
+        });
 
         Schema::create('candidates', function (Blueprint $table) {
             $table->id();

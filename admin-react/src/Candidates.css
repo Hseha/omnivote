@@ -692,3 +692,54 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* ===== Manage Parties =====
+   The list of parties with how many candidates run under each one. A party
+   that is still in use cannot be removed, so its Remove button is disabled
+   and the row says why. */
+
+.cm-party-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.cm-party-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.cm-party-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cm-party-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--heading);
+}
+
+.cm-party-count {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.cm-party-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 0.8rem;
+  color: var(--text);
+}

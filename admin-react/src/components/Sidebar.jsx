@@ -15,6 +15,7 @@ import {
 import { useAuth } from '../lib/AuthContext';
 import { useBranding } from '../lib/branding';
 import { allowedViews } from '../lib/permissions';
+import { IS_SSG_CONSOLE } from '../lib/api';
 import OmniVoteMark from './OmniVoteMark';
 import './Sidebar.css';
 
@@ -22,6 +23,7 @@ import './Sidebar.css';
  * Shared admin application sidebar.
  *
  * Final navigation order:
+ *   0. President Dashboard  ← SSG President console only (view id `ssg`)
  *   1. Dashboard
  *   2. Candidates
  *   3. Student Registry
@@ -46,7 +48,9 @@ export default function Sidebar({
   currentUser = null,
   brandName = undefined,
   brandSub = undefined,
-  statusText = 'System Live (v1.4)',
+  // The President console is a separate mount of this bundle, so its footer
+  // names the console rather than the staff system status.
+  statusText = IS_SSG_CONSOLE ? 'SSG President Console' : 'System Live (v1.4)',
 }) {
   const { user, logout } = useAuth();
   const branding = useBranding();
@@ -85,6 +89,16 @@ export default function Sidebar({
       </div>
 
       <nav className="nav-menu">
+        {/* 0. SSG President Dashboard (ssg_president only) */}
+        {can('ssg') && (
+          <button
+            type="button"
+            className={`nav-item ${activeView === 'ssg' ? 'active' : ''}`}
+            onClick={go('ssg')}
+          >
+            <ShieldCheck size={18} /> President Dashboard
+          </button>
+        )}
         {/* 1. Dashboard */}
         {can('dashboard') && (
           <button

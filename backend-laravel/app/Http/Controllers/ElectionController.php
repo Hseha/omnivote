@@ -10,7 +10,7 @@ use App\Models\RegistrarImport;
 use App\Models\User;
 use App\Support\AuditLog;
 use App\Support\CandidateRoleSync;
-use App\Support\ElectionRecordArchive;
+use App\Support\ElectionCycleArchive;
 use App\Support\Notifier;
 use App\Support\TermArchive;
 use Illuminate\Http\JsonResponse;
@@ -235,7 +235,11 @@ class ElectionController extends Controller
             // for the audit trail so a reset can be tied to the phase it
             // interrupted.
             $preResetPhase = Phase::current()?->name;
-            $cycleId = now()->toDateTimeString();
+
+            // Capture the schedule too, for the same reason: the timeline is
+            // cleared in step 2, and the cycle archive needs the window the
+            // election actually ran under.
+            $cycleSchedule = ElectionCycleArchive::currentSchedule();
 
             // 2. Clear the election timeline so no phase can be derived.
             if (Schema::hasTable('election_settings')) {
@@ -266,9 +270,39 @@ class ElectionController extends Controller
             //    the confirmation dialog, which promises non-winner
             //    applications are permanently removed. Certified winners were
             //    archived as officers above and are preserved.
+            //
+            //    The cycle archive records this as an ABORTED cycle, keeping
+            //    the schedule that was in force. When the cycle had already
+            //    closed, its records are already captured and this is a no-op.
             if (Schema::hasTable('candidates')) {
-                ElectionRecordArchive::snapshot(TermArchive::labelFor(), $cycleId);
+                ElectionCycleArchive::abortCycle($cycleSchedule);
             }
+
+            // 4b. Clear the schedule the Voting Windows form keeps under
+            //     `admin.settings.voting.*`. The canonical timeline above is
+            //     only the mirror the rest of the app reads; the form's own
+            //     copy survived the reset, so the screen still showed the old
+            //     dates and the next save re-published them. The term end
+            //     goes with them — a term end with no voting window would
+            //     otherwise keep auto-archiving winners at a stale date.
+            if (Schema::hasTable('election_settings')) {
+                foreach ([
+                    'admin.settings.voting.registrationStart',
+                    'admin.settings.voting.registrationEnd',
+                    'admin.settings.voting.votingStart',
+                    'admin.settings.voting.votingEnd',
+                    'admin.settings.voting.termEndsAt',
+                ] as $key) {
+                    DB::table('election_settings')->updateOrInsert(
+                        ['key' => $key],
+                        ['value' => null, 'updated_at' => now()],
+                    );
+                }
+            }
+
+            // 4c. The cycle is over: forget its id so the next election
+            //     starts a fresh cycle rather than reusing this one.
+            ElectionCycleArchive::clearCycleId();
 
             if (Schema::hasTable('candidates')
                 && Schema::hasColumn('candidates', 'certified_winner')) {
@@ -337,6 +371,10 @@ class ElectionController extends Controller
 
         return response()->json([
             'message' => $resetMessage,
+            // The voting schedule was cleared too, so the console must drop
+            // its cached copy of the settings — otherwise the Voting Windows
+            // form keeps showing the schedule the reset just removed.
+            'settings_cleared' => true,
         ]);
     }
 

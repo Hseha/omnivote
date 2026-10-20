@@ -1,8 +1,16 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { THEME_PACKS } from './themePacks';
+import { IS_SSG_CONSOLE } from './api';
 
-const THEME_KEY = 'omnivote-theme';
-const PACK_KEY = 'omnivote-theme-pack';
+/*
+ * The staff console (/admin/) and the SSG President console (/ssg/) are two
+ * mounts of the same bundle on the same origin, so they share one
+ * localStorage. Giving the President console its own keys means a President
+ * who switches to dark mode on a shared machine does not retheme the staff
+ * console on that same browser (and vice versa).
+ */
+const THEME_KEY = IS_SSG_CONSOLE ? 'omnivote-theme-ssg' : 'omnivote-theme';
+const PACK_KEY = IS_SSG_CONSOLE ? 'omnivote-theme-pack-ssg' : 'omnivote-theme-pack';
 
 const ThemeContext = createContext({
   theme: 'light',

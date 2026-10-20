@@ -391,8 +391,6 @@ class ElectionResetTest extends TestCase
                 'winner_rank' => 1,
                 'certified_winner' => true,
                 'snapshot_at' => now(),
-                'created_at' => now(),
-                'updated_at' => now(),
             ],
             [
                 'term_label' => $term,
@@ -409,8 +407,6 @@ class ElectionResetTest extends TestCase
                 'winner_rank' => null,
                 'certified_winner' => false,
                 'snapshot_at' => now(),
-                'created_at' => now(),
-                'updated_at' => now(),
             ],
         ]);
 
@@ -420,9 +416,9 @@ class ElectionResetTest extends TestCase
             ->get('/api/admin/election-records')
             ->assertOk()
             ->assertJsonStructure([
-                'terms' => [
+                'cycles' => [
                     '*' => [
-                        'term_label', 'snapshot_at', 'cycle_id', 'total', 'winners',
+                        'term_label', 'snapshot_at', 'cycle_id', 'status', 'total', 'winners',
                         'parties' => [
                             '*' => [
                                 'party', 'count',
@@ -438,16 +434,16 @@ class ElectionResetTest extends TestCase
                         ],
                     ],
                 ],
-                'filters' => ['parties', 'positions', 'results'],
+                'filters' => ['parties', 'positions', 'terms', 'results'],
             ]);
 
         $decoded = json_decode($this->stateful()
             ->get('/api/admin/election-records')
             ->getContent(), true);
-        $this->assertSame(1, count($decoded['terms']));
-        $this->assertSame($term, $decoded['terms'][0]['term_label']);
-        $this->assertSame(2, $decoded['terms'][0]['total']);
-        $this->assertSame(1, $decoded['terms'][0]['winners']);
+        $this->assertSame(1, count($decoded['cycles']));
+        $this->assertSame($term, $decoded['cycles'][0]['term_label']);
+        $this->assertSame(2, $decoded['cycles'][0]['total']);
+        $this->assertSame(1, $decoded['cycles'][0]['winners']);
     }
 
     public function test_archived_winner_kept_off_next_ballot(): void
@@ -673,7 +669,6 @@ class ElectionResetTest extends TestCase
             $table->boolean('certified_winner')->default(false);
             $table->text('slogan')->nullable();
             $table->timestamp('snapshot_at')->nullable();
-            $table->timestamps();
         });
 
         Schema::create('positions', function (Blueprint $table) {

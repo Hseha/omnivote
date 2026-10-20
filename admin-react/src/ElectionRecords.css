@@ -271,3 +271,121 @@
   .er-body { padding: 16px; }
   .er-header { flex-direction: column; align-items: stretch; }
 }
+
+/* ===== Cycle header facts =====
+   The cycle card answers "which election was this, when did it run, and how
+   did it end" before the roster table answers "who ran". */
+
+.er-term-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.er-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.er-status-finalized {
+  background: rgba(34, 197, 94, 0.15);
+  color: #16a34a;
+}
+.er-status-closed {
+  background: rgba(245, 158, 11, 0.15);
+  color: #d97706;
+}
+.er-status-aborted {
+  background: rgba(239, 68, 68, 0.12);
+  color: #f87171;
+}
+.er-status-unknown {
+  background: rgba(100, 116, 139, 0.18);
+  color: var(--text-muted);
+}
+
+[data-theme='dark'] .er-status-finalized { color: #4ade80; }
+[data-theme='dark'] .er-status-closed { color: #fbbf24; }
+[data-theme='dark'] .er-status-aborted { color: #fca5a5; }
+
+.er-cycle-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 1px;
+  background: var(--table-border);
+  border-bottom: 1px solid var(--border);
+}
+
+.er-fact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 18px;
+  background: var(--surface-2);
+}
+
+.er-fact-label {
+  font-size: 0.66rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.er-fact-value {
+  font-size: 0.8rem;
+  color: var(--text);
+}
+
+/* The ballot: every seat that was on the form, including the ones nobody
+   contested — which the roster table alone cannot show. */
+.er-ballot {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.er-ballot-label {
+  flex-shrink: 0;
+  padding-top: 2px;
+  font-size: 0.66rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.er-ballot-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.er-ballot-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.er-ballot-seats {
+  color: var(--text-muted);
+  font-weight: 500;
+}

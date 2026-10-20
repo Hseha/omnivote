@@ -16,6 +16,7 @@ export default function Candidates({ onLogout, activeView = 'candidates', onNavi
   // Server-side filter state (tier/department/party/status + debounced search).
   const [departments, setDepartments] = useState([]);
   const [parties, setParties] = useState([]);
+  const [partyDetails, setPartyDetails] = useState([]);
   const [counts, setCounts] = useState({ pending: 0, approved: 0, rejected: 0 });
 
   const [search, setSearch] = useState('');
@@ -66,6 +67,11 @@ export default function Candidates({ onLogout, activeView = 'candidates', onNavi
   const [partyName, setPartyName] = useState('');
   const [savingParty, setSavingParty] = useState(false);
   const [partyError, setPartyError] = useState('');
+
+  // Manage Parties: list the parties, remove one that nobody runs under.
+  const [showManagePartiesModal, setShowManagePartiesModal] = useState(false);
+  const [partyPendingDelete, setPartyPendingDelete] = useState(null);
+  const [deletingParty, setDeletingParty] = useState(false);
 
   // Debounce search so we don't hammer the API on each keystroke.
   useEffect(() => {
@@ -131,6 +137,7 @@ export default function Candidates({ onLogout, activeView = 'candidates', onNavi
       setPagination(payload.meta ?? null);
       if (payload.meta) {
         setParties(payload.meta.parties ?? []);
+        setPartyDetails(Array.isArray(payload.meta.party_details) ? payload.meta.party_details : []);
         const deptArr = payload.meta.departments ?? [];
         if (Array.isArray(deptArr)) setDepartments(deptArr);
         const c = payload.meta.counts ?? {};
@@ -252,6 +259,31 @@ export default function Candidates({ onLogout, activeView = 'candidates', onNavi
     setPartyError('');
     setPartyName('');
     setShowPartyModal(true);
+  };
+
+  const openManagePartiesModal = () => {
+    setPartyError('');
+    setPartyPendingDelete(null);
+    setShowManagePartiesModal(true);
+  };
+
+  const handleDeleteParty = async (name) => {
+    setDeletingParty(true);
+    setPartyError('');
+    try {
+      const res = await api.delete('/admin/parties', { params: { name } });
+      setPartyPendingDelete(null);
+      // The response carries the refreshed list, so the modal updates without
+      // a round trip. The candidates list is refetched because the party
+      // filter dropdown is built from the same list.
+      const details = res?.data?.party_details;
+      if (Array.isArray(details)) setPartyDetails(details);
+      await fetchCandidates();
+    } catch (err) {
+      setPartyError(err?.response?.data?.message || err.message);
+    } finally {
+      setDeletingParty(false);
+    }
   };
 
   const handleSaveCandidate = async () => {
@@ -460,6 +492,9 @@ export default function Candidates({ onLogout, activeView = 'candidates', onNavi
               </button>
               <button type="button" className="cm-btn-outline" onClick={openPartyModal}>
                 <Flag size={16} /> Add Party
+              </button>
+              <button type="button" className="cm-btn-outline" onClick={openManagePartiesModal}>
+                <Flag size={16} /> Manage Parties
               </button>
             </div>
           </div>
@@ -805,6 +840,83 @@ export default function Candidates({ onLogout, activeView = 'candidates', onNavi
               </button>
               <button type="button" className="cm-btn-primary" onClick={handleSaveParty} disabled={savingParty || !partyName.trim()}>
                 <Plus size={16} /> {savingParty ? 'Adding…' : 'Add Party'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showManagePartiesModal && (
+        <div className="cm-modal-overlay" onClick={() => !deletingParty && setShowManagePartiesModal(false)}>
+          <div
+            className="cm-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="cm-manage-parties-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="cm-modal-header">
+              <div>
+                <h3 id="cm-manage-parties-title">Manage Parties</h3>
+                <p>Remove a party students can no longer pick on their candidacy forms</p>
+              </div>
+              <button type="button" className="cm-modal-close" onClick={() => setShowManagePartiesModal(false)} disabled={deletingParty} aria-label="Close">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="cm-modal-body">
+              {partyDetails.length === 0 ? (
+                <p className="cm-modal-hint">No parties yet. Add one to get started.</p>
+              ) : (
+                <ul className="cm-party-list">
+                  {partyDetails.map((p) => {
+                    const inUse = (p.candidate_count ?? 0) > 0;
+                    return (
+                      <li key={p.name} className="cm-party-row">
+                        <div className="cm-party-info">
+                          <span className="cm-party-name">{p.name}</span>
+                          <span className="cm-party-count">
+                            {p.candidate_count === 0
+                              ? 'No candidates'
+                              : `${p.candidate_count} candidate${p.candidate_count === 1 ? '' : 's'}`}
+                          </span>
+                        </div>
+                        {partyPendingDelete === p.name ? (
+                          <div className="cm-party-confirm">
+                            <span>Remove {p.name}?</span>
+                            <button type="button" className="btn-secondary" onClick={() => setPartyPendingDelete(null)} disabled={deletingParty}>
+                              Cancel
+                            </button>
+                            <button type="button" className="cm-btn-danger" onClick={() => handleDeleteParty(p.name)} disabled={deletingParty}>
+                              <Trash size={16} /> {deletingParty ? 'Removing…' : 'Remove'}
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            className="cm-btn-outline"
+                            onClick={() => setPartyPendingDelete(p.name)}
+                            disabled={inUse || deletingParty}
+                            title={inUse ? `${p.candidate_count} candidate(s) still run under this party` : `Remove ${p.name}`}
+                          >
+                            <Trash size={16} /> Remove
+                          </button>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              <p className="cm-modal-hint">
+                A party cannot be removed while candidates still run under it — move or remove those
+                candidates first.
+              </p>
+              {partyError && <div className="cm-modal-error">{partyError}</div>}
+            </div>
+
+            <div className="cm-modal-footer">
+              <button type="button" className="btn-secondary" onClick={() => setShowManagePartiesModal(false)} disabled={deletingParty}>
+                Done
               </button>
             </div>
           </div>
