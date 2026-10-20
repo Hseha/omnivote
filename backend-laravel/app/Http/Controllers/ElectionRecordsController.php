@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\ElectionCandidateRecord;
+use App\Support\ElectionCycleArchive;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -19,6 +21,78 @@ use Illuminate\Support\Facades\Schema;
  */
 class ElectionRecordsController extends Controller
 {
+    /**
+     * The outcome filters the screen offers.
+     *
+     * A record carries TWO status columns: `election_status` (how the race
+     * ended — pending / elected / tied) and `approval_status` (what happened
+     * to the application — pending / approved / rejected / withdrawn). The
+     * filter used to read every option out of `election_status`, so `lost`
+     * matched nothing (there is no such status) and `rejected` / `withdrawn`
+     * matched nothing either (they are approval statuses). Only `elected`
+     * worked, and a tie was not even offered.
+     *
+     * Each option now reads the column it actually lives in, and the buckets
+     * are mutually exclusive:
+     *
+     *   elected   — the candidate won a seat
+     *   tied      — the race was tied and never broken
+     *   lost      — the candidate stood and did not win, in a cycle whose
+     *               outcome WAS declared (finalized)
+     *   undecided — the candidate stood, but the cycle never concluded: it was
+     *               reset, or the polls closed and nobody finalized the result
+     *   rejected  — the panel rejected the application
+     *   withdrawn — the candidate withdrew
+     */
+    public const RESULT_FILTERS = [
+        'elected',
+        'tied',
+        'lost',
+        'undecided',
+        'rejected',
+        'withdrawn',
+    ];
+
+    /**
+     * Narrow the records to one outcome bucket.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
+     * @return \Illuminate\Database\Eloquent\Builder
+     */
+    private function applyResultFilter(Builder $query, string $result): Builder
+    {
+        // A cycle whose outcome was never declared leaves its candidates
+        // "undecided" rather than "lost" — the race never happened, so
+        // nobody lost it.
+        $finalizedCycles = Schema::hasTable('election_cycles')
+            ? DB::table('election_cycles')
+                ->where('status', ElectionCycleArchive::STATUS_FINALIZED)
+                ->pluck('cycle_id')
+            : collect();
+
+        return match ($result) {
+            'elected' => $query->where('election_status', 'elected'),
+            'tied' => $query->where('election_status', 'tied'),
+            'lost' => $query
+                ->where('election_status', 'pending')
+                ->where('certified_winner', false)
+                ->where('approval_status', 'approved')
+                ->whereIn('cycle_id', $finalizedCycles),
+            'undecided' => $query
+                ->where('election_status', 'pending')
+                ->where('approval_status', 'approved')
+                // A cycle whose header was never captured is not in the
+                // finalized list, so its candidates count as undecided too.
+                ->whereNotIn('cycle_id', $finalizedCycles),
+            'rejected' => $query->where('approval_status', 'rejected'),
+            'withdrawn' => $query->where('approval_status', 'withdrawn'),
+            default => $query,
+        };
+    }
+
+    /**
+     * The cycle review itself: every recorded candidate, grouped into cycles.
+     */
     public function index(Request $request): JsonResponse
     {
         $query = ElectionCandidateRecord::query()
@@ -40,9 +114,15 @@ class ElectionRecordsController extends Controller
             $query->where('position_label', $position);
         }
 
+        // An unknown result is a bad request, not a filter that silently
+        // returns everything.
         $result = $request->query('result');
-        if ($result) {
-            $query->where('election_status', $result);
+        if ($result !== null && $result !== '') {
+            $request->validate([
+                'result' => ['in:'.implode(',', self::RESULT_FILTERS)],
+            ]);
+
+            $query = $this->applyResultFilter($query, (string) $result);
         }
 
         $term = $request->query('term');
@@ -125,7 +205,7 @@ class ElectionRecordsController extends Controller
                 'parties' => $parties,
                 'positions' => $positions,
                 'terms' => $terms,
-                'results' => ['elected', 'lost', 'pending', 'rejected', 'withdrawn'],
+                'results' => self::RESULT_FILTERS,
             ],
         ]);
     }

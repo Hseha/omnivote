@@ -7,6 +7,7 @@ use App\Models\Phase;
 use App\Models\User;
 use App\Support\ElectionCycleArchive;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -221,6 +222,64 @@ class ElectionCycleArchiveTest extends TestCase
         // And the roster is on record, even though the candidates are gone.
         $this->assertSame(1, DB::table('election_candidate_records')->count());
         $this->assertSame(0, Candidate::query()->count());
+    }
+
+    public function test_a_reset_before_the_polls_close_freezes_the_ballot_too(): void
+    {
+        $admin = $this->makeUser(['role' => 'admin']);
+        $this->openTheWindow();
+        $this->makeCandidate('ref-ana', 'Ana', 'ASLE', 'president');
+
+        $this->actingAs($admin)
+            ->stateful()
+            ->postJson('/api/admin/election/reset', ['confirm' => 'reset_election'])
+            ->assertOk();
+
+        // The roster is on record, even though the candidates are gone.
+        $this->assertSame(1, DB::table('election_candidate_records')->count());
+
+        // And so is the ballot as it was — the positions, their seat counts
+        // and their scopes. A cycle reset mid-registration used to keep the
+        // roster but lose this, so the review was half a record.
+        $this->assertSame(2, DB::table('election_cycle_positions')->count());
+    }
+
+    public function test_a_reset_that_cannot_archive_the_roster_is_refused(): void
+    {
+        $admin = $this->makeUser(['role' => 'admin']);
+        $this->openTheWindow();
+        $this->makeCandidate('ref-ana', 'Ana', 'ASLE', 'president');
+
+        // The archive cannot run at all — the table it writes to is gone.
+        Schema::rename('election_candidate_records', 'election_candidate_records_broken');
+
+        $this->actingAs($admin)
+            ->stateful()
+            ->postJson('/api/admin/election/reset', ['confirm' => 'reset_election'])
+            ->assertStatus(409);
+
+        // The slate survives: the reset is about to delete the very rows the
+        // archive failed to record, so it refuses instead of losing them.
+        $this->assertSame(1, Candidate::query()->count());
+    }
+
+    public function test_a_reset_that_cannot_take_the_capture_lock_is_refused(): void
+    {
+        $admin = $this->makeUser(['role' => 'admin']);
+        $this->openTheWindow();
+        $this->makeCandidate('ref-ana', 'Ana', 'ASLE', 'president');
+
+        // A lock that cannot be taken means the capture did not happen —
+        // exactly as fatal as a failed write, and just as capable of losing
+        // the history the reset is about to delete.
+        Cache::shouldReceive('lock')->andThrow(new \RuntimeException('no cache'));
+
+        $this->actingAs($admin)
+            ->stateful()
+            ->postJson('/api/admin/election/reset', ['confirm' => 'reset_election'])
+            ->assertStatus(409);
+
+        $this->assertSame(1, Candidate::query()->count());
     }
 
     public function test_a_cycle_that_had_already_closed_keeps_that_status_on_reset(): void
