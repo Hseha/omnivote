@@ -162,6 +162,42 @@ class DemoSlateSeederTest extends TestCase
         );
     }
 
+    public function test_surnames_are_spread_across_the_roster(): void
+    {
+        $this->seed(DemoSlateSeeder::class);
+
+        $surnames = User::query()
+            ->whereIn('role', User::VOTER_ROLES)
+            ->get()
+            ->map(fn (User $u) => $this->surnameOf($u->name));
+
+        $counts = $surnames->countBy();
+
+        // 40 surnames over ~165 accounts: each one is used a handful of times,
+        // never forty times in a row.
+        $this->assertLessThanOrEqual(6, $counts->max(), 'A surname must not dominate the roster.');
+        $this->assertGreaterThanOrEqual(30, $counts->count(), 'The roster must use a broad set of surnames.');
+    }
+
+    public function test_one_college_never_fields_two_candidates_with_the_same_surname(): void
+    {
+        $this->seed(DemoSlateSeeder::class);
+
+        $rows = DB::table('candidates')
+            ->join('users', 'users.id', '=', 'candidates.user_id')
+            ->get(['users.department as department', 'users.name as name']);
+
+        foreach ($rows->groupBy('department') as $college => $group) {
+            $surnames = $group->map(fn ($r) => $this->surnameOf($r->name));
+
+            $this->assertSame(
+                $surnames->count(),
+                $surnames->unique()->count(),
+                "Two candidates in {$college} share a surname — the roster reads like one family."
+            );
+        }
+    }
+
     public function test_every_college_year_electorate_has_voters(): void
     {
         $this->seed(DemoSlateSeeder::class);
@@ -211,6 +247,28 @@ class DemoSlateSeederTest extends TestCase
     }
 
     /* ------------------------------------------------------------------ */
+
+    /**
+     * The surname of a demo name.
+     *
+     * The longest known surname wins, because "Dela Cruz" and "Cruz" are two
+     * different surnames in the seeder's list and a naive split on the last
+     * space would merge them.
+     */
+    private function surnameOf(string $name): string
+    {
+        $surnames = DemoSlateSeeder::LAST_NAMES;
+
+        usort($surnames, fn ($a, $b) => mb_strlen($b) <=> mb_strlen($a));
+
+        foreach ($surnames as $surname) {
+            if (str_ends_with($name, ' '.$surname)) {
+                return $surname;
+            }
+        }
+
+        return mb_substr($name, mb_strrpos($name, ' ') + 1);
+    }
 
     /** Candidate rows filed against a position slug, optionally per college. */
     private function candidatesFor(string $slug, ?string $college = null): int
