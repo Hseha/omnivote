@@ -167,11 +167,21 @@ function AppShell() {
   };
 
   const renderActiveView = () => {
-    if (activeView === 'ssg') {
-      return <SsgPresident onLogout={undefined} />;
-    }
-
     switch (activeView) {
+    case 'ssg':
+      return (
+        <SsgPresident
+          onLogout={undefined}
+          /* The computed view, not the stored one: the shell boots on
+             'dashboard', which the President's role does not hold, so the
+             stored view and the permitted default differ until the first
+             navigation. Passing the computed value keeps the sidebar's
+             active entry correct from the first paint. */
+          activeView={activeView}
+          onNavigate={navigate}
+          currentUser={user}
+        />
+      );
     case 'candidates':
       return (
         <Candidates

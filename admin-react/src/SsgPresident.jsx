@@ -1,21 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
-import { LogOut, Megaphone, ShieldCheck, Trash2 } from 'lucide-react';
+import { ShieldCheck } from 'lucide-react';
 import api from './lib/api';
 import { useAuth } from './lib/AuthContext';
-import MobileMenuButton from './components/MobileMenuButton';
-import OmniVoteMark from './components/OmniVoteMark';
+import { allowedViews } from './lib/permissions';
+import Sidebar from './components/Sidebar';
+import Header from './components/Header';
 import './SsgPresident.css';
 
 function errorMessage(error, fallback) {
   return error.response?.data?.message || error.message || fallback;
-}
-
-// Mirrors the backend rule in AnnouncementController::destroy: only the
-// announcement's author may delete it — no role, admin included, can remove a
-// post made by another user.
-function canDeleteAnnouncement(announcement, user) {
-  if (!announcement || !user) return false;
-  return announcement.user_id === user.id;
 }
 
 // Tier-grouped roster sections: national seats first, provincial second.
@@ -161,46 +154,48 @@ function PositionBlock({ position }) {
   );
 }
 
-export default function SsgPresident({ onLogout }) {
+/**
+ * SSG President console.
+ *
+ * The page now uses the SAME shell as the Admin/Teacher dashboard — the shared
+ * <Sidebar> for navigation and the shared <Header> for the breadcrumb, phase
+ * badge, clock, notification bell and profile block. The President's two
+ * screens (President Dashboard and Announcements) are sibling views in the
+ * sidebar, exactly like every staff screen, so the console no longer needs a
+ * bespoke layout.
+ *
+ * The announcement composer/feed lives in the shared Announcements view
+ * (Announcements.jsx), which already talks to the /ssg/console/ssg/announcements
+ * API surface. This page is the certified-officer roster only.
+ */
+export default function SsgPresident({ onLogout, activeView = 'ssg', onNavigate = null, currentUser = null }) {
   const { user, logout } = useAuth();
   const [officers, setOfficers] = useState([]);
-  const [announcements, setAnnouncements] = useState([]);
-  const [draft, setDraft] = useState({ title: '', body: '', published: true });
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [deletingId, setDeletingId] = useState(null);
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
-  // Officers 403 until voting closes — that gating must NOT break the
-  // announcement half of this page, so it is tracked separately.
+  // Officers 403 until voting closes — that gate is the expected state, not a
+  // failure, so it gets its own inline message instead of an error banner.
   const [officersUnavailable, setOfficersUnavailable] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    // Load the two halves independently: the roster is correctly locked until
-    // voting closes (officers 403), but a single failed fetch must not blank
-    // out the announcement management that the SSG President can always use.
-    const [officerResult, announcementResult] = await Promise.allSettled([
-      api.get('/admin/ssg/officers'),
-      api.get('/admin/ssg/announcements'),
-    ]);
-
-    if (officerResult.status === 'fulfilled') {
-      setOfficers(officerResult.value.data?.data || []);
+    try {
+      const res = await api.get('/admin/ssg/officers');
+      setOfficers(res.data?.data || []);
       setOfficersUnavailable(false);
-    } else {
-      setOfficers([]);
-      setOfficersUnavailable(true);
-    }
-
-    if (announcementResult.status === 'fulfilled') {
-      setAnnouncements(announcementResult.value.data?.data || []);
       setError('');
-    } else {
-      setError(errorMessage(announcementResult.reason, 'Unable to load the SSG President dashboard.'));
+    } catch (requestError) {
+      setOfficers([]);
+      if (requestError.response?.status === 403) {
+        setOfficersUnavailable(true);
+        setError('');
+      } else {
+        setOfficersUnavailable(false);
+        setError(errorMessage(requestError, 'Unable to load the certified officer roster.'));
+      }
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -209,200 +204,96 @@ export default function SsgPresident({ onLogout }) {
     loadData();
   }, [loadData]);
 
-  const deleteAnnouncement = async (announcement) => {
-    if (!announcement || announcement.id == null) return;
-    if (!window.confirm(`Delete "${announcement.title}"? This cannot be undone.`)) return;
-    setDeletingId(announcement.id);
-    setError('');
-    setNotice('');
-    try {
-      await api.delete(`/admin/ssg/announcements/${announcement.id}`);
-      setNotice('Announcement deleted.');
-      await loadData();
-    } catch (requestError) {
-      setError(errorMessage(requestError, 'Unable to delete the announcement.'));
-    } finally {
-      setDeletingId(null);
-    }
-  };
-
   const handleLogout = () => {
     if (typeof onLogout === 'function') return onLogout();
     logout();
   };
 
-  const createAnnouncement = async (event) => {
-    event.preventDefault();
-    setSaving(true);
-    setError('');
-    setNotice('');
-    try {
-      await api.post('/admin/ssg/announcements', {
-        title: draft.title.trim(),
-        body: draft.body.trim(),
-        published: draft.published,
-      });
-      setDraft({ title: '', body: '', published: true });
-      setNotice('Announcement saved.');
-      await loadData();
-    } catch (requestError) {
-      setError(errorMessage(requestError, 'Unable to save the announcement.'));
-    } finally {
-      setSaving(false);
-    }
-  };
+  // Fall back to the auth-context user, then to the President's own role, so
+  // the sidebar never briefly renders the full staff nav while the session
+  // object is still resolving.
+  const role = currentUser?.role ?? user?.role ?? 'ssg_president';
+  const displayName = currentUser?.name || user?.name || 'SSG President';
+  const roster = buildRoster(officers);
+  const seatedCount = officers.length;
+
+  const rosterStatus = loading
+    ? 'Loading the certified roster…'
+    : officersUnavailable
+      ? 'Locked until voting closes.'
+      : seatedCount === 0
+        ? 'No officers have been seated yet.'
+        : `${seatedCount} ${seatedCount === 1 ? 'seat' : 'seats'} filled — listed in ballot order, national first.`;
 
   return (
     <div className="dashboard-container ssg-president">
-      <aside className="sidebar">
-        <div className="logo-area">
-          <div className="logo-icon"><OmniVoteMark className="sidebar-logo-img" /></div>
-          <div><h1 className="brand-name">OmniVote</h1><p className="brand-sub">ELECTION CONSOLE</p></div>
-        </div>
-        <div className="ssg-sidebar-title"><ShieldCheck size={16} /> SSG PRESIDENT</div>
-
-        {/* Announcements moved into the sidebar so the main view stays the
-            calm, full-width certified-officer roster. */}
-        <div className="ssg-announcement-panel">
-          <div className="ssg-panel-head">
-            <Megaphone size={20} />
-            <h3>Announcements</h3>
-            <p className="muted-text">Share updates with students.</p>
-          </div>
-          <form className="ssg-form" onSubmit={createAnnouncement}>
-            <label htmlFor="announcement-title">Title</label>
-            <input
-              id="announcement-title"
-              value={draft.title}
-              onChange={(event) => setDraft({ ...draft, title: event.target.value })}
-              required
-            />
-            <label htmlFor="announcement-body">Message</label>
-            <textarea
-              id="announcement-body"
-              value={draft.body}
-              onChange={(event) => setDraft({ ...draft, body: event.target.value })}
-              rows="3"
-              required
-            />
-            <label className="ssg-checkbox">
-              <input
-                type="checkbox"
-                checked={draft.published}
-                onChange={(event) => setDraft({ ...draft, published: event.target.checked })}
-              />
-              Publish immediately
-            </label>
-            <button type="submit" className="primary-button" disabled={saving}>
-              {saving ? 'Saving...' : 'Save announcement'}
-            </button>
-          </form>
-
-          <section className="ssg-announcements">
-            {loading ? (
-              <p className="muted-text">Loading announcements...</p>
-            ) : announcements.length === 0 ? (
-              <p className="muted-text">No announcements yet.</p>
-            ) : (
-              announcements.slice(0, 5).map((announcement) => (
-                <article key={announcement.id}>
-                  <div className="ssg-announcement-head">
-                    <strong>{announcement.title}</strong>
-                    {canDeleteAnnouncement(announcement, user) && (
-                      <button
-                        type="button"
-                        className="ssg-announcement-delete"
-                        aria-label={`Delete "${announcement.title}"`}
-                        disabled={deletingId === announcement.id}
-                        onClick={() => deleteAnnouncement(announcement)}
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    )}
-                  </div>
-                  <p className="ssg-announcement-byline">
-                    Posted by {announcement.author?.name || 'Staff'}
-                  </p>
-                  <p className="ssg-announcement-body">{announcement.body}</p>
-                </article>
-              ))
-            )}
-          </section>
-        </div>
-
-        <div className="sidebar-footer-container">
-          <button type="button" onClick={handleLogout} className="logout-button">
-            <LogOut size={18} /> Logout
-          </button>
-          <div className="sidebar-footer">
-            <span className="status-dot-green" /> {user?.name || 'SSG President'}
-          </div>
-        </div>
-      </aside>
+      <Sidebar
+        activeView={activeView}
+        onNavigate={onNavigate}
+        onLogout={handleLogout}
+        currentUser={currentUser}
+        permittedViews={allowedViews(role)}
+      />
 
       <main className="main-content">
-        <header className="top-header">
-          <MobileMenuButton />
-          <div className="breadcrumb">
-            <span className="muted">SSG / </span><strong>President Dashboard</strong>
-          </div>
-          <div className="user-profile">
-            <span className="user-name">{user?.name || 'SSG President'}</span>
-            <span className="user-role">SSG President</span>
-          </div>
-        </header>
+        <Header
+          breadcrumb="President Dashboard"
+          breadcrumbPrefix="SSG"
+          currentUser={currentUser}
+          onNavigate={onNavigate}
+        />
 
-        <div className="ssg-content">
-          <div className="page-header">
-            <h2>Welcome back, {(user?.name || 'SSG President').split(' ')[0]}</h2>
-            <p className="page-subtext">Certified Officer Roster — who holds each seat, in which electorate, and how filled.</p>
-          </div>
+        <section className="ssg-page-header">
+          <span className="ssg-console-badge"><ShieldCheck size={14} /> SSG President</span>
+          <h2>Welcome back, {displayName.split(' ')[0]}</h2>
+          <p className="page-subtext">
+            Certified Officer Roster — who holds each seat, in which electorate, and how filled.
+          </p>
+        </section>
 
-          {error && <div className="warning-banner">{error}</div>}
-          {notice && <div className="success-banner">{notice}</div>}
+        {error && <div className="warning-banner">{error}</div>}
 
-          <section className="ssg-roster">
-            <div className="ssg-roster-header">
-              <div>
-                <h3>Certified Officer Roster</h3>
-                <p className="muted-text">Available after voting is closed.</p>
-              </div>
+        <section className="ssg-roster">
+          <div className="ssg-roster-header">
+            <div>
+              <h3>Certified Officer Roster</h3>
+              <p className="muted-text">{rosterStatus}</p>
             </div>
-            {loading ? (
-              <div className="card"><p className="muted-text">Loading officer roster...</p></div>
-            ) : officersUnavailable ? (
-              <div className="card"><p className="muted-text">Certified officers are listed here once voting closes.</p></div>
-            ) : (
-              <div className="ssg-roster-grid">
-                {buildRoster(officers).map((tier) => (
-                  <section className={`card ssg-tier-card ssg-tier-${tier.tier}`} key={tier.tier}>
-                    <div className="card-header ssg-tier-header">
-                      <div>
-                        <h3>{tier.label}</h3>
-                        <p className="muted-text">
-                          {tier.positions.length === 0
-                            ? 'No positions seated yet.'
-                            : `${tier.positions.length} ${tier.positions.length === 1 ? 'position' : 'positions'}`}
-                        </p>
-                      </div>
-                      <span className="ssg-tier-badge">{tier.tier}</span>
+          </div>
+          {loading ? (
+            <div className="card"><p className="muted-text">Loading officer roster…</p></div>
+          ) : officersUnavailable ? (
+            <div className="card"><p className="muted-text">Certified officers are listed here once voting closes.</p></div>
+          ) : (
+            <div className="ssg-roster-grid">
+              {roster.map((tier) => (
+                <section className={`card ssg-tier-card ssg-tier-${tier.tier}`} key={tier.tier}>
+                  <div className="ssg-tier-header">
+                    <div>
+                      <h3>{tier.label}</h3>
+                      <p className="muted-text">
+                        {tier.positions.length === 0
+                          ? 'No positions seated yet.'
+                          : `${tier.positions.length} ${tier.positions.length === 1 ? 'position' : 'positions'}`}
+                      </p>
                     </div>
+                    <span className="ssg-tier-badge">{tier.tier}</span>
+                  </div>
 
-                    {tier.positions.length === 0 ? (
-                      <p className="muted-text">{tier.empty}</p>
-                    ) : (
-                      <div className="ssg-tier-positions">
-                        {tier.positions.map((position) => (
-                          <PositionBlock key={position.key} position={position} />
-                        ))}
-                      </div>
-                    )}
-                  </section>
-                ))}
-              </div>
-            )}
-          </section>
-        </div>
+                  {tier.positions.length === 0 ? (
+                    <p className="muted-text">{tier.empty}</p>
+                  ) : (
+                    <div className="ssg-tier-positions">
+                      {tier.positions.map((position) => (
+                        <PositionBlock key={position.key} position={position} />
+                      ))}
+                    </div>
+                  )}
+                </section>
+              ))}
+            </div>
+          )}
+        </section>
       </main>
     </div>
   );

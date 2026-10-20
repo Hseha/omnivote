@@ -28,6 +28,8 @@ import { THEME_PACKS } from './lib/themePacks';
 import { refreshBranding } from './lib/branding';
 import { useElectionStatus } from './lib/ElectionStatusContext';
 import { displayPhase, roleLabel } from './lib/phase';
+import { defaultView } from './lib/permissions';
+import { IS_SSG_CONSOLE } from './lib/api';
 import TwoFactorSetup from './TwoFactorSetup';
 import NotificationBroadcast from './components/NotificationBroadcast';
 import OmniVoteMark from './components/OmniVoteMark';
@@ -899,6 +901,14 @@ export default function Settings({ onLogout, onNavigate, initialTab = 'profile' 
     { id: 'appearance', label: 'Appearance', icon: Moon },
   ];
 
+  /*
+   * Where the back arrow returns to. The SSG President's console has no
+   * 'dashboard' view (their home is the President Dashboard), so returning
+   * there would be silently ignored by the shell's navigate() and would
+   * strand them on this page with no way out.
+   */
+  const backTarget = defaultView(user?.role) || 'dashboard';
+
   return (
     <div className="settings-app">
       <aside className="sidebar">
@@ -910,7 +920,7 @@ export default function Settings({ onLogout, onNavigate, initialTab = 'profile' 
           <button
             type="button"
             className="back-dashboard-button"
-            onClick={() => onNavigate('dashboard')}
+            onClick={() => onNavigate(backTarget)}
             aria-label="Back to Dashboard"
           >
             <ArrowLeft size={18} />
@@ -938,7 +948,7 @@ export default function Settings({ onLogout, onNavigate, initialTab = 'profile' 
       <main className="settings-main">
         <header className="settings-header">
           <div className="settings-title-block">
-            <div className="breadcrumb"><span className="muted">Administration / </span><strong>Configuration</strong></div>
+            <div className="breadcrumb"><span className="muted">{IS_SSG_CONSOLE ? 'SSG / ' : 'Administration / '}</span><strong>Configuration</strong></div>
             <h2 className="settings-title">Configuration</h2>
             <p className="settings-subtitle">Manage platform security, voting windows, branding, backups, and notifications.</p>
           </div>

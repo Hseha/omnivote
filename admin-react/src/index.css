@@ -60,27 +60,38 @@
    Each tier carries its OWN soft and wash tints, not one shared pair: the
    wash tints a card header and the soft tint a badge, so a provincial card
    that borrowed the national blue would read as blue while calling itself
-   violet. */
+   violet.
+
+   The tints are mixed from the tier's own accent rather than spelled out per
+   theme pack, so they always agree with the badge text: the accent follows
+   the active pack, and the school's branding colour (applied to
+   --brand-primary as an inline style, which outranks every stylesheet rule)
+   follows it too. */
 :root {
   --tier-national: var(--brand-primary);
   --tier-provincial: #7c3aed;
   --tier-other: #64748b;
-  --tier-accent-soft: rgba(37, 99, 235, 0.1);
-  --tier-accent-wash: rgba(37, 99, 235, 0.045);
-  --tier-provincial-soft: rgba(124, 58, 237, 0.1);
-  --tier-provincial-wash: rgba(124, 58, 237, 0.045);
-  --tier-other-soft: rgba(100, 116, 139, 0.12);
-  --tier-other-wash: rgba(100, 116, 139, 0.055);
+  --tier-accent-soft: color-mix(in srgb, var(--tier-national) 10%, transparent);
+  --tier-accent-wash: color-mix(in srgb, var(--tier-national) 4.5%, transparent);
+  --tier-provincial-soft: color-mix(in srgb, var(--tier-provincial) 10%, transparent);
+  --tier-provincial-wash: color-mix(in srgb, var(--tier-provincial) 4.5%, transparent);
+  --tier-other-soft: color-mix(in srgb, var(--tier-other) 12%, transparent);
+  --tier-other-wash: color-mix(in srgb, var(--tier-other) 5.5%, transparent);
 }
 
 /* SSG President derived tokens for dark rendering */
 [data-theme='dark'] {
-  --tier-accent-soft: rgba(96, 165, 250, 0.14);
-  --tier-accent-wash: rgba(96, 165, 250, 0.07);
-  --tier-provincial-soft: rgba(167, 139, 250, 0.14);
-  --tier-provincial-wash: rgba(167, 139, 250, 0.07);
-  --tier-other-soft: rgba(148, 163, 184, 0.14);
-  --tier-other-wash: rgba(148, 163, 184, 0.07);
+  /* The accent colours are too dark to read as badge text on the dark
+     surface, so each tier accent is lightened for dark rendering. */
+  --tier-national: color-mix(in srgb, var(--brand-primary) 55%, #ffffff);
+  --tier-provincial: color-mix(in srgb, #7c3aed 55%, #ffffff);
+  --tier-other: color-mix(in srgb, #64748b 55%, #ffffff);
+  --tier-accent-soft: color-mix(in srgb, var(--tier-national) 14%, transparent);
+  --tier-accent-wash: color-mix(in srgb, var(--tier-national) 7%, transparent);
+  --tier-provincial-soft: color-mix(in srgb, var(--tier-provincial) 14%, transparent);
+  --tier-provincial-wash: color-mix(in srgb, var(--tier-provincial) 7%, transparent);
+  --tier-other-soft: color-mix(in srgb, var(--tier-other) 14%, transparent);
+  --tier-other-wash: color-mix(in srgb, var(--tier-other) 7%, transparent);
 }
 
 /* ===== Theme tokens: dark ===== */
@@ -655,11 +666,34 @@ button.voting-status-badge {
    SSG President) renders identically without per-view redefines.
    ============================================================ */
 
+/* A screen header: the title block on the left, page actions on the right. */
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
 .page-header h2 {
   font-size: 1.5rem;
   font-weight: 700;
   color: var(--heading);
   margin: 0 0 4px;
+}
+
+/* A card's title row: the heading on the left, actions on the right. */
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+/* The heading inside a card header keeps the generic `.card h3` sizing and
+   spacing; only the weight is specific to the header row. */
+.card-header h3 {
+  font-weight: 600;
 }
 
 .page-subtext {

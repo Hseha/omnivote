@@ -7,27 +7,6 @@
   max-width: 1200px;
 }
 
-.page-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.page-header h2 {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: var(--heading);
-  margin-bottom: 4px;
-}
-
-.page-subtext {
-  color: var(--text-muted);
-  font-size: 0.875rem;
-  margin-bottom: 24px;
-}
-
 /* Cross-link card into the nested User Access view (Student Registry group). */
 .registry-csv-empty {
   margin: 12px 0 0;

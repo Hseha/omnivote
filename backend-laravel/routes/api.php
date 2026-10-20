@@ -298,6 +298,14 @@ Route::prefix('ssg/console')->group(function () {
             ->middleware('permission:announcements.edit');
         Route::delete('/ssg/announcements/{announcement}', [AnnouncementController::class, 'destroy'])
             ->middleware('permission:announcements.edit');
+
+        // The console's notification bell. Same controller as the staff
+        // console — it only ever returns the CALLER's own notifications — so
+        // the shared <Header> bell works on the /ssg/ mount too.
+        Route::get('/notifications', [NotificationController::class, 'index'])
+            ->middleware('permission:dashboard.view');
+        Route::post('/notifications/read', [NotificationController::class, 'markRead'])
+            ->middleware('permission:dashboard.view');
     });
 });
 
