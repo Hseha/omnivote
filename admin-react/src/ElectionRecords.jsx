@@ -43,7 +43,7 @@ export default function ElectionRecords({
   const [positions, setPositions] = useState([]);
   const [terms, setTerms] = useState([]);
   const [resultValues, setResultValues] = useState([
-    'elected', 'lost', 'pending', 'rejected', 'withdrawn',
+    'elected', 'tied', 'lost', 'undecided', 'rejected', 'withdrawn',
   ]);
 
   async function loadRecords() {

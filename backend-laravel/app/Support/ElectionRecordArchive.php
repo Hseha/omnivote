@@ -20,14 +20,26 @@ class ElectionRecordArchive
     /**
      * Snapshot every current candidate into `election_candidate_records`.
      *
+     * @param  bool  $strict  When true, a failure is re-thrown instead of
+     *                        being swallowed. The reset path uses it: losing
+     *                        the roster is not an acceptable outcome there,
+     *                        because the reset is about to delete the live
+     *                        rows it would have recorded.
+     *
      * @return int number of records written (0 when schema/columns are missing
      *         or this cycle was already snapshotted)
      */
-    public static function snapshot(string $termLabel, string $cycleId): int
+    public static function snapshot(string $termLabel, string $cycleId, bool $strict = false): int
     {
         try {
             if (! Schema::hasTable('candidates')
                 || ! Schema::hasTable('election_candidate_records')) {
+                if ($strict) {
+                    throw new ElectionArchiveFailed(
+                        'The election record table is missing, so this cycle cannot be archived.'
+                    );
+                }
+
                 return 0;
             }
 
@@ -87,6 +99,14 @@ class ElectionRecordArchive
             return $rows->count();
         } catch (\Throwable $e) {
             Log::warning('ElectionRecordArchive::snapshot skipped: '.$e->getMessage());
+
+            if ($strict) {
+                throw new ElectionArchiveFailed(
+                    'The candidate record for this cycle could not be archived: '.$e->getMessage(),
+                    0,
+                    $e
+                );
+            }
 
             return 0;
         }

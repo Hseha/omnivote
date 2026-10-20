@@ -10,6 +10,7 @@ use App\Models\RegistrarImport;
 use App\Models\User;
 use App\Support\AuditLog;
 use App\Support\CandidateRoleSync;
+use App\Support\ElectionArchiveFailed;
 use App\Support\ElectionCycleArchive;
 use App\Support\Notifier;
 use App\Support\TermArchive;
@@ -224,132 +225,147 @@ class ElectionController extends Controller
             ? Candidate::query()->where('certified_winner', false)->pluck('user_id')
             : collect();
 
-        DB::transaction(function () use ($request, &$resetMessage, &$auditDetail) {
-            // 1. Archive certified winners so they become preserved officers
-            //    (Past Terms roster) before anything else is wiped.
-            //    No-op on schemas lacking the archive columns (see TermArchive).
-            TermArchive::archiveNow();
+        try {
+            DB::transaction(function () use ($request, &$resetMessage, &$auditDetail) {
+                // 1. Archive certified winners so they become preserved officers
+                //    (Past Terms roster) before anything else is wiped.
+                //    No-op on schemas lacking the archive columns (see TermArchive).
+                TermArchive::archiveNow();
 
-            // Capture the phase BEFORE it is cleared. It no longer changes
-            // what is reset (every reset is a full clean slate) — it is kept
-            // for the audit trail so a reset can be tied to the phase it
-            // interrupted.
-            $preResetPhase = Phase::current()?->name;
+                // Capture the phase BEFORE it is cleared. It no longer changes
+                // what is reset (every reset is a full clean slate) — it is kept
+                // for the audit trail so a reset can be tied to the phase it
+                // interrupted.
+                $preResetPhase = Phase::current()?->name;
 
-            // Capture the schedule too, for the same reason: the timeline is
-            // cleared in step 2, and the cycle archive needs the window the
-            // election actually ran under.
-            $cycleSchedule = ElectionCycleArchive::currentSchedule();
+                // Capture the schedule too, for the same reason: the timeline is
+                // cleared in step 2, and the cycle archive needs the window the
+                // election actually ran under.
+                $cycleSchedule = ElectionCycleArchive::currentSchedule();
 
-            // 2. Clear the election timeline so no phase can be derived.
-            if (Schema::hasTable('election_settings')) {
-                foreach (['registration_opens_at', 'registration_closes_at', 'voting_opens_at', 'voting_closes_at'] as $key) {
+                // 2. Clear the election timeline so no phase can be derived.
+                if (Schema::hasTable('election_settings')) {
+                    foreach (['registration_opens_at', 'registration_closes_at', 'voting_opens_at', 'voting_closes_at'] as $key) {
+                        DB::table('election_settings')->updateOrInsert(
+                            ['key' => $key],
+                            ['value' => null, 'updated_at' => now()],
+                        );
+                    }
+
+                    // A new cycle starts unpublished: re-arm the gate that blocks
+                    // the SSG grant until the next set of results is finalized.
                     DB::table('election_settings')->updateOrInsert(
-                        ['key' => $key],
-                        ['value' => null, 'updated_at' => now()],
+                        ['key' => 'results_published'],
+                        ['value' => '0', 'updated_at' => now()],
                     );
                 }
 
-                // A new cycle starts unpublished: re-arm the gate that blocks
-                // the SSG grant until the next set of results is finalized.
-                DB::table('election_settings')->updateOrInsert(
-                    ['key' => 'results_published'],
-                    ['value' => '0', 'updated_at' => now()],
+                // 3. Deactivate every phase row so Phase::current() returns null.
+                if (Schema::hasTable('phases')) {
+                    Phase::query()->update(['is_active' => false]);
+                }
+
+                // 4. Snapshot the full roster (all parties, winners + non-winners)
+                //    into Election Records, then delete every non-winner
+                //    application. This is UNCONDITIONAL: a reset is always a full
+                //    clean slate — including a mid-registration reset — matching
+                //    the confirmation dialog, which promises non-winner
+                //    applications are permanently removed. Certified winners were
+                //    archived as officers above and are preserved.
+                //
+                //    The cycle archive records this as an ABORTED cycle, keeping
+                //    the schedule that was in force. When the cycle had already
+                //    closed, its records are already captured and this is a no-op.
+                if (Schema::hasTable('candidates')) {
+                    // Strict: the reset is about to delete the non-winner rows, so
+                    // the record of them has to exist first. A best-effort
+                    // archive that fails quietly would delete the history along
+                    // with the rows it described.
+                    ElectionCycleArchive::abortCycle($cycleSchedule, strict: true);
+                }
+
+                // 4b. Clear the schedule the Voting Windows form keeps under
+                //     `admin.settings.voting.*`. The canonical timeline above is
+                //     only the mirror the rest of the app reads; the form's own
+                //     copy survived the reset, so the screen still showed the old
+                //     dates and the next save re-published them. The term end
+                //     goes with them — a term end with no voting window would
+                //     otherwise keep auto-archiving winners at a stale date.
+                if (Schema::hasTable('election_settings')) {
+                    foreach ([
+                        'admin.settings.voting.registrationStart',
+                        'admin.settings.voting.registrationEnd',
+                        'admin.settings.voting.votingStart',
+                        'admin.settings.voting.votingEnd',
+                        'admin.settings.voting.termEndsAt',
+                    ] as $key) {
+                        DB::table('election_settings')->updateOrInsert(
+                            ['key' => $key],
+                            ['value' => null, 'updated_at' => now()],
+                        );
+                    }
+                }
+
+                // 4c. The cycle is over: forget its id so the next election
+                //     starts a fresh cycle rather than reusing this one.
+                ElectionCycleArchive::clearCycleId();
+
+                if (Schema::hasTable('candidates')
+                    && Schema::hasColumn('candidates', 'certified_winner')) {
+                    Candidate::query()->where('certified_winner', false)->delete();
+                }
+
+                $phaseNote = $preResetPhase ? "pre-reset phase: {$preResetPhase}" : 'no active phase';
+
+                $auditDetail = "Admin reset the election cycle ({$phaseNote}): full candidate record archived to Election Records, timeline cleared, phase deactivated, non-winner candidates deleted, votes cleared, vote ledger truncated. Certified winners archived as officers (Past Terms) and preserved.";
+
+                $resetMessage = 'Election cycle reset to a clean slate. Every candidate was archived to Election Records, then non-winner applications were deleted. Certified winners were archived as officers (Past Terms) and are preserved.';
+
+                // Record the reset in the audit trail (inside the transaction).
+                AuditLog::record(
+                    $request,
+                    'election_reset',
+                    $auditDetail,
+                    'election',
+                    null,
                 );
-            }
-
-            // 3. Deactivate every phase row so Phase::current() returns null.
-            if (Schema::hasTable('phases')) {
-                Phase::query()->update(['is_active' => false]);
-            }
-
-            // 4. Snapshot the full roster (all parties, winners + non-winners)
-            //    into Election Records, then delete every non-winner
-            //    application. This is UNCONDITIONAL: a reset is always a full
-            //    clean slate — including a mid-registration reset — matching
-            //    the confirmation dialog, which promises non-winner
-            //    applications are permanently removed. Certified winners were
-            //    archived as officers above and are preserved.
-            //
-            //    The cycle archive records this as an ABORTED cycle, keeping
-            //    the schedule that was in force. When the cycle had already
-            //    closed, its records are already captured and this is a no-op.
-            if (Schema::hasTable('candidates')) {
-                ElectionCycleArchive::abortCycle($cycleSchedule);
-            }
-
-            // 4b. Clear the schedule the Voting Windows form keeps under
-            //     `admin.settings.voting.*`. The canonical timeline above is
-            //     only the mirror the rest of the app reads; the form's own
-            //     copy survived the reset, so the screen still showed the old
-            //     dates and the next save re-published them. The term end
-            //     goes with them — a term end with no voting window would
-            //     otherwise keep auto-archiving winners at a stale date.
-            if (Schema::hasTable('election_settings')) {
-                foreach ([
-                    'admin.settings.voting.registrationStart',
-                    'admin.settings.voting.registrationEnd',
-                    'admin.settings.voting.votingStart',
-                    'admin.settings.voting.votingEnd',
-                    'admin.settings.voting.termEndsAt',
-                ] as $key) {
-                    DB::table('election_settings')->updateOrInsert(
-                        ['key' => $key],
-                        ['value' => null, 'updated_at' => now()],
-                    );
+                // 5. Reset every voter's turnout flag so they can vote again.
+                $userUpdate = ['updated_at' => now()];
+                if (Schema::hasColumn('users', 'has_voted')) {
+                    $userUpdate['has_voted'] = false;
                 }
-            }
+                if (Schema::hasColumn('users', 'voted_at')) {
+                    $userUpdate['voted_at'] = null;
+                }
+                User::query()->voters()->update($userUpdate);
 
-            // 4c. The cycle is over: forget its id so the next election
-            //     starts a fresh cycle rather than reusing this one.
-            ElectionCycleArchive::clearCycleId();
+                // 6. Clear the anonymous vote ledger. TRUNCATE can 500 on some
+                //    engines/permissions inside a transaction (implicit-commit,
+                //    FK checks, missing DROP rights), so a plain delete is used —
+                //    same end state, same table, no surprises.
+                if (Schema::hasTable('vote_ledger')) {
+                    DB::table('vote_ledger')->delete();
+                }
 
-            if (Schema::hasTable('candidates')
-                && Schema::hasColumn('candidates', 'certified_winner')) {
-                Candidate::query()->where('certified_winner', false)->delete();
-            }
-
-            $phaseNote = $preResetPhase ? "pre-reset phase: {$preResetPhase}" : 'no active phase';
-
-            $auditDetail = "Admin reset the election cycle ({$phaseNote}): full candidate record archived to Election Records, timeline cleared, phase deactivated, non-winner candidates deleted, votes cleared, vote ledger truncated. Certified winners archived as officers (Past Terms) and preserved.";
-
-            $resetMessage = 'Election cycle reset to a clean slate. Every candidate was archived to Election Records, then non-winner applications were deleted. Certified winners were archived as officers (Past Terms) and are preserved.';
-
-            // Record the reset in the audit trail (inside the transaction).
-            AuditLog::record(
-                $request,
-                'election_reset',
-                $auditDetail,
-                'election',
-                null,
-            );
-            // 5. Reset every voter's turnout flag so they can vote again.
-            $userUpdate = ['updated_at' => now()];
-            if (Schema::hasColumn('users', 'has_voted')) {
-                $userUpdate['has_voted'] = false;
-            }
-            if (Schema::hasColumn('users', 'voted_at')) {
-                $userUpdate['voted_at'] = null;
-            }
-            User::query()->voters()->update($userUpdate);
-
-            // 6. Clear the anonymous vote ledger. TRUNCATE can 500 on some
-            //    engines/permissions inside a transaction (implicit-commit,
-            //    FK checks, missing DROP rights), so a plain delete is used —
-            //    same end state, same table, no surprises.
-            if (Schema::hasTable('vote_ledger')) {
-                DB::table('vote_ledger')->delete();
-            }
-
-            // 7. Clear pre-submission ballot drafts (user-scoped, pre-vote
-            //    artifacts). Without this a student keeps a stale
-            //    status='submitted' row after reset and the next cycle's
-            //    My Ballot screen misreads. Anonymous ledger secrecy (H-1)
-            //    is unaffected — drafts hold no receipts post-submit.
-            if (Schema::hasTable('ballot_drafts')) {
-                DB::table('ballot_drafts')->delete();
-            }
-        });
+                // 7. Clear pre-submission ballot drafts (user-scoped, pre-vote
+                //    artifacts). Without this a student keeps a stale
+                //    status='submitted' row after reset and the next cycle's
+                //    My Ballot screen misreads. Anonymous ledger secrecy (H-1)
+                //    is unaffected — drafts hold no receipts post-submit.
+                if (Schema::hasTable('ballot_drafts')) {
+                    DB::table('ballot_drafts')->delete();
+                }
+            });
+        } catch (ElectionArchiveFailed $e) {
+            // The reset was rolled back: the candidate record for this
+            // cycle could not be archived, and the reset was about to
+            // delete the very rows that record describes. Refusing is
+            // the only way the history survives.
+            return response()->json([
+                'message' => 'The election was not reset: the candidate record for this cycle could not be archived, so nothing was deleted. Fix the archive error and try again.',
+                'error' => $e->getMessage(),
+            ], 409);
+        }
 
         // The slate is clear: any account that held a candidacy is no longer a
         // candidate, so re-derive their role back to student.

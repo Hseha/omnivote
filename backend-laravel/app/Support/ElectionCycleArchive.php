@@ -217,20 +217,30 @@ class ElectionCycleArchive
      *                                          force, when the caller already
      *                                          captured it (the reset clears
      *                                          the timeline before archiving)
+     * @param  bool  $strict  When true, a failure to capture is re-thrown
+     *                        instead of being swallowed, so the caller can
+     *                        refuse to delete the live rows it failed to
+     *                        record.
      * @return int number of candidate records written
      */
-    public static function abortCycle(?array $schedule = null): int
+    public static function abortCycle(?array $schedule = null, bool $strict = false): int
     {
-        return self::withCaptureLock(fn () => self::abortCycleLocked($schedule));
+        return self::withCaptureLock(fn () => self::abortCycleLocked($schedule, $strict), $strict);
     }
 
     /**
      * The abort itself. Runs under the capture lock.
      */
-    private static function abortCycleLocked(?array $schedule = null): int
+    private static function abortCycleLocked(?array $schedule = null, bool $strict = false): int
     {
         try {
             if (! self::tablesReady()) {
+                if ($strict) {
+                    throw new ElectionArchiveFailed(
+                        'The election archive tables are missing, so this cycle cannot be archived.'
+                    );
+                }
+
                 return 0;
             }
 
@@ -247,7 +257,13 @@ class ElectionCycleArchive
             }
 
             $schedule = $schedule ?? self::currentSchedule();
-            $roster = ElectionRecordArchive::snapshot($schedule['term_label'], $cycleId);
+            $roster = ElectionRecordArchive::snapshot($schedule['term_label'], $cycleId, $strict);
+
+            // Freeze the ballot too, exactly as a cycle that reached the polls
+            // does. Without this a cycle reset mid-registration keeps the
+            // roster but loses "the ballot as it was" — the positions, their
+            // seat counts and their scopes — so the review is half a record.
+            self::snapshotPositions($cycleId);
 
             // A cycle that had already closed keeps that status — the polls
             // did close, and the archive holds its roster. Only a cycle that
@@ -278,6 +294,16 @@ class ElectionCycleArchive
         } catch (\Throwable $e) {
             Log::warning('ElectionCycleArchive::abortCycle skipped: '.$e->getMessage());
 
+            if ($strict) {
+                throw $e instanceof ElectionArchiveFailed
+                    ? $e
+                    : new ElectionArchiveFailed(
+                        'The candidate record for this cycle could not be archived: '.$e->getMessage(),
+                        0,
+                        $e
+                    );
+            }
+
             return 0;
         }
     }
@@ -291,13 +317,27 @@ class ElectionCycleArchive
      *
      * @param  callable(): int  $callback
      */
-    private static function withCaptureLock(callable $callback): int
+    private static function withCaptureLock(callable $callback, bool $strict = false): int
     {
         try {
             return Cache::lock(self::CAPTURE_LOCK, self::LOCK_TTL_SECONDS)
                 ->block(self::LOCK_WAIT_SECONDS, $callback);
         } catch (\Throwable $e) {
             Log::warning('ElectionCycleArchive: capture lock unavailable: '.$e->getMessage());
+
+            if ($strict) {
+                // A lock that cannot be taken means the capture did not
+                // happen. In strict mode that is as fatal as a failed write:
+                // the caller is about to delete the rows the capture would
+                // have recorded.
+                throw $e instanceof ElectionArchiveFailed
+                    ? $e
+                    : new ElectionArchiveFailed(
+                        'The cycle could not be archived: '.$e->getMessage(),
+                        0,
+                        $e
+                    );
+            }
 
             return 0;
         }
