@@ -117,7 +117,7 @@ class DemoSlateSeeder extends Seeder
      * 40 first names x 40 last names, walked so that every pair is used
      * exactly once before any name repeats.
      */
-    private const FIRST_NAMES = [
+    public const FIRST_NAMES = [
         'Jasmine', 'Marco', 'Andrea', 'Paolo', 'Kristine', 'Bryan', 'Erica', 'Gerald',
         'Liza', 'Patrick', 'Nicole', 'Vincent', 'Sarah', 'Dennis', 'Rachel', 'Angelo',
         'Camille', 'Renz', 'Trixie', 'Miguel', 'Hannah', 'Ivan', 'Dianne', 'Karl',
@@ -125,13 +125,22 @@ class DemoSlateSeeder extends Seeder
         'Chloe', 'Nathan', 'Denise', 'Jerome', 'Maria', 'Allan', 'Gina',
     ];
 
-    private const LAST_NAMES = [
+    public const LAST_NAMES = [
         'Santos', 'Reyes', 'Garcia', 'Mendoza', 'Cruz', 'Bautista', 'Dela Cruz', 'Aquino',
         'Ramos', 'Fernandez', 'Villanueva', 'Navarro', 'Castillo', 'Lim', 'Domingo', 'Ocampo',
         'Mendiola', 'Soriano', 'Salvacion', 'Manalo', 'Coronel', 'Pineda', 'Lacson', 'Abadilla',
         'Ventura', 'Suarez', 'Mercado', 'Rivera', 'Villamor', 'Tolentino', 'Dizon', 'Rosales',
         'Padilla', 'Estrada', 'Malonzo', 'Agbayani', 'Buenaventura', 'Dimaculangan', 'Pangilinan',
     ];
+
+    /** Full names already handed out, so no two accounts share one. */
+    private array $usedNames = [];
+
+    /** Surnames already used, per college. */
+    private array $collegeSurnames = [];
+
+    /** How far each college has walked the surname list. */
+    private array $surnameCursor = [];
 
     public function run(): void
     {
@@ -333,7 +342,7 @@ class DemoSlateSeeder extends Seeder
             return $existing;
         }
 
-        $name = $this->name($index);
+        $name = $this->name($index, $slot['college']);
         $email = $this->usernameFromName($name);
 
         if (User::query()->where('email', $email)->exists()) {
@@ -404,7 +413,7 @@ class DemoSlateSeeder extends Seeder
                     $studentId = $this->studentId($index);
 
                     if (! User::query()->where('student_id', $studentId)->exists()) {
-                        $name = $this->name($index);
+                        $name = $this->name($index, $college);
                         $email = $this->usernameFromName($name);
 
                         if (User::query()->where('email', $email)->exists()) {
@@ -490,19 +499,49 @@ class DemoSlateSeeder extends Seeder
     }
 
     /**
-     * The name for a slot index: first names cycle through the list while the
-     * last name advances every full cycle, so no pair repeats until all
-     * 1,600 combinations are used.
+     * The name for a slot.
+     *
+     * Two rules, both about how the roster reads:
+     *
+     *  - a surname is used at most ONCE per college, so one college never
+     *    fields candidates that look like siblings ("Jasmine Santos" and
+     *    "Andrea Santos" contesting the same seat);
+     *  - the full name is unique across the whole roster, so every login
+     *    handle is unambiguous.
+     *
+     * The surname therefore comes from a per-college cursor (each college
+     * walks the surname list in its own turn) and the first name cycles
+     * through the list with the slot index. A clash falls through to the next
+     * surname, so the rules hold whatever order the slots arrive in.
      */
-    private function name(int $index): string
+    private function name(int $index, string $college): string
     {
-        $firsts = count(self::FIRST_NAMES);
-        $lasts = count(self::LAST_NAMES);
+        $first = self::FIRST_NAMES[$index % count(self::FIRST_NAMES)];
 
-        $first = self::FIRST_NAMES[$index % $firsts];
-        $last = self::LAST_NAMES[intdiv($index, $firsts) % $lasts];
+        $cursor = $this->surnameCursor[$college] ?? 0;
 
-        return $first.' '.$last;
+        for ($try = 0; $try < count(self::LAST_NAMES); $try++) {
+            $surname = self::LAST_NAMES[($cursor + $try) % count(self::LAST_NAMES)];
+            $name = $first.' '.$surname;
+
+            if (isset($this->usedNames[$name]) || isset($this->collegeSurnames[$college][$surname])) {
+                continue;
+            }
+
+            $this->usedNames[$name] = true;
+            $this->collegeSurnames[$college][$surname] = true;
+            $this->surnameCursor[$college] = $cursor + $try + 1;
+
+            return $name;
+        }
+
+        // The surname pool is exhausted for this college: fall back to a
+        // disambiguated name rather than colliding.
+        $name = $first.' '.$college;
+
+        $this->usedNames[$name] = true;
+
+        return $name;
     }
 
     /**
