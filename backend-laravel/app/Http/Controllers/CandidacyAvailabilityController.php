@@ -2,10 +2,10 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Candidate;
 use App\Models\Position;
+use App\Support\SeatCap;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Http\Request;
 
 /**
  * GET /api/candidacy/availability — per-party candidate counts per position.
@@ -19,34 +19,38 @@ use Illuminate\Support\Facades\DB;
  * Null-party (independent) candidates are counted under the literal key
  * `_none`, which can never collide with a canonical party name (those are
  * validated against the parties table).
+ *
+ * The counts are taken in the CALLER's race, not school-wide: a scoped seat
+ * (the provincial posts are one race per college, the year-level seat one
+ * race per college AND year level) is contested separately in every
+ * electorate, so a student in one college must see that college's race — not
+ * a school-wide total that would make another college's filled race look
+ * like their own seat is taken. See SeatCap.
  */
 class CandidacyAvailabilityController extends Controller
 {
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        $counts = Candidate::query()
-            ->whereIn('approval_status', ['pending', 'approved'])
-            ->whereNotNull('position_id')
-            ->groupBy('position_id', 'party_name')
-            ->select('position_id', 'party_name', DB::raw('COUNT(*) as c'))
-            ->get()
-            ->groupBy('position_id')
-            ->map(fn ($rows) => $rows->mapWithKeys(fn ($row) => [
-                (string) ($row->party_name ?? '_none') => (int) $row->c,
-            ]));
+        $voter = $request->user();
 
         $positions = Position::query()
             ->where('is_active', true)
             ->orderBy('tier')
             ->orderBy('sort_order')
-            ->get(['id', 'slug', 'label', 'tier', 'seat_count'])
+            // The scope columns are NOT optional here: SeatCap reads them to
+            // decide which race the caller is in, and a partially loaded model
+            // would report every seat as global.
+            ->get([
+                'id', 'slug', 'label', 'tier', 'seat_count',
+                'scope_type', 'scope_value', 'scope_type_2', 'scope_value_2',
+            ])
             ->map(fn (Position $p) => [
                 'id' => $p->id,
                 'slug' => $p->slug,
                 'label' => $p->label,
                 'tier' => $p->tier,
                 'seat_count' => $p->seat_count,
-                'party_counts' => $counts->get($p->id, collect())->all(),
+                'party_counts' => SeatCap::partyCounts($p, $voter),
             ]);
 
         return response()->json(['positions' => $positions]);

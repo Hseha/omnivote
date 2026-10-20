@@ -14,6 +14,7 @@ use App\Support\CandidateRoleSync;
 use App\Support\DepartmentCatalog;
 use App\Support\Notifier;
 use App\Support\ResultsPublisher;
+use App\Support\SeatCap;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
@@ -179,17 +180,9 @@ class AdminCandidateController extends Controller
 
         $party = $validated['party_name'] ?? null;
 
-        $partyCandidates = Candidate::query()
-            ->where('position_id', $position->id)
-            ->whereIn('approval_status', ['pending', 'approved']);
-
-        if ($party === null) {
-            $partyCandidates->whereNull('party_name');
-        } else {
-            $partyCandidates->whereRaw('UPPER(TRIM(party_name)) = ?', [strtoupper($party)]);
-        }
-
-        if ($partyCandidates->count() >= $position->seat_count) {
+        // The cap is counted in the race the STUDENT belongs to, so a
+        // provincial seat is one race per college (see SeatCap).
+        if (SeatCap::isTaken($position, $party, $user)) {
             return response()->json([
                 'message' => 'The '.($party ?? 'independent').' seat for '.$position->label.' is already taken.',
                 'code' => 'seat_taken',
@@ -380,25 +373,23 @@ class AdminCandidateController extends Controller
         // position+party already holds `seat_count` candidates (pending or
         // approved) — without this, two pending applications could both be
         // approved past the cap. See docs/HANDOFF_CANDIDACY_SEAT_CAP.md §1.5.
+        //
+        // The count is taken in the race the CANDIDATE belongs to (their own
+        // college, and year level for a year-scoped seat), so a provincial
+        // seat that is still open in one college is not blocked by a filled
+        // race in another. See SeatCap.
         if ($status === 'approved') {
             $position = $candidate->position;
             $party = $candidate->party_name;
 
-            $others = Candidate::query()
-                ->where('position_id', $candidate->position_id)
-                ->where('id', '!=', $candidate->id)
-                ->whereIn('approval_status', ['pending', 'approved']);
+            $others = $position !== null
+                ? SeatCap::count($position, $party, $candidate->user, $candidate->id)
+                : 0;
 
-            if ($party === null) {
-                $others->whereNull('party_name');
-            } else {
-                $others->whereRaw('UPPER(TRIM(party_name)) = ?', [strtoupper($party)]);
-            }
-
-            if ($position !== null && $others->count() >= $position->seat_count) {
+            if ($position !== null && $others >= $position->seat_count) {
                 return response()->json([
                     'message' => 'Cannot approve — the '.($party ?? 'independent').' seat for '.$position->label
-                        .' already has '.$others->count().' candidate(s).',
+                        .' already has '.$others.' candidate(s).',
                     'code' => 'seat_taken',
                     'position_id' => $candidate->position_id,
                     'party_name' => $party,
