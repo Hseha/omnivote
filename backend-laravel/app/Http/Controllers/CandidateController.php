@@ -11,6 +11,7 @@ use App\Models\Position;
 use App\Support\CandidateRoleSync;
 use App\Support\DepartmentCatalog;
 use App\Support\Notifier;
+use App\Support\SeatCap;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
@@ -174,6 +175,13 @@ class CandidateController extends Controller
         // `approved` claims reserve the seat; `rejected`/`withdrawn` free it.
         // No-party candidates bucket separately. See
         // docs/HANDOFF_CANDIDACY_SEAT_CAP.md §1.1.
+        //
+        // The cap is counted in the RACE the applicant belongs to, not
+        // school-wide: a scoped seat (the provincial posts are one race per
+        // college, the year-level seat one race per college AND year) is
+        // contested separately in every electorate, so a Governor ASLE
+        // candidate in one college must not consume another college's
+        // Governor ASLE seat.
         $position = Position::findOrFail($validated['position_id']);
 
         if (! $position->voterIsInScope($request->user())) {
@@ -186,17 +194,7 @@ class CandidateController extends Controller
 
         $party = $validated['party_name'] ?? null;
 
-        $partyCandidates = Candidate::query()
-            ->where('position_id', $position->id)
-            ->whereIn('approval_status', ['pending', 'approved']);
-
-        if ($party === null) {
-            $partyCandidates->whereNull('party_name');
-        } else {
-            $partyCandidates->whereRaw('UPPER(TRIM(party_name)) = ?', [strtoupper($party)]);
-        }
-
-        if ($partyCandidates->count() >= $position->seat_count) {
+        if (SeatCap::isTaken($position, $party, $request->user())) {
             return response()->json([
                 'message' => 'Sorry — the '.($party ?? 'independent').' seat for '.$position->label.' is already taken.',
                 'code' => 'seat_taken',

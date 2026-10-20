@@ -26,12 +26,34 @@ Enforced at **two** gates:
 ### 1.1 Cap rule (server-side, authoritative)
 ```
 count(candidates where position_id = P AND normalized(party_name) = X
-      AND approval_status IN ('pending','approved'))
+      AND approval_status IN ('pending','approved')
+      AND the candidate stands in the same RACE as the reference account)
   <= position(P).seat_count
 ```
 - Normalization: `trim()` + case-insensitive compare (`asle` == `ASLE`). Store the value as submitted; compare normalized.
 - Statuses that **block**: `pending`, `approved`. Statuses that **free the seat**: `rejected`, `withdrawn`, `legacy`.
 - `party_name = null` ("No party") is its own bucket, same cap (decision D3, default).
+- **RACE (amended 2026-10-20).** The count is taken in the race the seat is
+  contested in, not school-wide. A position with scope dimensions is one race
+  per electorate: the provincial posts are one race per **college**
+  (`scope_type = department`), the year-level seat one race per **college and
+  year level** (`department` + `year_level`). A global seat (every national
+  post, Senator) is one race for the whole school, so its count is unchanged.
+  The reference account is the applicant at apply time, the candidate's own
+  account at approval time, and the caller for the availability lookup.
+  A candidate whose account carries no value for a scope dimension stands in
+  no race and never counts against one.
+  *Why:* the app already treats a scoped seat as per-electorate everywhere
+  else — `Position::voterIsInScope()` refuses a voter outside the seat's
+  electorate, the ballot only shows a voter their own race, and the results
+  and roster code group winners per electorate
+  (`Position::groupKeyFor()`). Counting the cap school-wide made a filled race
+  in one college read as a taken seat in every other college: the student
+  apply returned 409 `seat_taken` and the admin could not approve a candidate
+  for a race that was still open.
+  *Implementation:* `App\Support\SeatCap` is the single place the rule lives;
+  the student apply, the admin create, the admin approve and the availability
+  endpoint all ask it. See `tests/Feature/CandidacySeatCapElectorateTest.php`.
 
 ### 1.2 NEW endpoint — availability (backend builds, frontend consumes)
 `GET /api/candidacy/availability` — student-authenticated, same `api` throttle bucket.
@@ -50,6 +72,9 @@ count(candidates where position_id = P AND normalized(party_name) = X
 }
 ```
 Frontend derives `taken = party_counts[party] >= seat_count`. Counts only — no `taken` booleans, so the server stays the single source of truth.
+The counts are the **caller's race** (amended with §1.1), so a student sees the
+seats available in the race they can actually contest. The response shape is
+unchanged, so no client change is required.
 
 ### 1.3 Apply 409 — seat taken (NEW code field)
 `POST /api/candidate/apply` returns HTTP **409**:
